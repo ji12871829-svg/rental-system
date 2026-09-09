@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RMS — Maintenance</title>
+  <link rel="stylesheet" href="../css/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">Rental&nbsp;MS</div>
+      <nav>
+        <a href="dashboard.html" data-page="dashboard">Dashboard</a>
+        <a href="units.html" data-page="units">Units</a>
+        <a href="tenants.html" data-page="tenants">Tenants</a>
+        <a href="leases.html" data-page="leases">Leases</a>
+        <a href="payments.html" data-page="payments">Payments</a>
+        <a href="maintenance.html" data-page="maintenance">Maintenance</a>
+        <a href="reports.html" data-page="reports">Reports</a>
+        <a href="users.html" data-page="users" class="admin-only">Users</a>
+        <div class="spacer"></div>
+        <a href="#" id="logout-link" class="logout">Logout</a>
+      </nav>
+    </aside>
+    <div class="main">
+      <header class="topbar"></header>
+      <main class="content">
+        <div class="page-header">
+          <h1>Maintenance Requests</h1>
+          <button class="btn" id="new-request-btn">+ New Request</button>
+        </div>
+
+        <div class="card mb-2 hidden" id="request-form-card">
+          <h2>New Maintenance Request</h2>
+          <form id="request-form" class="form-grid">
+            <div class="form-group"><label>Unit *</label><select name="unitId" id="unit-select" required></select></div>
+            <div class="form-group"><label>Priority *</label>
+              <select name="priority" required><option value="low">Low</option><option value="medium" selected>Medium</option>
+              <option value="high">High</option><option value="urgent">Urgent</option></select></div>
+            <div class="form-group full"><label>Description *</label><textarea name="description" rows="3" required></textarea></div>
+            <div class="form-actions full">
+              <button type="button" class="btn btn-secondary" id="cancel-request">Cancel</button>
+              <button type="submit" class="btn">Submit Request</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="tabs" id="status-tabs">
+          <button data-status="" class="active">All</button>
+          <button data-status="open">Open</button>
+          <button data-status="in_progress">In Progress</button>
+          <button data-status="resolved">Resolved</button>
+          <button data-status="cancelled">Cancelled</button>
+        </div>
+        <table class="data">
+          <thead><tr><th>Unit</th><th>Description</th><th>Priority</th><th>Status</th><th>Vendor</th><th>Cost</th><th style="width:200px">Change Status</th></tr></thead>
+          <tbody id="requests-body"><tr><td colspan="7" class="empty-state">Loading…</td></tr></tbody>
+        </table>
+        <div class="pagination" id="pagination"></div>
+      </main>
+    </div>
+  </div>
+  <script src="../js/config.js"></script>
+  <script src="../js/api.js"></script>
+  <script src="../js/maintenance.js"></script>
+</body>
+</html>

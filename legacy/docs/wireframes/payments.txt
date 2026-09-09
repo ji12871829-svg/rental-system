@@ -1,0 +1,19 @@
+PAYMENTS — payments.html
++--------------------------------------------------------------+
+| Sidebar | Top bar: [Building Admin] [admin]   [Logout]      |
+|---------|----------------------------------------------------|
+| Dashboard| Payments                               [+ Record] |
+| Units    | +------------------------ Record form ----------+ |
+| Tenants  | | Lease (Unit — Tenant) [Unit 1 — Jane v]      | |
+| Leases   | | Amount [$350.00] Date [2026-09-02] Method [mpesa v]|
+| Payments | | Reference [MPESA-____] Notes [September rent]  | |
+| Maint.   | | [Record Payment]                              | |
+| Reports  | +-----------------------------------------------+ |
+| Logout   | From [2026-01-01] To [2026-12-31] [Clear] [Export CSV]|
+|          |----------------------------------------------------|
+|          | Date | Unit | Tenant | Amount | Method | Reference |
+|          | ...  | ...  | ...    | ...    | ...    | ...      |
+|          | Page N of M  [← Prev] [Next →]                    |
++--------------------------------------------------------------+
+- POST returns balanceDue -> toast "Payment recorded. Balance due: $X".
+- Export hits /payments/export; warns if X-Export-Truncated header set.

@@ -1,0 +1,17 @@
+UNITS — units.html
++--------------------------------------------------------------+
+| Sidebar | Top bar: [Building Admin] [admin]   [Logout]      |
+|---------|----------------------------------------------------|
+| Dashboard| Units                                   [+ Add Unit]|
+| Units    | [Search unit#____] [Status: All statuses v]       |
+| Tenants  |----------------------------------------------------|
+| Leases   | Unit | Floor | Beds | Baths | SqFt | Base Rent | Status |
+| Payments | 1    | Ground|  1   |  1   | 450 | $350.00    | occupied|
+| Maint.   | 2    | Ground|  2   |  1   | 620 | $500.00    | occupied|
+| Reports  | 3    | 1st   |  1   |  1   | 450 | $350.00    | vacant  |
+| Logout   |----------------------------------------------------|
+|          | Page N of M · 3 units   [← Prev] [Next →]        |
++--------------------------------------------------------------+
+- Row click -> edit modal (PATCH). Add Unit -> create modal (POST).
+- Save = optimistic in-place update; on API error -> rollback + toast.
+- Status can be set to 'maintenance' (deactivate) instead of delete.

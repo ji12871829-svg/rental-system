@@ -1,0 +1,60 @@
+{
+  "name": "rpms-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Rental Property Management System — Express + TypeScript + PostgreSQL API",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "db:setup": "tsx src/db/setup.ts",
+    "db:reset": "tsx src/db/reset.ts",
+    "test": "cross-env NODE_ENV=test jest --runInBand",
+    "test:unit": "cross-env NODE_ENV=test jest --runInBand --testPathPatterns tests/unit",
+    "test:integration": "cross-env NODE_ENV=test jest --runInBand --testPathPatterns tests/integration"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^10.0.1",
+    "pdf-lib": "^1.17.1",
+    "pg": "^8.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^30.0.0",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/node": "^20.14.10",
+    "@types/nodemailer": "^8.0.1",
+    "@types/pg": "^8.11.6",
+    "@types/supertest": "^6.0.2",
+    "cross-env": "^7.0.3",
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0",
+    "ts-jest": "^29.1.5",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.3"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/tests"
+    ],
+    "testTimeout": 30000,
+    "setupFiles": [
+      "<rootDir>/tests/setup-env.ts"
+    ],
+    "globalSetup": "<rootDir>/tests/integration/globalSetup.ts",
+    "globalTeardown": "<rootDir>/tests/integration/globalTeardown.ts"
+  }
+}

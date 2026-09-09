@@ -1,0 +1,2 @@
+[401] POST /api/auth/login: UNAUTHORIZED — Invalid email or password.
+[401] POST /api/auth/login/token: UNAUTHORIZED — Invalid email or password.

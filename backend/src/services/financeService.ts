@@ -1,0 +1,377 @@
+import { query, queryOne } from '../config/db';
+import { MONTH_NAMES } from '../types';
+import { balanceDue, paymentStatus, rentCollectionRate } from '../utils/businessRules';
+import { notFound } from '../utils/httpError';
+import { monthlyReportPdfBytes } from '../utils/monthlyReportPdf';
+import { n, round2 } from '../utils/money';
+import { getBusinessIdentity } from './brandingService';
+import { monthlyRentSummary } from './rentService';
+import { getSettings } from './settingsService';
+import { monthlyWaterSummary, outstandingWaterByUnit, waterSummary } from './waterService';
+
+function currentMonthForYear(year: number): number {
+  const now = new Date();
+  if (now.getFullYear() === year) return now.getMonth() + 1;
+  return 12; // reporting year in the past/future → full-year view
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard (spec §30–§32)
+// ---------------------------------------------------------------------------
+export async function dashboard(year?: number): Promise<unknown> {
+  const settings = await getSettings();
+  const targetYear = year ?? settings.reporting_year;
+  const currentMonth = currentMonthForYear(targetYear);
+
+  const totalUnits = Number((await queryOne<{ count: string }>('SELECT COUNT(*)::text AS count FROM units'))?.count ?? 0);
+  const occupied = Number((await queryOne<{ count: string }>(`SELECT COUNT(*)::text AS count FROM units WHERE occupancy_status = 'OCCUPIED'`))?.count ?? 0);
+  const vacant = totalUnits - occupied;
+
+  // Expected rent for the current month (occupied units).
+  const expectedRentThisMonth = n((await queryOne<{ v: string }>(
+    `SELECT COALESCE(SUM(u.monthly_rent), 0)::text AS v
+     FROM units u JOIN tenants t ON t.unit_id = u.id AND t.status = 'ACTIVE'
+     WHERE t.move_in_date <= (DATE ($1::text || '-01-01') + $2 * INTERVAL '1 month' - INTERVAL '1 day')
+       AND (t.move_out_date IS NULL OR t.move_out_date >= (DATE ($1::text || '-01-01') + ($2 - 1) * INTERVAL '1 month'))`,
+    [targetYear, currentMonth]
+  ))?.v);
+
+  const rentCollected = n((await queryOne<{ v: string }>(
+    `SELECT COALESCE(SUM(amount), 0)::text AS v FROM rent_payments WHERE billing_year = $1`, [targetYear]
+  ))?.v);
+  const water = (await waterSummary(targetYear)) as {
+    waterBilled: number; waterCollected: number; waterOutstanding: number;
+    waterPurchased: number; waterSupplyCost: number; collectionRate: number;
+    surplusDeficit: number;
+  };
+  const totalExpenses = n((await queryOne<{ v: string }>(
+    `SELECT COALESCE(SUM(amount), 0)::text AS v FROM expenses WHERE EXTRACT(YEAR FROM expense_date)::int = $1`, [targetYear]
+  ))?.v);
+
+  // Expected rent for the whole year-to-date (for YTD collection rate).
+  const expectedRentYtd = n((await queryOne<{ v: string }>(
+    `SELECT COALESCE(SUM(u.monthly_rent * m.months), 0)::text AS v
+     FROM units u
+     JOIN tenants t ON t.unit_id = u.id AND t.status = 'ACTIVE'
+     JOIN LATERAL (
+       SELECT COUNT(*) AS months
+       FROM generate_series(1, $2) AS mm
+       WHERE (DATE ($1::text || '-01-01') + mm * INTERVAL '1 month' - INTERVAL '1 day') >= t.move_in_date
+         AND (DATE ($1::text || '-01-01') + (mm - 1) * INTERVAL '1 month') <= COALESCE(t.move_out_date, DATE ($1::text || '-01-01') + 11 * INTERVAL '1 month')
+     ) m ON TRUE`,
+    [targetYear, currentMonth]
+  ))?.v);
+
+  const rentOutstanding = balanceDue(expectedRentYtd, rentCollected);
+  const totalCollected = round2(rentCollected + water.waterCollected);
+
+  // Charts
+  const monthlyRent = await query<{ month: number; collected: string; expected: string }>(
+    `SELECT m.m AS month,
+            COALESCE((SELECT SUM(amount) FROM rent_payments WHERE billing_year = $1 AND billing_month = m.m), 0) AS collected,
+            0 AS expected
+     FROM generate_series(1, 12) AS m`,
+    [targetYear]
+  );
+  const rentMonthlySummary = (await monthlyRentSummary(targetYear)) as any[];
+
+  const rentByMethod = await query<{ method: string; total: string }>(
+    `SELECT payment_method AS method, SUM(amount)::text AS total
+     FROM rent_payments WHERE billing_year = $1
+     GROUP BY payment_method ORDER BY total DESC`,
+    [targetYear]
+  );
+
+  const outstandingRentByUnit = await query<{ unit_number: string; outstanding: string }>(
+    `SELECT u.unit_number,
+            (u.monthly_rent * $2 - COALESCE((SELECT SUM(rp.amount) FROM rent_payments rp WHERE rp.unit_id = u.id AND rp.billing_year = $1), 0))::text AS outstanding
+     FROM units u
+     JOIN tenants t ON t.unit_id = u.id AND t.status = 'ACTIVE'
+     ORDER BY outstanding DESC
+     LIMIT 10`,
+    [targetYear, currentMonth]
+  );
+
+  const monthlyWater = (await monthlyWaterSummary(targetYear)) as any[];
+  const outstandingWater = (await outstandingWaterByUnit(targetYear)) as any[];
+
+  return {
+    reportingYear: targetYear,
+    currency: settings.currency,
+    property: {
+      totalUnits,
+      occupiedUnits: occupied,
+      vacantUnits: vacant,
+      expectedRent: round2(expectedRentThisMonth),
+      expectedRentYtd,
+      rentCollected,
+      rentOutstanding,
+      rentCollectionRate: rentCollectionRate(rentCollected, expectedRentYtd),
+      totalExpenses,
+      netPropertyIncome: round2(totalCollected - totalExpenses),
+    },
+    water: {
+      ...water,
+      surplus: water.surplusDeficit >= 0,
+    },
+    combined: {
+      totalDueThisMonth: round2(expectedRentThisMonth + water.waterBilled),
+      totalCollected,
+      totalOutstanding: round2(rentOutstanding + water.waterOutstanding),
+      rentCollected,
+      waterCollected: water.waterCollected,
+      totalExpenses,
+      netIncome: round2(totalCollected - totalExpenses),
+    },
+    charts: {
+      monthlyRentCollected: monthlyRent.map((r) => ({ month: r.month, collected: n(r.collected) })),
+      expectedVsCollected: rentMonthlySummary.map((r) => ({
+        month: r.month, expected: r.expectedRent, collected: r.rentCollected,
+      })),
+      occupiedVsVacant: { occupied, vacant },
+      rentByPaymentMethod: rentByMethod.map((r) => ({ method: r.method, total: n(r.total) })),
+      outstandingRentByUnit: outstandingRentByUnit.map((r) => ({ unitNumber: r.unit_number, outstanding: n(r.outstanding) })),
+      monthlyWaterBilledVsCollected: monthlyWater.map((r) => ({
+        month: r.month, billed: r.waterBilled, collected: r.waterCollected,
+      })),
+      waterSupplyCostVsCollected: monthlyWater.map((r) => ({
+        month: r.month, supplyCost: r.waterSupplyCost, collected: r.waterCollected,
+      })),
+      monthlyWaterSurplusDeficit: monthlyWater.map((r) => ({
+        month: r.month, surplusDeficit: r.surplusDeficit,
+      })),
+      outstandingWaterByUnit: outstandingWater,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Arrears (spec §29) — rent arrears and water arrears clearly separated.
+// ---------------------------------------------------------------------------
+export async function arrears(year?: number): Promise<unknown[]> {
+  const settings = await getSettings();
+  const targetYear = year ?? settings.reporting_year;
+  const currentMonth = currentMonthForYear(targetYear);
+
+  const occupiedUnits = await query<{
+    id: number; unit_number: string; floor_name: string; monthly_rent: string;
+    tenant_id: number; full_name: string; phone_number: string;
+  }>(
+    `SELECT u.id, u.unit_number, f.name AS floor_name, u.monthly_rent,
+            t.id AS tenant_id, t.full_name, t.phone_number
+     FROM units u
+     JOIN floors f ON f.id = u.floor_id
+     JOIN tenants t ON t.unit_id = u.id AND t.status = 'ACTIVE'`
+  );
+
+  return Promise.all(occupiedUnits.map(async (u) => {
+    const expectedRent = n(u.monthly_rent);
+
+    // Rent: expected YTD (from move-in) vs paid YTD.
+    const rentPaid = n((await queryOne<{ v: string }>(
+      `SELECT COALESCE(SUM(amount), 0)::text AS v FROM rent_payments
+       WHERE tenant_id = $1 AND billing_year = $2`, [u.tenant_id, targetYear]
+    ))?.v);
+    const rentExpectedYtd = n((await queryOne<{ v: string }>(
+      `SELECT COALESCE(SUM(amount), 0)::text AS v FROM (
+         SELECT u2.monthly_rent AS amount
+         FROM tenants t2
+         JOIN units u2 ON u2.id = t2.unit_id
+         CROSS JOIN generate_series(1, $3) AS mm
+         WHERE t2.id = $1
+           AND t2.move_in_date <= (DATE ($2::text || '-01-01') + mm * INTERVAL '1 month' - INTERVAL '1 day')
+       ) s`,
+      [u.tenant_id, targetYear, currentMonth]
+    ))?.v);
+    const rentBalance = balanceDue(rentExpectedYtd, rentPaid);
+
+    // Water: billed vs paid YTD for the unit/tenant.
+    const waterBilled = n((await queryOne<{ v: string }>(
+      `SELECT COALESCE(SUM(water_bill), 0)::text AS v FROM water_meter_readings
+       WHERE unit_id = $1 AND billing_year = $2 AND billing_month <= $3`,
+      [u.id, targetYear, currentMonth]
+    ))?.v);
+    const waterPaid = n((await queryOne<{ v: string }>(
+      `SELECT COALESCE(SUM(amount), 0)::text AS v FROM water_payments
+       WHERE tenant_id = $1 AND billing_year = $2`, [u.tenant_id, targetYear]
+    ))?.v);
+    const waterBalance = balanceDue(waterBilled, waterPaid);
+
+    // Months in arrears: months where the tenant paid less than the rent due.
+    const monthsInArrears = Number((await queryOne<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM (
+         SELECT mm AS month
+         FROM generate_series(1, $3) AS mm
+         JOIN tenants t ON t.id = $1
+         JOIN units u2 ON u2.id = t.unit_id
+         WHERE u2.monthly_rent > COALESCE((SELECT SUM(rp.amount) FROM rent_payments rp
+                                           WHERE rp.tenant_id = t.id AND rp.billing_month = mm AND rp.billing_year = $2), 0)
+       ) s`,
+      [u.tenant_id, targetYear, currentMonth]
+    ))?.count ?? 0);
+
+    const totalBalance = round2(rentBalance + waterBalance);
+    let status: string;
+    if (totalBalance < 0) status = 'OVERPAID';
+    else if (rentBalance > 0 && monthsInArrears >= 2) status = 'OVERDUE';
+    else if (rentBalance > 0 && rentPaid === 0) status = 'UNPAID';
+    else if (rentBalance > 0) status = 'PARTIAL';
+    else status = 'CLEARED';
+
+    return {
+      unitId: u.id,
+      unitNumber: u.unit_number,
+      floor: u.floor_name,
+      tenantId: u.tenant_id,
+      tenantName: u.full_name,
+      phoneNumber: u.phone_number,
+      monthlyRent: expectedRent,
+      waterBill: waterBilled,
+      totalAmountDue: round2(rentExpectedYtd + waterBilled),
+      rentPaid,
+      waterPaid,
+      totalPaid: round2(rentPaid + waterPaid),
+      rentBalance,
+      waterBalance,
+      totalOutstanding: totalBalance,
+      monthsInArrears,
+      status,
+    };
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Tenant ledger (spec §26) — one row per billing month.
+// ---------------------------------------------------------------------------
+export async function tenantLedger(tenantId: number, year?: number): Promise<unknown> {
+  const settings = await getSettings();
+  const targetYear = year ?? settings.reporting_year;
+
+  const tenant = await queryOne<{ id: number; full_name: string; phone_number: string; unit_id: number | null }>(
+    'SELECT id, full_name, phone_number, unit_id FROM tenants WHERE id = $1',
+    [tenantId]
+  );
+  if (!tenant) throw notFound('Tenant not found.');
+
+  const unit = tenant.unit_id
+    ? await queryOne<{ id: number; unit_number: string; monthly_rent: string; water_enabled: boolean }>(
+        'SELECT id, unit_number, monthly_rent, water_enabled FROM units WHERE id = $1',
+        [tenant.unit_id]
+      )
+    : null;
+
+  const months = Array.from({ length: 12 }, (_, i) => i + 1);
+  const rows = await Promise.all(months.map(async (m) => {
+    const expectedRent = unit ? n(unit.monthly_rent) : 0;
+    const rentPaid = n((await queryOne<{ v: string }>(
+      `SELECT COALESCE(SUM(amount), 0)::text AS v FROM rent_payments
+       WHERE tenant_id = $1 AND billing_month = $2 AND billing_year = $3`,
+      [tenantId, m, targetYear]
+    ))?.v);
+    const reading = unit ? await queryOne<{
+      previous_reading: string; current_reading: string; consumption: string;
+      water_bill: string; water_rate: string; reading_date: string;
+    }>(
+      `SELECT previous_reading, current_reading, consumption, water_bill, water_rate, reading_date
+       FROM water_meter_readings WHERE unit_id = $1 AND billing_month = $2 AND billing_year = $3`,
+      [unit.id, m, targetYear]
+    ) : null;
+    const waterBill = reading ? n(reading.water_bill) : 0;
+    const waterPaid = n((await queryOne<{ v: string }>(
+      `SELECT COALESCE(SUM(amount), 0)::text AS v FROM water_payments
+       WHERE tenant_id = $1 AND billing_month = $2 AND billing_year = $3`,
+      [tenantId, m, targetYear]
+    ))?.v);
+
+    const rentBalance = balanceDue(expectedRent, rentPaid);
+    const waterBalance = balanceDue(waterBill, waterPaid);
+    const totalDue = round2(expectedRent + waterBill);
+    const totalPaid = round2(rentPaid + waterPaid);
+    const totalBalance = balanceDue(totalDue, totalPaid);
+
+    return {
+      month: m,
+      monthName: MONTH_NAMES[m - 1],
+      unit: unit ? unit.unit_number : null,
+      expectedRent,
+      previousWaterReading: reading ? n(reading.previous_reading) : null,
+      currentWaterReading: reading ? n(reading.current_reading) : null,
+      waterConsumed: reading ? n(reading.consumption) : 0,
+      waterBill,
+      rentPaid,
+      waterPaid,
+      totalPaid,
+      rentBalance,
+      waterBalance,
+      totalBalance,
+      status: totalDue > 0 ? paymentStatus(totalDue, totalPaid) : 'UNPAID',
+    };
+  }));
+
+  const totals = {
+    rentPaid: round2(rows.reduce((s, r: any) => s + r.rentPaid, 0)),
+    waterPaid: round2(rows.reduce((s, r: any) => s + r.waterPaid, 0)),
+    totalPaid: round2(rows.reduce((s, r: any) => s + r.totalPaid, 0)),
+    rentBalance: round2(rows.reduce((s, r: any) => s + r.rentBalance, 0)),
+    waterBalance: round2(rows.reduce((s, r: any) => s + r.waterBalance, 0)),
+    totalBalance: round2(rows.reduce((s, r: any) => s + r.totalBalance, 0)),
+  };
+
+  return {
+    tenant: { id: tenant.id, fullName: tenant.full_name, phoneNumber: tenant.phone_number },
+    unit: unit ? { id: unit.id, unitNumber: unit.unit_number, monthlyRent: n(unit.monthly_rent), waterEnabled: unit.water_enabled } : null,
+    reportingYear: targetYear,
+    currency: settings.currency,
+    months: rows,
+    totals,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Combined monthly summary (rent + water per month)
+// ---------------------------------------------------------------------------
+export async function combinedMonthlySummary(year?: number): Promise<unknown[]> {
+  const settings = await getSettings();
+  const targetYear = year ?? settings.reporting_year;
+  const rent = (await monthlyRentSummary(targetYear)) as any[];
+  const water = (await monthlyWaterSummary(targetYear)) as any[];
+
+  return rent.map((r, i) => {
+    const w = water[i] as any;
+    return {
+      month: r.month,
+      monthName: r.monthName,
+      expectedRent: r.expectedRent,
+      rentCollected: r.rentCollected,
+      rentOutstanding: r.rentOutstanding,
+      waterBilled: w.waterBilled,
+      waterCollected: w.waterCollected,
+      waterOutstanding: w.waterOutstanding,
+      totalDue: round2(r.expectedRent + w.waterBilled),
+      totalCollected: round2(r.rentCollected + w.waterCollected),
+      totalOutstanding: round2(r.rentOutstanding + w.waterOutstanding),
+      collectionPercentage: r.collectionPercentage,
+      paidTenants: r.paidTenants,
+      partialTenants: r.partialTenants,
+      unpaidTenants: r.unpaidTenants,
+      occupiedUnits: r.occupiedUnits,
+      vacantUnits: r.vacantUnits,
+      currency: settings.currency,
+    };
+  });
+}
+// Monthly financial report PDF — the combined monthly summary rendered as a
+// one-page landscape document with year totals and the business identity
+// footer. Reuses the same summary the Monthly Summary page displays.
+export async function monthlyReportPdf(year: number): Promise<{ bytes: Uint8Array; year: number }> {
+  const [rows, settings, identity] = await Promise.all([
+    combinedMonthlySummary(year),
+    getSettings(),
+    getBusinessIdentity(),
+  ]);
+  const bytes = await monthlyReportPdfBytes(
+    { year, rows: rows as any, generatedAt: new Date() },
+    identity
+  );
+  return { bytes, year };
+}

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RMS — Payments</title>
+  <link rel="stylesheet" href="../css/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">Rental&nbsp;MS</div>
+      <nav>
+        <a href="dashboard.html" data-page="dashboard">Dashboard</a>
+        <a href="units.html" data-page="units">Units</a>
+        <a href="tenants.html" data-page="tenants">Tenants</a>
+        <a href="leases.html" data-page="leases">Leases</a>
+        <a href="payments.html" data-page="payments">Payments</a>
+        <a href="maintenance.html" data-page="maintenance">Maintenance</a>
+        <a href="reports.html" data-page="reports">Reports</a>
+        <a href="users.html" data-page="users" class="admin-only">Users</a>
+        <div class="spacer"></div>
+        <a href="#" id="logout-link" class="logout">Logout</a>
+      </nav>
+    </aside>
+    <div class="main">
+      <header class="topbar"></header>
+      <main class="content">
+        <div class="page-header">
+          <h1>Payments</h1>
+          <button class="btn" id="record-payment-btn">+ Record Payment</button>
+        </div>
+
+        <div class="card mb-2">
+          <h2>Record Payment</h2>
+          <form id="payment-form" class="form-grid">
+            <div class="form-group full"><label>Lease (unit — tenant) *</label><select name="leaseId" id="lease-select" required></select></div>
+            <div class="form-group"><label>Amount (USD) *</label><input name="amount" type="number" step="0.01" min="0.01" required /></div>
+            <div class="form-group"><label>Payment date *</label><input name="paymentDate" type="date" value="" required /></div>
+            <div class="form-group"><label>Method *</label>
+              <select name="paymentMethod" required>
+                <option value="cash">Cash</option><option value="mpesa">M-Pesa</option>
+                <option value="bank_transfer">Bank transfer</option><option value="card">Card</option><option value="other">Other</option>
+              </select></div>
+            <div class="form-group"><label>Reference number</label><input name="referenceNumber" /></div>
+            <div class="form-group full"><label>Notes</label><textarea name="notes" rows="2"></textarea></div>
+            <div class="form-actions full"><button type="submit" class="btn">Record Payment</button></div>
+          </form>
+        </div>
+
+        <div class="toolbar">
+          <label class="muted" style="display:flex; align-items:center; gap:0.35rem;">From <input type="date" id="date-from" /></label>
+          <label class="muted" style="display:flex; align-items:center; gap:0.35rem;">To <input type="date" id="date-to" /></label>
+          <button class="btn btn-secondary btn-sm" id="clear-filters">Clear</button>
+          <div class="spacer"></div>
+          <button class="btn btn-secondary btn-sm" id="export-csv">Export CSV</button>
+        </div>
+        <table class="data">
+          <thead><tr><th>Date</th><th>Unit</th><th>Tenant</th><th>Amount</th><th>Method</th><th>Reference</th></tr></thead>
+          <tbody id="payments-body"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody>
+        </table>
+        <div class="pagination" id="pagination"></div>
+      </main>
+    </div>
+  </div>
+  <script src="../js/config.js"></script>
+  <script src="../js/api.js"></script>
+  <script src="../js/payments.js"></script>
+</body>
+</html>

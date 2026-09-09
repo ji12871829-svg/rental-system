@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RMS — Dashboard</title>
+  <link rel="stylesheet" href="../css/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">Rental&nbsp;MS</div>
+      <nav>
+        <a href="dashboard.html" data-page="dashboard">Dashboard</a>
+        <a href="units.html" data-page="units">Units</a>
+        <a href="tenants.html" data-page="tenants">Tenants</a>
+        <a href="leases.html" data-page="leases">Leases</a>
+        <a href="payments.html" data-page="payments">Payments</a>
+        <a href="maintenance.html" data-page="maintenance">Maintenance</a>
+        <a href="reports.html" data-page="reports">Reports</a>
+        <a href="users.html" data-page="users" class="admin-only">Users</a>
+        <div class="spacer"></div>
+        <a href="#" id="logout-link" class="logout">Logout</a>
+      </nav>
+    </aside>
+    <div class="main">
+      <header class="topbar"></header>
+      <main class="content">
+        <div class="page-header"><h1>Dashboard</h1></div>
+        <div class="alert error hidden" id="load-error"></div>
+
+        <div class="stat-cards" id="stat-cards">
+          <div class="stat-card"><div class="label">Occupancy Rate</div><div class="value" id="stat-occupancy">—</div><div class="sub" id="stat-units">—</div></div>
+          <div class="stat-card"><div class="label">Occupied / Vacant</div><div class="value" id="stat-occupied">—</div><div class="sub" id="stat-vacant">—</div></div>
+          <div class="stat-card"><div class="label">Outstanding Balance</div><div class="value" id="stat-outstanding">—</div><div class="sub">across all leases</div></div>
+          <div class="stat-card"><div class="label">Open Maintenance</div><div class="value" id="stat-maintenance">—</div><div class="sub">requests needing action</div></div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 2fr 1fr; gap: 1.25rem;" class="dash-grid">
+          <section class="card">
+            <h2>Upcoming Lease Expirations (next 60 days)</h2>
+            <table class="data" id="expiry-table">
+              <thead><tr><th>Unit</th><th>Tenant</th><th>Ends</th><th>Days Left</th><th>Status</th></tr></thead>
+              <tbody><tr><td colspan="5" class="empty-state">Loading…</td></tr></tbody>
+            </table>
+          </section>
+          <section class="card">
+            <h2>Quick Actions</h2>
+            <div style="display:flex; flex-direction:column; gap:0.6rem;">
+              <button class="btn" id="qa-tenant">+ Add Tenant</button>
+              <button class="btn" id="qa-payment">+ Record Payment</button>
+              <button class="btn" id="qa-maintenance">+ New Maintenance Request</button>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="../js/config.js"></script>
+  <script src="../js/api.js"></script>
+  <script src="../js/dashboard.js"></script>
+</body>
+</html>

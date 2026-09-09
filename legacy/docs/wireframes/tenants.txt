@@ -1,0 +1,17 @@
+TENANTS — tenants.html
++--------------------------------------------------------------+
+| Sidebar | Top bar: [Building Admin] [admin]   [Logout]      |
+|---------|----------------------------------------------------|
+| Dashboard| Tenants                                 [+ Add Tenant]|
+| Units    | [Search name/email____] [ ] Include archived      |
+| Tenants  |----------------------------------------------------|
+| Leases   | Name          | Email                 | Phone      |
+| Payments | Jane Wanjiru  | jane.wanjiru@example  | +254700111222 |
+| Maint.   | Peter Otieno  | peter.otieno@example  | +254700333444 |
+| Reports  | [Edit] [Archive] per row; archived rows badge     |
+| Logout   |----------------------------------------------------|
+|          | Page N of M · 2 tenants  [← Prev] [Next →]        |
++--------------------------------------------------------------+
+- Archive (never delete from UI) opens confirmation dialog:
+  "Archiving hides this tenant from active lists; history is kept."
+- Archiving a tenant with an ACTIVE lease -> 409 shown as toast.

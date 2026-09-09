@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RMS — Tenants</title>
+  <link rel="stylesheet" href="../css/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">Rental&nbsp;MS</div>
+      <nav>
+        <a href="dashboard.html" data-page="dashboard">Dashboard</a>
+        <a href="units.html" data-page="units">Units</a>
+        <a href="tenants.html" data-page="tenants">Tenants</a>
+        <a href="leases.html" data-page="leases">Leases</a>
+        <a href="payments.html" data-page="payments">Payments</a>
+        <a href="maintenance.html" data-page="maintenance">Maintenance</a>
+        <a href="reports.html" data-page="reports">Reports</a>
+        <a href="users.html" data-page="users" class="admin-only">Users</a>
+        <div class="spacer"></div>
+        <a href="#" id="logout-link" class="logout">Logout</a>
+      </nav>
+    </aside>
+    <div class="main">
+      <header class="topbar"></header>
+      <main class="content">
+        <div class="page-header">
+          <h1>Tenants</h1>
+          <button class="btn" id="add-tenant-btn">+ Add Tenant</button>
+        </div>
+        <div class="toolbar">
+          <input type="text" id="search" placeholder="Search name or email…" />
+          <label class="muted" style="display:flex; align-items:center; gap:0.35rem;">
+            <input type="checkbox" id="include-archived" /> Include archived
+          </label>
+        </div>
+        <table class="data">
+          <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>National ID</th><th>Status</th><th style="width:180px">Actions</th></tr></thead>
+          <tbody id="tenants-body"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody>
+        </table>
+        <div class="pagination" id="pagination"></div>
+      </main>
+    </div>
+  </div>
+  <script src="../js/config.js"></script>
+  <script src="../js/api.js"></script>
+  <script src="../js/tenants.js"></script>
+</body>
+</html>
