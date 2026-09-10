@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
@@ -7,12 +7,6 @@ import { useBranding } from '../lib/BrandingContext';
 import { Button, TextInput } from '../components/ui';
 import { BrandMark } from '../components/BrandMark';
 
-// Fixed layout for the facade panel — a 7×10 grid of "windows", a handful
-// lit. Not random per render (that would flicker on every re-render); a
-// fixed, hand-placed set reads as a real building rather than noise.
-const GRID_COLS = 7;
-const GRID_ROWS = 10;
-const LIT_WINDOWS = new Set([4, 9, 16, 24, 31, 38, 45, 53, 61, 68]);
 
 export default function Login() {
   const { token, login } = useAuth();
@@ -23,8 +17,6 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-
-  const windows = useMemo(() => Array.from({ length: GRID_COLS * GRID_ROWS }, (_, i) => LIT_WINDOWS.has(i)), []);
 
   if (token) return <Navigate to="/" replace />;
 
@@ -53,29 +45,27 @@ export default function Login() {
 
   return (
     <div className="flex min-h-screen w-full bg-white">
-      {/* Facade panel — the building this software runs, not a decorative
-          gradient. A handful of lit windows among many dark ones mirrors the
-          dashboard's occupied/vacant read at a glance. Hidden on narrow
-          screens, where it would only push the form below the fold. */}
+      {/* Facade panel — the real building this software runs, not a decorative
+          gradient. Photo + scrim keeps the copy legible; srcset serves the
+          right size per screen. Hidden on narrow screens, where it would only
+          push the form below the fold. */}
       <div className="relative hidden w-[42%] shrink-0 overflow-hidden bg-[#0b1f3a] lg:block">
-        <div
-          className="absolute inset-0 grid gap-[7px] p-8"
-          style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`, gridTemplateRows: `repeat(${GRID_ROWS}, 1fr)` }}
-          aria-hidden
-        >
-          {windows.map((lit, i) =>
-            lit ? (
-              <div
-                key={i}
-                className="motion-safe:animate-window-glow rounded-[3px] bg-brand-100 shadow-[0_0_14px_2px_rgba(29,111,214,0.5)]"
-                style={{ animationDelay: `${(i % 5) * 0.7}s` }}
-              />
-            ) : (
-              <div key={i} className="rounded-[3px] bg-white/[0.06]" />
-            )
-          )}
-        </div>
-        {/* Scrim so the copy below stays legible over the grid. */}
+        <picture>
+          <source
+            type="image/webp"
+            srcSet="/building/building-1-480.webp 480w, /building/building-1-800.webp 800w, /building/building-1-1600.webp 1600w"
+            sizes="42vw"
+          />
+          <img
+            src="/building/building-1-800.webp"
+            alt="The building managed with RPMS — modern residential facade"
+            className="absolute inset-0 h-full w-full object-cover"
+            loading="eager"
+            decoding="async"
+            fetchPriority="high"
+          />
+        </picture>
+        {/* Scrim so the copy below stays legible over the photo. */}
         <div className="absolute inset-0 bg-gradient-to-t from-[#0b1f3a] via-[#0b1f3a]/75 to-[#0b1f3a]/25" aria-hidden />
         <div className="relative flex h-full flex-col justify-between p-10">
           <div className="flex items-center gap-3">

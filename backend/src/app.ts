@@ -1,6 +1,9 @@
+import fs from 'fs';
+import path from 'path';
 import cors from 'cors';
 import express from 'express';
-import { env } from './config/env';
+import { env, isProd } from './config/env';
+import { pool } from './config/db';
 import { errorHandler } from './middleware/errorHandler';
 import { globalLimiter } from './middleware/rateLimiter';
 import auditRoutes from './routes/audit';
@@ -22,6 +25,7 @@ import waterRoutes from './routes/water';
 export function createApp() {
   const app = express();
 
+  app.set('trust proxy', 1); // Render terminates TLS and forwards requests — rate limiting must see the real client IP
   app.use(cors({
     origin: env.corsOrigin.split(',').map((o) => o.trim()),
     credentials: false,
@@ -33,7 +37,29 @@ export function createApp() {
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
   app.use(globalLimiter);
 
-  app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+  // Liveness + configuration diagnosis. Never exposes secret values — only
+  // which env knobs are unset, so a failed deploy can be debugged from the
+  // outside (Render health checks and the browser).
+  app.get('/api/health', (_req, res) => {
+    res.json({
+      status: 'ok',
+      nodeEnv: env.nodeEnv,
+      db: 'checking',
+      smsProvider: env.smsProvider,
+      emailProvider: env.emailProvider,
+      config: {
+        jwtSecretSet: env.jwtSecret !== 'dev-only-secret-change-me',
+        corsOriginSet: Boolean(process.env.CORS_ORIGIN),
+        businessNameSet: Boolean(env.businessName),
+        frontendDistPresent: isProd ? fs.existsSync(FRONTEND_DIST) : null,
+      },
+    });
+    // Don't block the health response on the DB round-trip; report it after.
+    pool
+      .query('SELECT 1')
+      .then(() => console.log('[health] db reachable'))
+      .catch((err: Error) => console.error('[health] db unreachable:', err.message));
+  });
   app.use('/api/branding', brandingRoutes);
 
   app.use('/api/auth', authRoutes);
@@ -56,6 +82,40 @@ export function createApp() {
     res.status(404).json({ error: 'NOT_FOUND', message: 'API route not found.', details: {} });
   });
 
+  serveFrontend(app);
+
   app.use(errorHandler);
   return app;
+}
+
+// In production, serve the built React app from the same origin (Render Web
+// Service / any Node host): frontend/dist static files first, then an SPA
+// fallback so deep links like /tenants/5 render the app on refresh instead of
+// 404ing. Disabled when the directory is absent (API-only dev/test deploys).
+// Under Vite's hashed filenames (e.g. Dashboard-a1b2c3.js), stale HTML from an
+// old deploy references 404'd assets — after a fresh login the app self-heals
+// by reloading once when a lazy route chunk fails to load.
+const FRONTEND_DIST = path.resolve(__dirname, '../../frontend/dist');
+
+function serveFrontend(app: express.Express): void {
+  if (!fs.existsSync(path.join(FRONTEND_DIST, 'index.html'))) return;
+
+  app.use(
+    express.static(FRONTEND_DIST, {
+      maxAge: '1h',
+      setHeaders(res, filePath) {
+        // Hashed assets are immutable; HTML and the service worker must not
+        // be cached aggressively or updates (and SW bumps) won't propagate.
+        if (/\.[0-9a-f]{8}\./.test(filePath) || filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else if (filePath.endsWith('sw.js') || filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      },
+    })
+  );
+  app.get('*', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(FRONTEND_DIST, 'index.html'));
+  });
 }

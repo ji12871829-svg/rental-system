@@ -5,7 +5,7 @@ import { badRequest, notFound, unprocessable } from '../utils/httpError';
 import { n, round2 } from '../utils/money';
 import { logAudit } from './auditService';
 import { createReceipt } from './receiptService';
-import { dispatchAutoSend, prepareForReceipt } from './smsService';
+import { autoSendEnabled, dispatchAutoSend, prepareForReceipt } from './smsService';
 import { getSettings } from './settingsService';
 
 export interface RentPaymentInput {
@@ -206,7 +206,7 @@ export async function createRentPayment(input: RentPaymentInput, userId: number)
   // provider). Row exists in the DB either way; PENDING rows without a phone
   // never happen, so null just means "no phone on file".
   dispatchAutoSend(preparedSmsId);
-  return result;
+  return { ...result, sms: { queued: preparedSmsId != null, autoSend: autoSendEnabled() } };
 }
 
 export async function deleteRentPayment(id: number, userId: number): Promise<void> {

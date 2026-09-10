@@ -3,3 +3,7 @@ node_modules/
 *.log
 .DS_Store
 coverage/
+
+# Build artifacts — built by CI/Render, never committed
+backend/dist/
+frontend/dist/

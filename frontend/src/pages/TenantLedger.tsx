@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { EmptyState, KpiCard, PageHeader, Select, StatusBadge, useFetch } from '../components/ui';
+import { Download, Mail } from 'lucide-react';
+import { EmptyState, KpiCard, PageHeader, Select, StatusBadge, useFetch, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { money } from '../lib/format';
 
@@ -57,6 +58,60 @@ export default function TenantLedger() {
     [tenantId]
   );
 
+  const { toast } = useToast();
+  const year = data?.reportingYear ?? new Date().getFullYear();
+
+  // Statement PDF download — same pattern as the monthly report download:
+  // fetch with the session token, save as a blob.
+  const [downloading, setDownloading] = useState(false);
+  const downloadStatement = () => {
+    const token = localStorage.getItem('rpms_token');
+    if (!token || !tenantId) return;
+    setDownloading(true);
+    fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/reports/tenant/${tenantId}/statement.pdf?year=${year}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (r) => {
+        if (!r.ok) {
+          const body = await r.json().catch(() => null);
+          throw new Error(body?.message ?? `Statement download failed (${r.status}).`);
+        }
+        return r.blob();
+      })
+      .then((blob) => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `statement-${(data?.tenant.fullName ?? 'tenant').replace(/[^a-z0-9]+/gi, '-')}-${year}.pdf`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      })
+      .catch((err) => toast('error', (err as Error).message))
+      .finally(() => setDownloading(false));
+  };
+
+  // Emails the statement to the tenant's stored address (or an explicit one
+  // server-side). Manager/admin endpoint — 403s toast for staff.
+  const [emailing, setEmailing] = useState(false);
+  const emailStatement = () => {
+    if (!tenantId) return;
+    setEmailing(true);
+    api
+      .post<{ data: { status: string; email_address: string } }>(
+        `/api/reports/tenant/${tenantId}/statement/email?year=${year}`,
+        {}
+      )
+      .then(({ data: row }) => {
+        toast(
+          'success',
+          row.status === 'SENT'
+            ? `Statement emailed to ${row.email_address}.`
+            : `Statement queued for ${row.email_address} — see the email history for the result.`
+        );
+      })
+      .catch((err) => toast('error', (err as Error).message))
+      .finally(() => setEmailing(false));
+  };
+
   return (
     <div>
       <PageHeader
@@ -93,7 +148,26 @@ export default function TenantLedger() {
                   {data.unit ? `Unit ${data.unit.unitNumber} (rent ${money(data.unit.monthlyRent, data.currency)}${data.unit.waterEnabled ? ', water enabled' : ', no water billing'})` : 'No unit'}
                 </div>
               </div>
-              <div className="text-sm text-gray-500">Reporting year {data.reportingYear}</div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">Reporting year {data.reportingYear}</span>
+                {/* Yearly statement as a printable PDF / emailable to the tenant. */}
+                <button
+                  type="button"
+                  onClick={downloadStatement}
+                  disabled={downloading}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-50 active:scale-[0.98] disabled:opacity-60"
+                >
+                  <Download size={15} strokeWidth={1.75} aria-hidden /> {downloading ? 'Preparing…' : 'Statement (PDF)'}
+                </button>
+                <button
+                  type="button"
+                  onClick={emailStatement}
+                  disabled={emailing}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-50 active:scale-[0.98] disabled:opacity-60"
+                >
+                  <Mail size={15} strokeWidth={1.75} aria-hidden /> {emailing ? 'Sending…' : 'Email Statement'}
+                </button>
+              </div>
             </div>
           </div>
 

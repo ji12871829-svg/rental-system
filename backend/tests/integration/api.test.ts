@@ -90,6 +90,9 @@ describe('Rent collection', () => {
     expect(res.body.data.status).toBe('PARTIAL');
     expect(res.body.data.balance).toBe(4000);
     expect(res.body.data.receipt).toMatch(/^RC-2026-\d{4}$/);
+    // SMS reporting: test env opts out of auto-send, so queued=true (row
+    // prepared; tenant 4 has a phone) but autoSend=false.
+    expect(res.body.data.sms).toEqual({ queued: true, autoSend: false });
   });
 
   it('supports multiple payments summing to a full payment → PAID', async () => {
@@ -406,6 +409,20 @@ describe('Finance', () => {
     expect(['UNPAID', 'PARTIAL', 'OVERDUE', 'OVERPAID', 'CLEARED']).toContain(row.status);
   });
 
+  it('includes SMS health (wallet balance + month counts) in the dashboard payload', async () => {
+    const res = await request(app).get('/api/reports/dashboard').set(auth(adminToken));
+    expect(res.status).toBe(200);
+    const sms = res.body.data.sms;
+    expect(sms).toBeTruthy();
+    // Test env runs mock mode — balance degrades to 'unknown', never throws.
+    expect(sms.balance.state).toBe('unknown');
+    expect(typeof sms.balance.reason).toBe('string');
+    expect(typeof sms.sentThisMonth).toBe('number');
+    expect(typeof sms.failedThisMonth).toBe('number');
+    expect(sms.sentThisMonth).toBeGreaterThanOrEqual(0);
+    expect(sms.failedThisMonth).toBeGreaterThanOrEqual(0);
+  });
+
   it('produces a tenant ledger with rent and water columns', async () => {
     const res = await request(app).get('/api/reports/tenant/3').set(auth(adminToken));
     expect(res.status).toBe(200);
@@ -443,6 +460,35 @@ describe('Finance', () => {
     expect(anon.status).toBe(401);
 
     const badYear = await request(app).get('/api/reports/monthly.pdf?year=12345').set(auth(adminToken));
+    expect(badYear.status).toBe(400);
+  });
+
+  it('downloads the arrears report as a printable PDF', async () => {
+    const res = await request(app).get('/api/reports/arrears.pdf?year=2026').set(auth(adminToken));
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(res.headers['content-disposition']).toContain('arrears-report-2026.pdf');
+    expect(res.body.slice(0, 5).toString('latin1')).toBe('%PDF-');
+    expect(res.body.length).toBeGreaterThan(1000);
+    // At least one landscape page — parsed, not grepped (pdf-lib compresses
+    // object streams, so raw bytes hide /Page objects).
+    const doc = await PDFDocument.load(res.body, { ignoreEncryption: true });
+    expect(doc.getPageCount()).toBeGreaterThanOrEqual(1);
+    const { width, height } = doc.getPage(0).getSize();
+    expect(width).toBeGreaterThan(height); // landscape
+    expect(Math.round(width)).toBe(842); // A4 landscape
+    expect(Math.round(height)).toBe(595);
+    // No year given → the reporting year is used and named in the filename.
+    const fallback = await request(app).get('/api/reports/arrears.pdf').set(auth(adminToken));
+    expect(fallback.status).toBe(200);
+    expect(fallback.headers['content-disposition']).toContain('arrears-report-2026.pdf');
+  });
+
+  it('rejects the arrears report PDF for anonymous users and bad years', async () => {
+    const anon = await request(app).get('/api/reports/arrears.pdf');
+    expect(anon.status).toBe(401);
+
+    const badYear = await request(app).get('/api/reports/arrears.pdf?year=12345').set(auth(adminToken));
     expect(badYear.status).toBe(400);
   });
 });
@@ -862,11 +908,25 @@ describe('Privacy: export & erasure', () => {
     expect(res.body.data.emailStatus).toBe('SENT'); // mock provider always succeeds
     expect(res.body.data.sentTo).toContain('@');
 
-    // 3. The email row carries the JSON data file as the attachment.
+    // 3. The email row carries TWO attachments: the formal letter PDF and
+    // the JSON data file.
     const emailId = res.body.data.emailId as number;
-    const email = await pool.query('SELECT attachment_name, attachment_content, body_html FROM email_notifications WHERE id = $1', [emailId]);
-    expect(email.rows[0].attachment_name).toBe('tenant-1-personal-data.json');
-    const attachmentJson = JSON.parse(email.rows[0].attachment_content);
+    const email = await pool.query(
+      'SELECT attachment_name, attachment_content, attachment_content_type, attachment2_name, attachment2_content, attachment2_content_type, body_html FROM email_notifications WHERE id = $1',
+      [emailId]
+    );
+    // Primary attachment: the letter PDF (base64), named after the register ref.
+    expect(email.rows[0].attachment_name).toBe(`data-request-response-${registerRef}.pdf`);
+    expect(email.rows[0].attachment_content_type).toBe('application/pdf');
+    const letterPdf = Buffer.from(email.rows[0].attachment_content, 'base64');
+    expect(letterPdf.slice(0, 5).toString()).toBe('%PDF-');
+    expect(letterPdf.length).toBeGreaterThan(1000);
+    const letterDoc = await PDFDocument.load(letterPdf, { ignoreEncryption: true });
+    expect(letterDoc.getPageCount()).toBeGreaterThanOrEqual(1);
+    // Second attachment: the machine-readable JSON data file (utf8).
+    expect(email.rows[0].attachment2_name).toBe('tenant-1-personal-data.json');
+    expect(email.rows[0].attachment2_content_type).toBe('application/json');
+    const attachmentJson = JSON.parse(email.rows[0].attachment2_content);
     expect(attachmentJson.subject.id).toBe(1);
     expect(attachmentJson.data.rentPayments.length).toBeGreaterThan(0);
     // The email body is the letter (summary + reference included).
@@ -1333,5 +1393,119 @@ describe('Reporting year drives reports endpoints', () => {
     await setReportingYear(2026);
     const res = await request(app).get('/api/settings').set(auth(staffToken));
     expect(res.body.data.reporting_year).toBe(2026);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Monthly report email + tenant statement PDF/email
+// ---------------------------------------------------------------------------
+describe('Monthly report email', () => {
+  it('emails the report PDF end-to-end in mock mode (no tenant attached)', async () => {
+    const res = await request(app)
+      .post('/api/reports/monthly/email?year=2026')
+      .set(auth(adminToken))
+      .send({ toEmail: 'landlord@example.com' });
+    expect(res.status).toBe(201);
+    expect(res.body.data.status).toBe('SENT'); // mock provider always succeeds
+    expect(res.body.data.email_address).toBe('landlord@example.com');
+    expect(res.body.data.subject).toBe('Monthly Financial Report 2026');
+
+    // The stored row carries the real report PDF and NO tenant (operator mail).
+    const stored = await pool.query(
+      `SELECT tenant_id, attachment_name, attachment_content, attachment_content_type
+       FROM email_notifications WHERE subject = 'Monthly Financial Report 2026'
+       ORDER BY id DESC LIMIT 1`
+    );
+    expect(stored.rows[0].tenant_id).toBeNull();
+    expect(stored.rows[0].attachment_name).toBe('financial-report-2026.pdf');
+    expect(stored.rows[0].attachment_content_type).toBe('application/pdf');
+    const pdf = Buffer.from(stored.rows[0].attachment_content, 'base64');
+    expect(pdf.slice(0, 5).toString()).toBe('%PDF-');
+
+    // History lists it despite having no tenant (LEFT JOIN).
+    const history = await request(app)
+      .get('/api/emails/history?q=Monthly%20Financial%20Report')
+      .set(auth(adminToken));
+    const row = history.body.data.find((e: any) => e.subject === 'Monthly Financial Report 2026');
+    expect(row).toBeTruthy();
+    expect(row.tenant_name).toBeNull();
+  });
+
+  it('validates the recipient and guards roles', async () => {
+    const bad = await request(app)
+      .post('/api/reports/monthly/email?year=2026')
+      .set(auth(adminToken))
+      .send({ toEmail: 'not-an-email' });
+    expect(bad.status).toBe(400);
+
+    const staff = await request(app)
+      .post('/api/reports/monthly/email?year=2026')
+      .set(auth(staffToken))
+      .send({ toEmail: 'landlord@example.com' });
+    expect(staff.status).toBe(403);
+
+    const anon = await request(app).post('/api/reports/monthly/email?year=2026').send({});
+    expect(anon.status).toBe(401);
+  });
+});
+
+describe('Tenant statement PDF & email', () => {
+  it('downloads the tenant statement as a one-page portrait PDF', async () => {
+    const res = await request(app).get('/api/reports/tenant/3/statement.pdf?year=2026').set(auth(adminToken));
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect(res.headers['content-disposition']).toContain('.pdf');
+    expect(res.body.slice(0, 5).toString('latin1')).toBe('%PDF-');
+    // One portrait page — parsed, not grepped (pdf-lib compresses streams).
+    const doc = await PDFDocument.load(res.body, { ignoreEncryption: true });
+    expect(doc.getPageCount()).toBe(1);
+    const { width, height } = doc.getPage(0).getSize();
+    expect(width).toBeLessThan(height); // portrait
+    expect(Math.round(width)).toBe(595); // A4 portrait
+    expect(Math.round(height)).toBe(842);
+  });
+
+  it('emails the tenant statement end-to-end to the stored address', async () => {
+    // Tenant 3's email from the seed; explicit override keeps the test independent.
+    const res = await request(app)
+      .post('/api/reports/tenant/3/statement/email?year=2026')
+      .set(auth(adminToken))
+      .send({ toEmail: 'tenant3@example.com' });
+    expect(res.status).toBe(201);
+    expect(res.body.data.status).toBe('SENT');
+    expect(res.body.data.email_address).toBe('tenant3@example.com');
+    expect(res.body.data.subject).toContain('Tenant Statement 2026');
+
+    const stored = await pool.query(
+      `SELECT tenant_id, attachment_name, attachment_content_type
+       FROM email_notifications WHERE subject LIKE 'Tenant Statement 2026%'
+       ORDER BY id DESC LIMIT 1`
+    );
+    expect(stored.rows[0].tenant_id).toBe(3); // tenant mail — linked for history
+    expect(stored.rows[0].attachment_name).toBe('tenant-statement-3-2026.pdf');
+    expect(stored.rows[0].attachment_content_type).toBe('application/pdf');
+  });
+
+  it('guards the statement email (validation, roles, unknown tenant)', async () => {
+    const noEmail = await request(app)
+      .post('/api/reports/tenant/999999/statement/email?year=2026')
+      .set(auth(adminToken))
+      .send({});
+    expect(noEmail.status).toBe(404); // unknown tenant → ledger lookup fails
+
+    const staff = await request(app)
+      .post('/api/reports/tenant/3/statement/email?year=2026')
+      .set(auth(staffToken))
+      .send({ toEmail: 't@e.com' });
+    expect(staff.status).toBe(403);
+
+    const anon = await request(app).post('/api/reports/tenant/3/statement/email?year=2026').send({});
+    expect(anon.status).toBe(401);
+
+    const badYear = await request(app)
+      .post('/api/reports/tenant/3/statement/email?year=12345')
+      .set(auth(adminToken))
+      .send({ toEmail: 't@e.com' });
+    expect(badYear.status).toBe(400);
   });
 });

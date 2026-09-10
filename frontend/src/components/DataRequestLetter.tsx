@@ -301,7 +301,7 @@ export function DataRequestLetterModal({ letter, onClose, tenantEmail }: { lette
         { registerRef: letter.registerRef }
       );
       if (res.data.emailStatus === 'SENT') {
-        toast('success', `Letter ${res.data.registerRef} emailed to ${res.data.sentTo} with the data file attached.`);
+        toast('success', `Letter ${res.data.registerRef} emailed to ${res.data.sentTo} with the letter PDF and data file attached.`);
         setShowEmail(false);
       } else {
         toast('error', res.data.failureReason ?? 'The email could not be sent.');
@@ -333,8 +333,9 @@ export function DataRequestLetterModal({ letter, onClose, tenantEmail }: { lette
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
               <div className="font-medium text-gray-800">Email the letter + data file</div>
               <p className="mt-1 text-xs text-gray-500">
-                Sends this letter as the email body with the JSON data file attached. Uses this letter's register
-                reference — no duplicate register entry.
+                Sends this letter as the email body with two attachments: the formal letter as a printable PDF and
+                the machine-readable JSON data file. Uses this letter's register reference — no duplicate register
+                entry.
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <input

@@ -148,6 +148,13 @@ export function dispatchAutoSend(
   }, 0);
 }
 
+// Whether a freshly prepared notification will actually be dispatched —
+// lets payment responses tell the UI honestly what happened to the receipt
+// SMS (queued-but-manual vs auto-sent vs not queued at all).
+export function autoSendEnabled(): boolean {
+  return env.smsAutoSend && !isTest;
+}
+
 export interface SmsFilters {
   page: number;
   limit: number;

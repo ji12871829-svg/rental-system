@@ -3,7 +3,18 @@ import { MONTH_NAMES } from '../types';
 import { balanceDue, paymentStatus, rentCollectionRate } from '../utils/businessRules';
 import { notFound } from '../utils/httpError';
 import { monthlyReportPdfBytes } from '../utils/monthlyReportPdf';
+import { arrearsReportPdfBytes } from '../utils/arrearsReportPdf';
 import { n, round2 } from '../utils/money';
+import { tenantStatementPdfBytes } from '../utils/tenantStatementPdf';
+import { getSmsBalance } from './smsService';
+
+// Shape of the Dashboard's compact SMS health strip.
+export type BalanceStatusLike = ReturnType<typeof getSmsBalance> extends Promise<infer T> ? T : never;
+export interface SmsHealth {
+  balance: BalanceStatusLike;
+  sentThisMonth: number;
+  failedThisMonth: number;
+}
 import { getBusinessIdentity } from './brandingService';
 import { monthlyRentSummary } from './rentService';
 import { getSettings } from './settingsService';
@@ -94,10 +105,18 @@ export async function dashboard(year?: number): Promise<unknown> {
 
   const monthlyWater = (await monthlyWaterSummary(targetYear)) as any[];
   const outstandingWater = (await outstandingWaterByUnit(targetYear)) as any[];
+  // Compact SMS health for the Dashboard's SMS strip (balance + this month's
+  // counts). Composed here so the page needs one request.
+  const sms = await dashboardSmsHealth();
 
   return {
     reportingYear: targetYear,
     currency: settings.currency,
+    sms: {
+      balance: sms.balance,
+      sentThisMonth: sms.sentThisMonth,
+      failedThisMonth: sms.failedThisMonth,
+    },
     property: {
       totalUnits,
       occupiedUnits: occupied,
@@ -247,8 +266,8 @@ export async function tenantLedger(tenantId: number, year?: number): Promise<unk
   const settings = await getSettings();
   const targetYear = year ?? settings.reporting_year;
 
-  const tenant = await queryOne<{ id: number; full_name: string; phone_number: string; unit_id: number | null }>(
-    'SELECT id, full_name, phone_number, unit_id FROM tenants WHERE id = $1',
+  const tenant = await queryOne<{ id: number; full_name: string; phone_number: string; email: string | null; unit_id: number | null }>(
+    'SELECT id, full_name, phone_number, email, unit_id FROM tenants WHERE id = $1',
     [tenantId]
   );
   if (!tenant) throw notFound('Tenant not found.');
@@ -318,7 +337,7 @@ export async function tenantLedger(tenantId: number, year?: number): Promise<unk
   };
 
   return {
-    tenant: { id: tenant.id, fullName: tenant.full_name, phoneNumber: tenant.phone_number },
+    tenant: { id: tenant.id, fullName: tenant.full_name, phoneNumber: tenant.phone_number, email: tenant.email },
     unit: unit ? { id: unit.id, unitNumber: unit.unit_number, monthlyRent: n(unit.monthly_rent), waterEnabled: unit.water_enabled } : null,
     reportingYear: targetYear,
     currency: settings.currency,
@@ -373,5 +392,75 @@ export async function monthlyReportPdf(year: number): Promise<{ bytes: Uint8Arra
     { year, rows: rows as any, generatedAt: new Date() },
     identity
   );
+  return { bytes, year };
+}
+// Per-tenant yearly statement PDF — the tenant ledger rendered as a one-page
+// portrait document with year totals and the business identity footer.
+// Reuses the exact tenantLedger data the ledger page displays.
+export async function tenantStatementPdf(
+  tenantId: number,
+  year?: number
+): Promise<{ bytes: Uint8Array; year: number; tenantName: string; tenantEmail: string | null }> {
+  const [ledger, identity] = await Promise.all([
+    tenantLedger(tenantId, year),
+    getBusinessIdentity(),
+  ]);
+  const data = ledger as {
+    tenant: { fullName: string; phoneNumber: string | null };
+    unit: { unitNumber: string } | null;
+    reportingYear: number;
+    currency: string;
+    months: any[];
+    totals: any;
+  };
+  const bytes = await tenantStatementPdfBytes(
+    {
+      tenantName: data.tenant.fullName,
+      tenantPhone: data.tenant.phoneNumber,
+      unitLabel: data.unit?.unitNumber ?? null,
+      year: data.reportingYear,
+      currency: data.currency,
+      months: data.months as any,
+      totals: data.totals,
+      generatedAt: new Date(),
+    },
+    identity
+  );
+  return { bytes, year: data.reportingYear, tenantName: data.tenant.fullName, tenantEmail: (ledger as any).tenant?.email ?? null };
+}
+
+// Dashboard SMS health: the wallet balance (live Africa's Talking only —
+// mock/Twilio degrade to 'unknown' without erroring) composed with this
+// month's send/failed counts. Never throws; the badge must not break the
+// dashboard render.
+export async function dashboardSmsHealth(): Promise<SmsHealth> {
+  const [balance, counts] = await Promise.all([
+    getSmsBalance().catch(() => ({ state: 'unknown' as const, reason: 'Balance check failed.' })),
+    queryOne<{ sent: string; failed: string }>(
+      `SELECT
+         COUNT(*) FILTER (WHERE status = 'SENT')::text AS sent,
+         COUNT(*) FILTER (WHERE status = 'FAILED')::text AS failed
+       FROM sms_notifications
+       WHERE created_at >= date_trunc('month', NOW())`,
+      []
+    ),
+  ]);
+  return {
+    balance,
+    sentThisMonth: Number(counts?.sent ?? 0),
+    failedThisMonth: Number(counts?.failed ?? 0),
+  };
+}
+
+// Arrears report PDF — every occupied unit with outstanding rent/water
+// balances for the reporting year, as a landscape document with totals and
+// the business identity footer. Reuses the exact arrears() data the Arrears
+// page displays.
+export async function arrearsReportPdf(year: number): Promise<{ bytes: Uint8Array; year: number }> {
+  const [rows, identity] = await Promise.all([
+    arrears(year) as Promise<import('../utils/arrearsReportPdf').ArrearsPdfRow[]>,
+    getBusinessIdentity(),
+  ]);
+  const bytes = await arrearsReportPdfBytes({ year, rows, generatedAt: new Date() }, identity);
   return { bytes, year };
 }

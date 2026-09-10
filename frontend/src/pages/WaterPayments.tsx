@@ -136,13 +136,13 @@ export default function WaterPayments() {
         open={showForm}
         tenants={waterTenants}
         onClose={() => setShowForm(false)}
-        onSaved={(msg) => { setShowForm(false); setRefreshKey((k) => k + 1); toast('success', msg); }}
+        onSaved={(msg, action) => { setShowForm(false); setRefreshKey((k) => k + 1); toast('success', msg, action); }}
       />
     </div>
   );
 }
 
-function WaterPaymentForm({ open, tenants, onClose, onSaved }: { open: boolean; tenants: TenantOption[]; onClose: () => void; onSaved: (msg: string) => void }) {
+function WaterPaymentForm({ open, tenants, onClose, onSaved }: { open: boolean; tenants: TenantOption[]; onClose: () => void; onSaved: (msg: string, action?: { label: string; to: string }) => void }) {
   const { toast } = useToast();
   const now = new Date();
   const [tenantId, setTenantId] = useState<number | ''>('');
@@ -161,10 +161,21 @@ function WaterPaymentForm({ open, tenants, onClose, onSaved }: { open: boolean; 
     }
     setBusy(true);
     try {
-      const res = await api.post<{ data: { status: string; waterBalance: number; receipt: string; waterBill: number } }>('/api/water/payments', {
+      const res = await api.post<{ data: { status: string; waterBalance: number; receipt: string; waterBill: number; sms?: { queued: boolean; autoSend: boolean } } }>('/api/water/payments', {
         tenantId, paymentDate, billingMonth, billingYear, amount: Number(amount), paymentMethod, notes: notes || undefined,
       });
-      onSaved(`Water payment recorded (${res.data.status}) — bill ${money(res.data.waterBill)}, balance ${money(res.data.waterBalance)}. Receipt ${res.data.receipt}.`);
+      // SMS line: honest about what happened — auto-sent, queued for manual
+      // sending, or nothing queued (no phone on file / disabled). Links to
+      // the message's place in the SMS history.
+      const smsNote = !res.data.sms?.queued
+        ? ' No SMS — no phone on file.'
+        : res.data.sms.autoSend
+          ? ' Receipt SMS sent automatically.'
+          : ' Receipt SMS queued for sending.';
+      onSaved(
+        `Water payment recorded (${res.data.status}) — bill ${money(res.data.waterBill)}, balance ${money(res.data.waterBalance)}. Receipt ${res.data.receipt}.${smsNote}`,
+        { label: 'View in SMS history →', to: '/sms' }
+      );
       setAmount('');
       setNotes('');
     } catch (err) {

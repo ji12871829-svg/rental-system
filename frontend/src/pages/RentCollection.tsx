@@ -84,7 +84,7 @@ export default function RentCollection() {
     }
     setBusy(true);
     try {
-      const res = await api.post<{ data: { status: string; balance: number; receipt: string; totalPaidForMonth: number } }>('/api/rent/payments', {
+      const res = await api.post<{ data: { status: string; balance: number; receipt: string; totalPaidForMonth: number; sms?: { queued: boolean; autoSend: boolean } } }>('/api/rent/payments', {
         tenantId,
         paymentDate,
         billingMonth,
@@ -94,7 +94,19 @@ export default function RentCollection() {
         paymentReference: paymentReference || undefined,
         notes: notes || undefined,
       });
-      toast('success', `Payment recorded (${res.data.status}) — balance ${money(res.data.balance)}. Receipt ${res.data.receipt}.`);
+      // SMS line: honest about what happened — auto-sent, queued for manual
+      // sending, or nothing queued (no phone on file / disabled). Links to
+      // the message's place in the SMS history.
+      const smsNote = !res.data.sms?.queued
+        ? ' No SMS — no phone on file.'
+        : res.data.sms.autoSend
+          ? ' Receipt SMS sent automatically.'
+          : ' Receipt SMS queued for sending.';
+      toast(
+        'success',
+        `Payment recorded (${res.data.status}) — balance ${money(res.data.balance)}. Receipt ${res.data.receipt}.${smsNote}`,
+        { label: 'View in SMS history →', to: '/sms' }
+      );
       setAmount('');
       setPaymentReference('');
       setNotes('');

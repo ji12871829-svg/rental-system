@@ -6,6 +6,8 @@ import { pool, query, queryOne } from '../config/db';
 import type { Pagination } from '../types';
 import { getBusinessIdentity } from './brandingService';
 import { isValidEmail, sendEmail } from './emailProvider';
+import { logAudit } from './auditService';
+import { monthlyReportPdf, tenantStatementPdf } from './financeService';
 import { badRequest, notFound } from '../utils/httpError';
 import {
   receiptEmailHtml,
@@ -106,7 +108,15 @@ export async function prepareForReceipt(
 // The receipt rides along as its real PDF attachment (rendered at prepare
 // time); data-request letters carry their JSON data file.
 export async function sendEmailNotification(id: number): Promise<EmailRow> {
-  const row = await queryOne<EmailRow & { receipt_number: string | null; attachment_name: string | null; attachment_content: string | null; attachment_content_type: string | null }>(
+  const row = await queryOne<EmailRow & {
+    receipt_number: string | null;
+    attachment_name: string | null;
+    attachment_content: string | null;
+    attachment_content_type: string | null;
+    attachment2_name: string | null;
+    attachment2_content: string | null;
+    attachment2_content_type: string | null;
+  }>(
     `SELECT e.*, r.receipt_number
      FROM email_notifications e
      LEFT JOIN receipts r ON r.id = e.receipt_id
@@ -118,23 +128,35 @@ export async function sendEmailNotification(id: number): Promise<EmailRow> {
     throw badRequest(`This email was already ${row.status.toLowerCase()} — only pending emails can be sent.`);
   }
 
-  // Attachment: the row's stored file — the receipt PDF for receipt emails
-  // (base64-decoded via its content type), the JSON data file for data-request
-  // letters (utf8). Rows predating attachments fall back to the .html copy.
-  const attachment = row.attachment_name && row.attachment_content
-    ? row.attachment_content_type === 'application/pdf'
-      ? { filename: row.attachment_name, content: row.attachment_content, contentType: 'application/pdf' }
-      : { filename: row.attachment_name, content: row.attachment_content, contentType: 'application/json' }
-    : row.receipt_number
-      ? { filename: `${row.receipt_number}.html`, content: row.body_html, contentType: 'text/html' }
-      : null;
+  // Attachments in order: the row's primary stored file (the receipt PDF,
+  // base64-decoded via its content type; the letter PDF on data-request
+  // emails) then the second attachment (the JSON data file). Rows predating
+  // attachments fall back to the .html copy.
+  const attachments: { filename: string; content: string; contentType: string }[] = [];
+  if (row.attachment_name && row.attachment_content) {
+    attachments.push({
+      filename: row.attachment_name,
+      content: row.attachment_content,
+      contentType: row.attachment_content_type ?? 'application/json',
+    });
+  }
+  if (row.attachment2_name && row.attachment2_content) {
+    attachments.push({
+      filename: row.attachment2_name,
+      content: row.attachment2_content,
+      contentType: row.attachment2_content_type ?? 'application/json',
+    });
+  }
+  if (attachments.length === 0 && row.receipt_number) {
+    attachments.push({ filename: `${row.receipt_number}.html`, content: row.body_html, contentType: 'text/html' });
+  }
 
   const result = await sendEmail({
     to: row.email_address,
     subject: row.subject,
     text: row.body_text,
     html: row.body_html,
-    attachment,
+    attachments,
   });
 
   if (result.ok) {
@@ -165,9 +187,10 @@ export interface PreparedDataLetterEmail {
 }
 
 // Creates a PENDING email carrying the formal data-request response letter
-// (server-rendered) with the tenant's complete JSON data export attached as
-// the data file. The stored body + attachment are a faithful copy of what
-// the tenant received, satisfying the accountability principle.
+// (server-rendered) with TWO attachments: the letter as a professional,
+// printable PDF and the tenant's complete JSON data export as the data file.
+// The stored body + attachments are a faithful copy of what the tenant
+// received, satisfying the accountability principle.
 export async function prepareForDataRequestLetter(opts: {
   tenantId: number;
   tenantName: string;
@@ -178,6 +201,7 @@ export async function prepareForDataRequestLetter(opts: {
   letterHtml: string;
   enclosureName: string;
   enclosureJson: string;
+  letterPdf: { name: string; base64: string };
 }): Promise<PreparedDataLetterEmail> {
   const toEmail = opts.tenantEmail.trim();
   if (!isValidEmail(toEmail)) {
@@ -188,7 +212,7 @@ export async function prepareForDataRequestLetter(opts: {
     `Dear ${opts.tenantName},`,
     '',
     'We refer to your request for access to the personal data we hold about you.',
-    'Our formal response letter is attached to this email as a printable document,',
+    'Our formal response letter is attached to this email as a printable PDF,',
     'together with a machine-readable (JSON) copy of the data we hold.',
     '',
     `Our reference: ${opts.registerRef}`,`Response deadline: ${opts.responseDays ?? '30'} days`,
@@ -200,10 +224,11 @@ export async function prepareForDataRequestLetter(opts: {
   const { rows } = await pool.query(
     `INSERT INTO email_notifications
        (tenant_id, email_address, subject, body_html, body_text, status,
-        attachment_name, attachment_content)
-     VALUES ($1, $2, $3, $4, $5, 'PENDING', $6, $7)
+        attachment_name, attachment_content, attachment_content_type,
+        attachment2_name, attachment2_content, attachment2_content_type)
+     VALUES ($1, $2, $3, $4, $5, 'PENDING', $6, $7, 'application/pdf', $8, $9, 'application/json')
      RETURNING id, email_address, subject, status`,
-    [opts.tenantId, toEmail, subject, opts.letterHtml, text, opts.enclosureName, opts.enclosureJson]
+    [opts.tenantId, toEmail, subject, opts.letterHtml, text, opts.letterPdf.name, opts.letterPdf.base64, opts.enclosureName, opts.enclosureJson]
   );
   return rows[0];
 }
@@ -231,12 +256,15 @@ export async function listEmails(filters: EmailFilters): Promise<{ rows: EmailRo
     params.push(`%${filters.q}%`);
     where.push(`(e.subject ILIKE $${params.length} OR e.email_address ILIKE $${params.length} OR t.full_name ILIKE $${params.length})`);
   }
+  // Operational emails (monthly report to the landlord) have no tenant row.
+  // LEFT JOIN keeps them visible in history; the search clause must tolerate
+  // a missing tenant name.
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   const totalRow = await queryOne<{ count: string }>(
     `SELECT COUNT(*)::text AS count
      FROM email_notifications e
-     JOIN tenants t ON t.id = e.tenant_id
+     LEFT JOIN tenants t ON t.id = e.tenant_id
      ${whereSql}`,
     params
   );
@@ -245,7 +273,7 @@ export async function listEmails(filters: EmailFilters): Promise<{ rows: EmailRo
   const rows = await query<EmailRow>(
     `SELECT e.*, t.full_name AS tenant_name, u.unit_number
      FROM email_notifications e
-     JOIN tenants t ON t.id = e.tenant_id
+     LEFT JOIN tenants t ON t.id = e.tenant_id
      LEFT JOIN units u ON u.id = t.unit_id
      ${whereSql}
      ORDER BY e.created_at DESC
@@ -274,4 +302,130 @@ export async function backfillEmails(): Promise<number> {
     created += 1;
   }
   return created;
+}
+
+// --- Operational report emails (no tenant counterpart) ---------------------
+
+export interface PreparedReportEmail {
+  id: number;
+  email_address: string;
+  subject: string;
+  status: 'PENDING' | 'SENT' | 'FAILED';
+}
+
+// Subject line for the monthly financial report email.
+export function monthlyReportEmailSubject(year: number): string {
+  return `Monthly Financial Report ${year}`;
+}
+
+// Creates a PENDING email carrying the one-page monthly financial report PDF
+// to the operator. Recipient must be explicit — the business branding general
+// email or an override; never guessed from tenant data.
+export async function prepareForMonthlyReport(opts: {
+  year: number;
+  toEmail: string;
+  userId?: number | null;
+}): Promise<PreparedReportEmail> {
+  const toEmail = opts.toEmail.trim();
+  if (!isValidEmail(toEmail)) {
+    throw badRequest(`"${toEmail}" is not a valid email address.`);
+  }
+
+  const identity = await getBusinessIdentity();
+  const { bytes } = await monthlyReportPdf(opts.year);
+  const subject = monthlyReportEmailSubject(opts.year);
+  const name = identity.name?.trim() || 'your property manager';
+  const text = [
+    `Dear ${name},`,
+    '',
+    `The Monthly Financial Report for ${opts.year} is attached as a printable PDF.`,
+    'It shows expected rent, water billing, collections and outstanding balances',
+    'for every month of the year, with year totals.',
+    '',
+    'Generated by RPMS — Rental Property Management System.',
+  ].join('\n');
+  const html = `<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#111827;line-height:1.5">
+<p>Dear ${name},</p>
+<p>The <strong>Monthly Financial Report for ${opts.year}</strong> is attached as a printable PDF.
+It shows expected rent, water billing, collections and outstanding balances for every
+month of the year, with year totals.</p>
+<p style="color:#6b7280;font-size:13px">Generated by RPMS — Rental Property Management System.</p>
+</body></html>`;
+
+  const { rows } = await pool.query(
+    `INSERT INTO email_notifications
+       (tenant_id, email_address, subject, body_html, body_text, status,
+        attachment_name, attachment_content, attachment_content_type)
+     VALUES (NULL, $1, $2, $3, $4, 'PENDING', $5, $6, 'application/pdf')
+     RETURNING id, email_address, subject, status`,
+    [toEmail, subject, html, text, `financial-report-${opts.year}.pdf`, Buffer.from(bytes).toString('base64')]
+  );
+
+  await logAudit({
+    userId: opts.userId ?? null,
+    action: 'MONTHLY_REPORT_EMAILED',
+    entity: 'report',
+    entityId: null,
+    newValue: { year: opts.year, to: toEmail },
+  });
+
+  return rows[0] as PreparedReportEmail;
+}
+
+// Creates a PENDING email carrying a tenant's yearly statement PDF. The
+// recipient is the tenant's stored email unless an explicit address is passed
+// (either way it must be valid — never guessed). Sent as tenant_id = the
+// statement's tenant so it shows in their email history.
+export async function prepareForStatementEmail(opts: {
+  tenantId: number;
+  year: number;
+  toEmail?: string;
+  userId?: number | null;
+}): Promise<PreparedReportEmail> {
+  const { bytes, tenantName, tenantEmail } = await tenantStatementPdf(opts.tenantId, opts.year);
+  const toEmail = (opts.toEmail ?? tenantEmail ?? '').trim();
+  if (!toEmail) {
+    throw badRequest('This tenant has no email address on file. Provide one with the request.');
+  }
+  if (!isValidEmail(toEmail)) {
+    throw badRequest(`"${toEmail}" is not a valid email address.`);
+  }
+
+  const identity = await getBusinessIdentity();
+  const name = identity.name?.trim() || 'Property Management';
+  const subject = `Tenant Statement ${opts.year} — ${tenantName}`;
+  const text = [
+    `Dear ${tenantName},`,
+    '',
+    `Your rental statement for ${opts.year} is attached as a printable PDF.`,
+    'It lists every billing month with expected rent, water charges, payments',
+    'and balances, and closes with your year balance.',
+    '',
+    `${name}${identity.regNo?.trim() ? ` · Reg. No. ${identity.regNo.trim()}` : ''}`,
+  ].join('\n');
+  const html = `<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#111827;line-height:1.5">
+<p>Dear ${tenantName},</p>
+<p>Your <strong>rental statement for ${opts.year}</strong> is attached as a printable PDF.
+It lists every billing month with expected rent, water charges, payments and balances,
+and closes with your year balance.</p>
+<p style="color:#6b7280;font-size:13px">${name}${identity.regNo?.trim() ? ` · Reg. No. ${identity.regNo.trim()}` : ''}</p>
+</body></html>`;
+
+  const { rows } = await pool.query(
+    `INSERT INTO email_notifications
+       (tenant_id, email_address, subject, body_html, body_text, status,
+        attachment_name, attachment_content, attachment_content_type)
+     VALUES ($1, $2, $3, $4, $5, 'PENDING', $6, $7, 'application/pdf')
+     RETURNING id, email_address, subject, status`,
+    [opts.tenantId, toEmail, subject, html, text, `tenant-statement-${opts.tenantId}-${opts.year}.pdf`, Buffer.from(bytes).toString('base64')]
+  );
+
+  await logAudit({
+    userId: opts.userId ?? null,
+    action: 'STATEMENT_EMAILED',
+    entity: 'tenant',
+    entityId: opts.tenantId,
+    newValue: { year: opts.year, to: toEmail },
+  });
+  return rows[0] as PreparedReportEmail;
 }

@@ -14,15 +14,6 @@ export default {
           900: '#0b2f5c',
         },
       },
-      keyframes: {
-        windowGlow: {
-          '0%, 100%': { opacity: '0.65' },
-          '50%': { opacity: '1' },
-        },
-      },
-      animation: {
-        'window-glow': 'windowGlow 4s ease-in-out infinite',
-      },
     },
   },
   plugins: [require('tailwindcss-animate')],

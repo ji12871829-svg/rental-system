@@ -1,1 +1,0 @@
-import{h as a,k as s}from"./index-gAj0c0sW.js";function u(){const{data:t}=a(()=>s.get("/api/settings").then(n=>n.data.reporting_year),[]);return t}function i(t){return t===null?[]:[t-1,t,t+1]}export{i as r,u};

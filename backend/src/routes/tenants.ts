@@ -13,7 +13,7 @@ import {
   listPrivacyRequests,
 } from '../services/privacyService';
 import { prepareForDataRequestLetter, sendEmailNotification } from '../services/emailService';
-import { renderDataLetterEmail, dataEnclosureName } from '../utils/dataRequestLetter';
+import { renderDataLetterEmail, renderDataLetterPdf, dataEnclosureName, dataLetterPdfName } from '../utils/dataRequestLetter';
 
 const router = Router();
 router.use(requireAuth);
@@ -167,6 +167,9 @@ router.post('/:id/data-request-letter/email', adminOnly, validateParams(paramsSc
   }
 
   const rendered = renderDataLetterEmail(letter);
+  // The formal letter as a printable PDF — attached alongside the JSON data
+  // file so the emailed response is a professional document, not just HTML.
+  const letterPdfBytes = await renderDataLetterPdf(letter);
   const prepared = await prepareForDataRequestLetter({
     tenantId,
     tenantName: String((letter.bundle.subject as { full_name?: string }).full_name ?? 'data subject'),
@@ -177,6 +180,10 @@ router.post('/:id/data-request-letter/email', adminOnly, validateParams(paramsSc
     letterHtml: rendered.html,
     enclosureName: dataEnclosureName(tenantId),
     enclosureJson: JSON.stringify(letter.bundle, null, 2),
+    letterPdf: {
+      name: dataLetterPdfName(letter.registerRef),
+      base64: Buffer.from(letterPdfBytes).toString('base64'),
+    },
   });
   const sent = await sendEmailNotification(prepared.id);
   res.status(201).json({

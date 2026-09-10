@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, EmptyState, KpiCard, PageHeader, Select, StatusBadge, useFetch } from '../components/ui';
+import { Download } from 'lucide-react';
+import { Button, EmptyState, KpiCard, PageHeader, Select, StatusBadge, useFetch, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { money } from '../lib/format';
 
@@ -38,6 +39,36 @@ export default function Arrears() {
     [year]
   );
 
+  const { toast } = useToast();
+  // Arrears report PDF — the year's outstanding balances as a printable
+  // document. Fetched with the session token (endpoint requires auth) and
+  // saved as a blob.
+  const [downloading, setDownloading] = useState(false);
+  const downloadReport = () => {
+    const token = localStorage.getItem('rpms_token');
+    if (!token) return;
+    setDownloading(true);
+    fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/reports/arrears.pdf?year=${year}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (r) => {
+        if (!r.ok) {
+          const body = await r.json().catch(() => null);
+          throw new Error(body?.message ?? `Report download failed (${r.status}).`);
+        }
+        return r.blob();
+      })
+      .then((blob) => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `arrears-report-${year}.pdf`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      })
+      .catch((err) => toast('error', (err as Error).message))
+      .finally(() => setDownloading(false));
+  };
+
   const rows = useMemo(() => {
     let list = data ?? [];
     if (statusFilter) list = list.filter((r) => r.status === statusFilter);
@@ -65,9 +96,20 @@ export default function Arrears() {
         title="Arrears"
         subtitle="Who owes what — rent and water balances per occupied unit, with months in arrears"
         actions={
-          <Select value={year} onChange={(e) => setYear(e.target.value)} className="w-28">
-            {[now.getFullYear(), now.getFullYear() - 1, now.getFullYear() + 1].map((y) => <option key={y} value={y}>{y}</option>)}
-          </Select>
+          <div className="flex items-center gap-2">
+            <Select value={year} onChange={(e) => setYear(e.target.value)} className="w-28">
+              {[now.getFullYear(), now.getFullYear() - 1, now.getFullYear() + 1].map((y) => <option key={y} value={y}>{y}</option>)}
+            </Select>
+            {/* Outstanding balances as a printable PDF. */}
+            <button
+              type="button"
+              onClick={downloadReport}
+              disabled={downloading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-50 active:scale-[0.98] disabled:opacity-60"
+            >
+              <Download size={15} strokeWidth={1.75} aria-hidden /> {downloading ? 'Preparing…' : 'Download Report (PDF)'}
+            </button>
+          </div>
         }
       />
 

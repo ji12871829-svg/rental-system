@@ -35,10 +35,10 @@ export interface EmailPayload {
   subject: string;
   text: string;
   html: string;
-  // Single file attachment. Text types (JSON, HTML) pass `content` as utf8
-  // text; binary types (the receipt PDF) pass base64 in `content` with the
-  // matching `contentType` — the provider decodes accordingly.
-  attachment: { filename: string; content: string; contentType?: string } | null;
+  // Attachments in send order. Text types (JSON, HTML) pass `content` as
+  // utf8 text; binary types (PDFs) pass base64 in `content` with the matching
+  // `contentType` — the provider decodes accordingly.
+  attachments: { filename: string; content: string; contentType?: string }[];
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -97,16 +97,15 @@ async function smtpSend(payload: EmailPayload): Promise<EmailSendResult> {
     text: payload.text,
     html: payload.html,
   };
-  if (payload.attachment) {
-    const a = payload.attachment;
-    const isBinary = (a.contentType ?? 'text/html').startsWith('application/pdf');
-    mail.attachments = [
-      {
-        filename: a.filename,
-        content: isBinary ? Buffer.from(a.content, 'base64') : Buffer.from(a.content, 'utf8'),
-        contentType: a.contentType ?? 'text/html',
-      },
-    ];
+  if (payload.attachments.length > 0) {
+    mail.attachments = payload.attachments.map((a) => ({
+      filename: a.filename,
+      // application/pdf is stored base64 (binary); every other type is utf8.
+      content: (a.contentType ?? 'text/html').startsWith('application/pdf')
+        ? Buffer.from(a.content, 'base64')
+        : Buffer.from(a.content, 'utf8'),
+      contentType: a.contentType ?? 'text/html',
+    }));
   }
 
   try {

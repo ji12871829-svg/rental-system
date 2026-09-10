@@ -3,7 +3,9 @@ import {
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from '../components/charts';
 import { StatGroupCard, PageHeader, useFetch } from '../components/ui';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
+import { useBranding } from '../lib/BrandingContext';
 import { MONTHS, money, methodLabel } from '../lib/format';
 
 interface DashboardData {
@@ -24,6 +26,17 @@ interface DashboardData {
     totalDueThisMonth: number; totalCollected: number; totalOutstanding: number;
     rentCollected: number; waterCollected: number; totalExpenses: number; netIncome: number;
   };
+  sms: {
+    // Single-literal members so `state === 'x'` checks narrow exactly.
+    balance:
+      | { state: 'unknown'; reason: string }
+      | { state: 'unavailable'; reason: string }
+      | { state: 'ok'; balance: { amount: number; currency: string }; threshold: number | null }
+      | { state: 'low'; balance: { amount: number; currency: string }; threshold: number | null }
+      | { state: 'empty'; balance: { amount: number; currency: string }; threshold: number | null };
+    sentThisMonth: number;
+    failedThisMonth: number;
+  };
   charts: {
     monthlyRentCollected: { month: number; collected: number }[];
     expectedVsCollected: { month: number; expected: number; collected: number }[];
@@ -40,6 +53,7 @@ interface DashboardData {
 const PIE_COLORS = ['#1d6fd6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#14b8a6'];
 
 export default function Dashboard() {
+  const { identity } = useBranding();
   const { data, loading, error } = useFetch<DashboardData>(() =>
     api.get<{ data: DashboardData }>('/api/reports/dashboard').then((r) => r.data)
   );
@@ -57,6 +71,49 @@ export default function Dashboard() {
         title="Dashboard"
         subtitle={`Reporting year ${reportingYear} — everything below updates automatically from recorded transactions`}
       />
+
+      {/* The buildings this software runs — photo strip with subtle 1px
+          outlines (pure black/white by color-scheme) for consistent depth. */}
+      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <figure className="relative overflow-hidden rounded-xl shadow-sm ring-1 ring-black/10">
+          <picture>
+            <source
+              type="image/webp"
+              srcSet="/building/building-1-480.webp 480w, /building/building-1-800.webp 800w, /building/building-1-1600.webp 1600w"
+              sizes="(min-width: 640px) 50vw, 100vw"
+            />
+            <img
+              src="/building/building-1-800.webp"
+              alt="Residential building managed with RPMS"
+              className="h-44 w-full object-cover transition-transform duration-300 hover:scale-[1.02] sm:h-52"
+              loading="lazy"
+              decoding="async"
+            />
+          </picture>
+          <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-4 py-2.5 text-sm font-medium text-white">
+            {identity?.address ?? 'Our building'}
+          </figcaption>
+        </figure>
+        <figure className="relative overflow-hidden rounded-xl shadow-sm ring-1 ring-black/10">
+          <picture>
+            <source
+              type="image/webp"
+              srcSet="/building/building-2-480.webp 480w, /building/building-2-800.webp 800w, /building/building-2-1600.webp 1600w"
+              sizes="(min-width: 640px) 50vw, 100vw"
+            />
+            <img
+              src="/building/building-2-800.webp"
+              alt="Second building under management"
+              className="h-44 w-full object-cover transition-transform duration-300 hover:scale-[1.02] sm:h-52"
+              loading="lazy"
+              decoding="async"
+            />
+          </picture>
+          <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-4 py-2.5 text-sm font-medium text-white">
+            Managed with RPMS
+          </figcaption>
+        </figure>
+      </div>
 
       {/* Property summary */}
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Property</h2>
@@ -122,6 +179,32 @@ export default function Dashboard() {
           { label: 'Net Property Income', value: money(c.netIncome, currency), tone: c.netIncome >= 0 ? 'good' : 'bad' },
         ]}
       />
+
+      {/* SMS health — compact: wallet badge + this month's counts. The whole
+          strip links to the SMS page. Renders nothing if the API is older. */}
+      {data.sms && (
+        <div className="mt-8">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">SMS</h2>
+          <Link
+            to="/sms"
+            className="block rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-colors duration-150 hover:bg-gray-50"
+          >
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+              <SmsWalletBadge balance={data.sms.balance} />
+              <span className="text-sm text-gray-600">
+                <span className="font-semibold text-gray-900">{data.sms.sentThisMonth}</span> sent this month
+              </span>
+              <span className="text-sm text-gray-600">
+                <span className={`font-semibold ${data.sms.failedThisMonth > 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                  {data.sms.failedThisMonth}
+                </span>{' '}
+                failed
+              </span>
+              <span className="ml-auto text-xs font-medium text-brand-700">Manage SMS →</span>
+            </div>
+          </Link>
+        </div>
+      )}
 
       {/* Charts */}
       <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-gray-500">Charts</h2>
@@ -254,5 +337,52 @@ function ChartCard({ title, children }: { title: string; children: React.ReactNo
       <h3 className="mb-3 text-sm font-semibold text-gray-700">{title}</h3>
       {children}
     </div>
+  );
+}
+
+// Compact wallet badge mirroring the SMS page banner semantics: green ok,
+// amber low, red empty; muted text for unknown/unavailable (mock mode, Twilio
+// or a failed provider call) so it never looks like an alarm.
+// Members are single-literal so `state === 'x'` narrows exactly (this tsc
+// build narrows unions at the member level, not the literal level).
+type BalanceUnion =
+  | { state: 'unknown'; reason: string }
+  | { state: 'unavailable'; reason: string }
+  | { state: 'ok'; balance: { amount: number; currency: string }; threshold: number | null }
+  | { state: 'low'; balance: { amount: number; currency: string }; threshold: number | null }
+  | { state: 'empty'; balance: { amount: number; currency: string }; threshold: number | null };
+
+function SmsWalletBadge({ balance }: { balance: BalanceUnion }) {
+  const amount = 'balance' in balance
+    ? `${balance.balance.currency} ${balance.balance.amount.toLocaleString('en-KE', { maximumFractionDigits: 2 })}`
+    : '';
+  if (balance.state === 'unknown' || balance.state === 'unavailable') {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-500"
+        title={balance.reason}
+      >
+        SMS wallet — not monitored
+      </span>
+    );
+  }
+  if (balance.state === 'empty') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">
+        <span className="h-1.5 w-1.5 rounded-full bg-red-500" aria-hidden /> SMS wallet empty — {amount}
+      </span>
+    );
+  }
+  if (balance.state === 'low') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden /> SMS wallet low — {amount}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden /> SMS wallet {amount}
+    </span>
   );
 }

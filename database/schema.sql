@@ -331,7 +331,9 @@ CREATE INDEX IF NOT EXISTS idx_sms_provider_message ON sms_notifications(provide
 CREATE TABLE IF NOT EXISTS email_notifications (
   id                  SERIAL PRIMARY KEY,
   receipt_id          INTEGER REFERENCES receipts(id) ON DELETE SET NULL,
-  tenant_id           INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  -- Nullable: operational emails aimed at the operator (e.g. the monthly
+  -- financial report to the landlord) have no tenant counterpart.
+  tenant_id           INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
   email_address       VARCHAR(255) NOT NULL,
   subject             TEXT NOT NULL,
   body_html           TEXT NOT NULL,
@@ -348,6 +350,12 @@ CREATE TABLE IF NOT EXISTS email_notifications (
   -- MIME type of the attachment; NULL on rows that predate attachments.
   -- 'application/pdf' content is stored base64-encoded, other types utf8.
   attachment_content_type VARCHAR(100),
+  -- Second attachment (data-request letter emails carry BOTH the formal
+  -- letter PDF and the machine-readable JSON data file). Same encoding rule:
+  -- application/pdf base64, other types utf8. NULL = single attachment.
+  attachment2_name        VARCHAR(255),
+  attachment2_content     TEXT,
+  attachment2_content_type VARCHAR(100),
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_email_tenant ON email_notifications(tenant_id);

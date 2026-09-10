@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download } from 'lucide-react';
+import { Download, Mail } from 'lucide-react';
 import {
   Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from '../components/charts';
@@ -115,6 +115,30 @@ export default function MonthlySummary() {
       .finally(() => setDownloading(false));
   };
 
+  // Emails the report PDF to the operator (default: the business branding
+  // general email). Manager/admin endpoint — 403s toast for staff.
+  const [emailing, setEmailing] = useState(false);
+  const emailReport = () => {
+    const token = localStorage.getItem('rpms_token');
+    if (!token) return;
+    setEmailing(true);
+    api
+      .post<{ data: { status: string; email_address: string } }>(
+        `/api/reports/monthly/email?year=${year}`,
+        {}
+      )
+      .then(({ data }) => {
+        toast(
+          'success',
+          data.status === 'SENT'
+            ? `Report emailed to ${data.email_address}.`
+            : `Report queued for ${data.email_address} — see the email history for the result.`
+        );
+      })
+      .catch((err) => toast('error', (err as Error).message))
+      .finally(() => setEmailing(false));
+  };
+
   return (
     <div>
       <PageHeader
@@ -141,6 +165,15 @@ export default function MonthlySummary() {
           className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-50 active:scale-[0.98] disabled:opacity-60"
         >
           <Download size={15} strokeWidth={1.75} aria-hidden /> {downloading ? 'Preparing…' : 'Download Report (PDF)'}
+        </button>
+        {/* Email the report to the operator (default: branding general email). */}
+        <button
+          type="button"
+          onClick={emailReport}
+          disabled={emailing}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-50 active:scale-[0.98] disabled:opacity-60"
+        >
+          <Mail size={15} strokeWidth={1.75} aria-hidden /> {emailing ? 'Sending…' : 'Email Report'}
         </button>
       </div>
 

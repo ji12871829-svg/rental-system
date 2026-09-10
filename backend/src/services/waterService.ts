@@ -5,7 +5,7 @@ import { badRequest, conflict, notFound, unprocessable } from '../utils/httpErro
 import { n, round2 } from '../utils/money';
 import { logAudit } from './auditService';
 import { createReceipt } from './receiptService';
-import { dispatchAutoSend, prepareForReceipt } from './smsService';
+import { autoSendEnabled, dispatchAutoSend, prepareForReceipt } from './smsService';
 import { getSettings } from './settingsService';
 
 // ---------------------------------------------------------------------------
@@ -427,7 +427,7 @@ export async function createWaterPayment(input: WaterPaymentInput, userId: numbe
   // Auto-send the receipt SMS now that the payment transaction has committed
   // (fire-and-forget — see dispatchAutoSend).
   dispatchAutoSend(preparedSmsId);
-  return result;
+  return { ...result, sms: { queued: preparedSmsId != null, autoSend: autoSendEnabled() } };
 }
 
 export async function deleteWaterPayment(id: number, userId: number): Promise<void> {

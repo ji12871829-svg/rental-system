@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertCircle, CheckCircle2, X } from 'lucide-react';
 import { statusClass } from '../lib/format';
 
@@ -218,16 +219,21 @@ interface Toast {
   id: number;
   type: 'success' | 'error';
   message: string;
+  // Optional in-toast action (e.g. "View in SMS history") rendered as a
+  // router Link under the message; auto-dismisses with the toast.
+  action?: { label: string; to: string };
 }
 
-const ToastContext = createContext<{ toast: (type: 'success' | 'error', message: string) => void } | null>(null);
+const ToastContext = createContext<{
+  toast: (type: 'success' | 'error', message: string, action?: { label: string; to: string }) => void;
+} | null>(null);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const toast = useCallback((type: 'success' | 'error', message: string) => {
+  const toast = useCallback((type: 'success' | 'error', message: string, action?: { label: string; to: string }) => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, type, message }]);
+    setToasts((t) => [...t, { id, type, message, action }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4500);
   }, []);
 
@@ -246,7 +252,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             {t.type === 'success'
               ? <CheckCircle2 size={17} strokeWidth={2} className="mt-0.5 shrink-0" aria-hidden />
               : <AlertCircle size={17} strokeWidth={2} className="mt-0.5 shrink-0" aria-hidden />}
-            <span>{t.message}</span>
+            <span>
+              {t.message}
+              {t.action && (
+                // Block display so the link always sits on its own line.
+                <Link to={t.action.to} className="mt-1 block font-semibold text-white underline underline-offset-2">
+                  {t.action.label}
+                </Link>
+              )}
+            </span>
           </div>
         ))}
       </div>

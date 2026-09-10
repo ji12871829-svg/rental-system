@@ -23,25 +23,50 @@ interface NavItem {
   managerOnly?: boolean;
 }
 
-const NAV: NavItem[] = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/instructions', label: 'Instructions / Help', icon: BookOpen },
-  { to: '/settings', label: 'Settings', icon: Settings },
-  { to: '/units', label: 'Units', icon: Building2 },
-  { to: '/tenants', label: 'Tenants', icon: ArrowLeftRight },
-  { to: '/rent', label: 'Rent Collection', icon: Wallet },
-  { to: '/water-meter', label: 'Water Meter', icon: Gauge },
-  { to: '/water-payments', label: 'Water Payments', icon: Droplets },
-  { to: '/water-supply', label: 'Water Supply Costs', icon: FileBarChart },
-  { to: '/ledger', label: 'Tenant Ledger', icon: BookUser },
-  { to: '/monthly', label: 'Monthly Summary', icon: CalendarDays },
-  { to: '/expenses', label: 'Expenses', icon: ReceiptText },
-  { to: '/arrears', label: 'Arrears', icon: AlertTriangle },
-  { to: '/receipts', label: 'Receipts', icon: Ticket },
-  { to: '/sms', label: 'SMS Notifications', icon: Smartphone },
-  { to: '/users', label: 'Users', icon: UsersIcon, adminOnly: true },
-  { to: '/audit', label: 'Audit Logs', icon: FileText, adminOnly: true },
-  { to: '/privacy-register', label: 'Privacy Register', icon: FileText, adminOnly: true },
+interface NavSection {
+  title?: string;
+  items: NavItem[];
+}
+
+const NAV_SECTIONS: NavSection[] = [
+  {
+    title: 'Overview',
+    items: [
+      { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+    ],
+  },
+  {
+    title: 'Operations',
+    items: [
+      { to: '/units', label: 'Units', icon: Building2 },
+      { to: '/tenants', label: 'Tenants', icon: ArrowLeftRight },
+      { to: '/rent', label: 'Rent Collection', icon: Wallet },
+      { to: '/water-meter', label: 'Water Meter', icon: Gauge },
+      { to: '/water-payments', label: 'Water Payments', icon: Droplets },
+      { to: '/water-supply', label: 'Water Supply Costs', icon: FileBarChart },
+      { to: '/ledger', label: 'Tenant Ledger', icon: BookUser },
+      { to: '/monthly', label: 'Monthly Summary', icon: CalendarDays },
+      { to: '/expenses', label: 'Expenses', icon: ReceiptText },
+      { to: '/arrears', label: 'Arrears', icon: AlertTriangle },
+      { to: '/receipts', label: 'Receipts', icon: Ticket },
+      { to: '/sms', label: 'SMS Notifications', icon: Smartphone },
+    ],
+  },
+  {
+    title: 'Management',
+    items: [
+      { to: '/settings', label: 'Settings', icon: Settings },
+      { to: '/users', label: 'Users', icon: UsersIcon, adminOnly: true },
+      { to: '/audit', label: 'Audit Logs', icon: FileText, adminOnly: true },
+      { to: '/privacy-register', label: 'Privacy Register', icon: FileText, adminOnly: true },
+    ],
+  },
+  {
+    title: 'Help',
+    items: [
+      { to: '/instructions', label: 'Instructions / Help', icon: BookOpen },
+    ],
+  },
 ];
 
 export default function Layout() {
@@ -50,11 +75,14 @@ export default function Layout() {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const visibleNav = NAV.filter((n) => {
-    if (n.adminOnly && user?.role !== 'ADMIN') return false;
-    if (n.managerOnly && user?.role === 'STAFF') return false;
-    return true;
-  });
+  const visibleSections = NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((n) => {
+      if (n.adminOnly && user?.role !== 'ADMIN') return false;
+      if (n.managerOnly && user?.role === 'STAFF') return false;
+      return true;
+    }),
+  })).filter((section) => section.items.length > 0);
 
   function handleLogout() {
     logout();
@@ -62,24 +90,33 @@ export default function Layout() {
   }
 
   const nav = (
-    <nav className="no-scrollbar flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
-      {visibleNav.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          end={item.to === '/'}
-          onClick={() => setMobileOpen(false)}
-          className={({ isActive }) =>
-            `group flex min-h-[40px] items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150 ${
-              isActive
-                ? 'bg-brand-600 text-white shadow-sm'
-                : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
-            }`
-          }
-        >
-          <item.icon size={18} strokeWidth={1.75} aria-hidden className="shrink-0" />
-          {item.label}
-        </NavLink>
+    <nav className="no-scrollbar flex-1 space-y-4 overflow-y-auto px-3 py-4">
+      {visibleSections.map((section) => (
+        <div key={section.title ?? 'section'} className="space-y-1.5">
+          {section.title && (
+            <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+              {section.title}
+            </div>
+          )}
+          {section.items.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === '/'}
+              onClick={() => setMobileOpen(false)}
+              className={({ isActive }) =>
+                `group flex min-h-[40px] items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150 ${
+                  isActive
+                    ? 'bg-brand-600 text-white shadow-sm'
+                    : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
+                }`
+              }
+            >
+              <item.icon size={18} strokeWidth={1.75} aria-hidden className="shrink-0" />
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
       ))}
     </nav>
   );

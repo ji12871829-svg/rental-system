@@ -10,6 +10,7 @@ dotenv.config();
 
 export const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
+  // Render injects PORT (default 10000); local dev keeps 4000.
   port: Number(process.env.PORT) || 4000,
   databaseUrl:
     process.env.DATABASE_URL ||
@@ -17,6 +18,9 @@ export const env = {
   jwtSecret: process.env.JWT_SECRET || 'dev-only-secret-change-me',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
   bcryptSaltRounds: Number(process.env.BCRYPT_SALT_ROUNDS) || 12,
+  // Comma-separated allowlist. On same-origin deploys (frontend served by
+  // this process) CORS never triggers — the origin matches nothing but the
+  // browser makes no cross-origin request. This keeps split deploys working.
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   smsProvider: (process.env.SMS_PROVIDER || 'mock').toLowerCase() as 'mock' | 'africastalking' | 'twilio',
   // Auto-send receipt SMS right after the payment commits (set false to keep

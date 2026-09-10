@@ -5,9 +5,29 @@ import { env, isProd } from './env';
 
 export const pool = new Pool({
   connectionString: env.databaseUrl,
-  max: 10,
-  ssl: isProd ? { rejectUnauthorized: false } : false,
+  // Neon free tier supports ~100 concurrent connections but the personal
+  // endpoint is pooler-routed; a small client cap stays well inside both
+  // limits (Render free tier = 512 MB RAM, so keep buffers modest too).
+  max: 5,
+  ssl: needsSsl(env.databaseUrl) ? { rejectUnauthorized: false } : false,
 });
+
+// TLS policy: hosted Postgres (Neon, Render, Supabase…) always requires SSL,
+// while a same-box PostgreSQL on a VPS deploy has none. Honor an explicit
+// `sslmode=` in the URL first; otherwise enable SSL in production for remote
+// hosts only. rejectUnauthorized is relaxed because Neon's pooler presents a
+// CA chain node's TLS stack can't verify without the CA bundle installed.
+function needsSsl(url: string): boolean {
+  const sslmode = /sslmode=([a-z-]+)/.exec(url);
+  if (sslmode) return sslmode[1] !== 'disable';
+  if (!isProd) return false;
+  try {
+    const host = new URL(url).hostname;
+    return !['localhost', '127.0.0.1', '::1'].includes(host);
+  } catch {
+    return true; // unparseable URL in prod — fail safe toward TLS
+  }
+}
 
 // Idle-client errors (e.g. the DB is dropped during test teardown) must not
 // crash the process — log them instead.
