@@ -58,7 +58,10 @@ if (process.env.DATABASE_URL) {
     const found = rows.map((r) => r.table_name);
     const missing = ['users', 'tenants', 'rent_payments', 'settings', 'business_branding', 'audit_logs'].filter((t) => !found.includes(t));
     if (missing.length > 0) {
-      problems.push(`database schema is missing tables: ${missing.join(', ')} — run "npm run db:setup" against this DATABASE_URL first (see docs/DEPLOY.md §1a)`);
+      // Not fatal: the first boot auto-applies schema + seed on an empty
+      // database (src/db/bootstrap.ts). Only worth flagging so the log
+      // explains why the first boot takes a little longer.
+      warnings.push(`schema missing tables (${missing.join(', ')}) — first boot will apply schema + seed + default users automatically`);
     }
   } catch (err) {
     problems.push(`cannot reach PostgreSQL: ${err.message}`);

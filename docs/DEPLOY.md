@@ -40,7 +40,7 @@ Render Web Service (free)          Neon Postgres (free)
    Databases → New) instead of using the default `neondb`.
 4. Copy the string somewhere safe — it contains the password.
 
-### 1a. Apply the schema to Neon
+### 1a. Apply the schema to Neon (optional — automatic on first boot)
 
 From your machine (the repo is already set up for this):
 
@@ -53,7 +53,11 @@ npm run db:setup        # applies database/schema.sql + seed, creates default us
 ```
 
 `db:setup` is idempotent (schema uses `IF NOT EXISTS`, users upsert), so it is
-safe to re-run. **First production decision:** the seed creates three sample
+safe to re-run. **You can skip this entire step** — on the first Render boot
+the app detects the empty database and applies schema + seed + default users
+itself (`src/db/bootstrap.ts`, awaited before the health check turns green).
+
+**First production decision (either way):** the seed creates three sample
 users with known passwords (`admin@rpms.local` / `Admin@2026!` etc.). Log in,
 change those passwords immediately (Users page), and delete any sample tenants
 or payments you don't want in production.
@@ -166,7 +170,7 @@ npx tsx -e "import {pool} from './src/config/db'; pool.query('select count(*) fr
 | Symptom | Cause | Fix |
 |---|---|---|
 | Health check fails, log shows `Could not connect to PostgreSQL` | Wrong/unreachable `DATABASE_URL` | Re-paste the **pooled** Neon URL, keep `?sslmode=require` |
-| Login returns 401 for every user | Seed users never created | Re-run `npm run db:setup` locally with `DATABASE_URL` pointing at Neon |
+| Login returns 401 for every user | Seed users never created and bootstrap didn't run | Check boot logs for `[bootstrap]` lines; if absent, re-run `npm run db:setup` locally with `DATABASE_URL` pointing at Neon |
 | `text` fields render with `[bracketed placeholders]` | Business branding not filled | Settings page → fill identity fields |
 | SMS recorded but never delivered | `SMS_PROVIDER=mock` | Set provider + credentials, redeploy |
 | Emailed receipts fail | `EMAIL_PROVIDER=mock` or missing `SMTP_*` | Configure SMTP, redeploy |

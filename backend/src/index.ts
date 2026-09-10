@@ -1,6 +1,7 @@
 import { createApp } from './app';
 import { env } from './config/env';
 import { pool } from './config/db';
+import { bootstrapIfEmpty } from './db/bootstrap';
 import { getSmsConfig } from './services/smsProvider';
 import { startSmsRetryJob, stopSmsRetryJob } from './services/smsRetryJob';
 import { startTenantRetentionJob, stopTenantRetentionJob } from './services/tenantRetentionJob';
@@ -10,6 +11,10 @@ const app = createApp();
 async function main() {
   try {
     await pool.query('SELECT 1');
+    // First-boot bootstrap (prod deploys onto a fresh, empty database): no-op
+    // on every subsequent boot. Awaited so the health check only turns green
+    // on a ready service.
+    await bootstrapIfEmpty();
     const server = app.listen(env.port, () => {
       // eslint-disable-next-line no-console
       console.log(`RPMS API listening on http://localhost:${env.port} (${env.nodeEnv})`);
