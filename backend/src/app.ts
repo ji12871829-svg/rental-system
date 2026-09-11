@@ -37,6 +37,18 @@ export function createApp() {
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
   app.use(globalLimiter);
 
+  // HSTS — browsers must refuse plain HTTP for this origin, ever. Response
+  // headers only; no effect on the API contract, so it applies to every
+  // route (API and static frontend alike).
+  if (isProd) {
+    app.use((_req, res, next) => {
+      // 1 year, applying to subdomains too; `preload` is deliberately omitted
+      // (the onrender.com subdomain can't pass the HSTS preload program).
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+      next();
+    });
+  }
+
   // Liveness + configuration diagnosis. Never exposes secret values — only
   // which env knobs are unset, so a failed deploy can be debugged from the
   // outside (Render health checks and the browser).
