@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 26 # matches local dev and Render's pinned NODE_VERSION (render.yaml)
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
@@ -46,9 +46,39 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 26 # matches local dev and Render's pinned NODE_VERSION (render.yaml)
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npx tsc -b --noEmit
       - run: npx vite build
+
+  # Mirrors the Render build 1:1: NODE_ENV=production (Render's default, which
+  # makes plain `npm ci` skip devDependencies) and the build command parsed
+  # straight out of render.yaml, so CI fails exactly where Render would if the
+  # two ever drift — e.g. a lost --include=dev turning `tsc -b` into a TS7016
+  # storm. The jobs above keep testing dev mode; this one guards the deploy.
+  render-build:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26 # matches local dev and Render's pinned NODE_VERSION (render.yaml)
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
+      - name: Execute render.yaml buildCommand under NODE_ENV=production
+        run: |
+          BUILD_CMD=$(python3 -c "import yaml; print(yaml.safe_load(open('render.yaml'))['services'][0]['buildCommand'])" 2>/dev/null \
+            || grep '^    buildCommand:' render.yaml | sed 's/^ *buildCommand: *//')
+          if [ -z "$BUILD_CMD" ]; then echo 'could not extract buildCommand from render.yaml' >&2; exit 1; fi
+          echo "Render buildCommand: $BUILD_CMD"
+          bash -c "$BUILD_CMD"
+      # Cheap guard: the predeploy gate only warns when frontend/dist is
+      # missing, but a same-origin deploy without it is still broken.
+      - name: Assert frontend/dist/index.html was produced
+        run: test -f frontend/dist/index.html

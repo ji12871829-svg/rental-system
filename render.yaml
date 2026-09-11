@@ -20,6 +20,11 @@ services:
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
+      # Pin Node to the version used in local development (v26.3.0). Render
+      # otherwise defaults to 24.14.1 for services created 2026-04-21+.
+      # Precedence: NODE_VERSION > .node-version > .nvmrc > engines.
+      - key: NODE_VERSION
+        value: 26.3.0
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL

@@ -88,6 +88,7 @@ npx tsx -e "import {pool} from './src/config/db'; pool.query('select count(*) fr
 
    | Key | Value | Notes |
    |---|---|---|
+   | `NODE_VERSION` | `26.3.0` | pin Node to the local-dev version; Render otherwise defaults to 24.x for new services |
    | `NODE_ENV` | `production` | enables prod cookie/SSL behavior + static serving |
    | `DATABASE_URL` | Neon pooled URL | `?sslmode=require` included |
    | `JWT_SECRET` | long random string | **required in prod** — app refuses to trust the dev fallback |
