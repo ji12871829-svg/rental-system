@@ -211,3 +211,33 @@ the first real tenant.
 | Emailed receipts fail | `EMAIL_PROVIDER=mock` or missing `SMTP_*` | Configure SMTP, redeploy |
 | App loads but every API call 404s | Built frontend served but API routes missing → usually a stale build | Dashboard → **Manual deploy → Clear build cache & deploy** |
 | Blank page after a deploy | Stale index.html referencing old hashed chunks | Hard refresh (Ctrl+Shift+R); the app also self-heals by reloading once on a failed chunk load |
+
+## 8. M-Pesa rent automation
+
+The system supports both Paybill/Till C2B confirmations and STK Push. Tenants
+must enter their unit number as the M-Pesa account/reference. Confirmed
+transactions are matched to the active tenant in that unit, posted as rent,
+calculated against the tenant's monthly balance, and sent through the existing
+receipt SMS flow. Unknown unit references are retained as `UNMATCHED` and do
+not create a rent payment.
+
+Set these environment variables in Render:
+
+| Key | Value |
+|---|---|
+| `MPESA_PROVIDER` | `daraja` |
+| `MPESA_CONSUMER_KEY` | Daraja consumer key |
+| `MPESA_CONSUMER_SECRET` | Daraja consumer secret |
+| `MPESA_SHORTCODE` | Paybill/Till shortcode |
+| `MPESA_PASSKEY` | Daraja passkey for STK Push |
+| `MPESA_CALLBACK_URL` | `https://<service>.onrender.com/api/mpesa/stk/callback` |
+| `MPESA_BASE_URL` | `https://sandbox.safaricom.co.ke` for testing, or the Daraja production URL |
+
+Register these HTTPS endpoints with Safaricom for C2B:
+
+- Validation URL: `https://<service>.onrender.com/api/mpesa/c2b/validate`
+- Confirmation URL: `https://<service>.onrender.com/api/mpesa/c2b/confirm`
+
+For real tenant SMS confirmations, also configure `SMS_PROVIDER` and its
+provider credentials. Keep `MPESA_PROVIDER=mock` in local development until
+Daraja credentials and callback URLs are ready.

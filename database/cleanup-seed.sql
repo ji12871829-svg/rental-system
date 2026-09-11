@@ -4,13 +4,13 @@
 -- The reverse of database/seed.sql. Use after go-live verification to wipe the
 -- demo tenants/payments/readings and start recording real data on a clean
 -- slate — without redeploying or re-bootstrapping (settings, the property,
--- floors, units and users are all preserved).
+-- floors and users are preserved; units are recreated from the clean baseline.
 --
---   KEPT:  users, settings, business_branding, properties, floors, units,
+--   KEPT:  users, settings, business_branding, properties and floors,
 --          audit_logs, privacy_requests (compliance register — never purged)
 --   DELETED: rent_payments, water_payments, water_meter_readings, receipts,
 --          sms_notifications, email_notifications, water_purchases, expenses,
---          the five sample tenants; units they occupied flip back to VACANT.
+--          the five sample tenants; all 24 baseline units are recreated vacant.
 --
 -- Run from a machine with the pooled Neon URL:
 --     psql "$DATABASE_URL" -f database/cleanup-seed.sql
@@ -82,6 +82,7 @@ WHERE occupancy_status = 'OCCUPIED'
 
 -- Children first (FK graph): notifications → receipts → payments → readings.
 DELETE FROM sms_notifications      WHERE tenant_id IS NOT NULL;
+DELETE FROM mpesa_transactions;
 DELETE FROM email_notifications    WHERE tenant_id IS NOT NULL;
 DELETE FROM receipts;
 DELETE FROM rent_payments;
@@ -90,11 +91,36 @@ DELETE FROM water_meter_readings;
 DELETE FROM water_purchases;
 DELETE FROM expenses;
 DELETE FROM tenants;
+DELETE FROM units;
+
+-- Recreate the clean unit baseline with the existing seeded rents. Water
+-- billing starts at unit 14 and continues through unit 24.
+INSERT INTO units (property_id, floor_id, unit_number, unit_type, monthly_rent, water_enabled, occupancy_status)
+SELECT p.id, fl.id, u.unit_number, u.unit_type, u.monthly_rent,
+       u.unit_number::int BETWEEN 14 AND 24 AS water_enabled,
+       'VACANT'
+FROM properties p
+JOIN floors fl ON fl.property_id = p.id
+JOIN (VALUES
+  ('1',  1, 'Room',      4000), ('2',  1, 'Room',      2500),
+  ('3',  1, 'Room',      3000), ('4',  1, 'Room',      3000),
+  ('5',  1, 'Room',      3000), ('6',  1, 'Room',      4000),
+  ('7',  2, 'Room',      4000), ('8',  2, 'Room',      2500),
+  ('9',  2, 'Room',      3000), ('10', 2, 'Room',      3000),
+  ('11', 2, 'Room',      3000), ('12', 2, 'Room',      4000),
+  ('13', 2, 'Room',      2500), ('14', 3, 'Bedsitter', 5500),
+  ('15', 3, '1 Bedroom', 9000), ('16', 3, 'Bedsitter', 5000),
+  ('17', 3, 'Bedsitter', 5000), ('18', 3, 'Bedsitter', 5000),
+  ('19', 4, 'Bedsitter', 5500), ('20', 4, '1 Bedroom', 9000),
+  ('21', 4, 'Bedsitter', 5000), ('22', 4, 'Bedsitter', 5000),
+  ('23', 4, 'Bedsitter', 5000), ('24', 4, '2 Bedroom', 11000)
+) AS u(unit_number, floor_number, unit_type, monthly_rent)
+  ON u.floor_number = fl.floor_number;
 
 COMMIT;
 
 -- Post-cleanup report: everything transactional should read 0; the config
--- tables keep their counts (24 units, 3 users, 1 settings row, …).
+-- tables keep their configuration counts (24 units, 3 users, 1 settings row, …).
 SELECT 'tenants' AS table, count(*) FROM tenants
 UNION ALL SELECT 'rent_payments',      count(*) FROM rent_payments
 UNION ALL SELECT 'water_payments',     count(*) FROM water_payments

@@ -5,6 +5,7 @@ import { validateBody, validateParams } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
 import { createRentPayment, deleteRentPayment, listRentPayments, monthlyRentSummary, rentPaymentsCsv } from '../services/rentService';
 import { getSettings } from '../services/settingsService';
+import { initiateTenantStkPush } from '../services/mpesaService';
 
 const router = Router();
 router.use(requireAuth);
@@ -49,6 +50,16 @@ const createSchema = z.object({
 router.post('/payments', validateBody(createSchema), asyncHandler(async (req, res) => {
   const result = await createRentPayment(req.body as any, req.user!.userId);
   res.status(201).json({ data: result });
+}));
+
+const stkPushSchema = z.object({
+  tenantId: z.number().int().positive(),
+  amount: z.number().positive('STK amount must be greater than zero.'),
+});
+
+router.post('/stk-push', validateBody(stkPushSchema), asyncHandler(async (req, res) => {
+  const result = await initiateTenantStkPush(req.body.tenantId, req.body.amount);
+  res.status(202).json({ data: result });
 }));
 
 const paramsSchema = z.object({ id: z.coerce.number().int().positive() });

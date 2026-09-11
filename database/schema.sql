@@ -145,6 +145,41 @@ CREATE INDEX IF NOT EXISTS idx_rent_payments_month  ON rent_payments(billing_yea
 CREATE INDEX IF NOT EXISTS idx_rent_payments_date   ON rent_payments(payment_date);
 
 -- ---------------------------------------------------------------------------
+-- mpesa_transactions — provider callbacks are retried, so provider IDs and
+-- STK checkout IDs are unique before any rent payment is posted.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS mpesa_transactions (
+  id                   SERIAL PRIMARY KEY,
+  source               VARCHAR(10) NOT NULL CHECK (source IN ('C2B', 'STK')),
+  transaction_id      VARCHAR(100),
+  checkout_request_id VARCHAR(100),
+  merchant_request_id VARCHAR(100),
+  account_reference   VARCHAR(100) NOT NULL,
+  amount              NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+  transaction_date    TIMESTAMPTZ,
+  phone_number        VARCHAR(30),
+  status              VARCHAR(20) NOT NULL DEFAULT 'RECEIVED'
+                        CHECK (status IN ('RECEIVED', 'MATCHED', 'POSTED', 'UNMATCHED', 'FAILED')),
+  tenant_id           INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
+  rent_payment_id     INTEGER REFERENCES rent_payments(id) ON DELETE SET NULL,
+  error_message       TEXT,
+  raw_payload         JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mpesa_transaction_id
+  ON mpesa_transactions(transaction_id) WHERE transaction_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mpesa_checkout_request_id
+  ON mpesa_transactions(checkout_request_id) WHERE checkout_request_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mpesa_status ON mpesa_transactions(status);
+CREATE INDEX IF NOT EXISTS idx_mpesa_account_reference ON mpesa_transactions(account_reference);
+CREATE INDEX IF NOT EXISTS idx_mpesa_created ON mpesa_transactions(created_at);
+
+DROP TRIGGER IF EXISTS trg_mpesa_transactions_updated_at ON mpesa_transactions;
+CREATE TRIGGER trg_mpesa_transactions_updated_at BEFORE UPDATE ON mpesa_transactions
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ---------------------------------------------------------------------------
 -- water_meter_readings — one reading per unit per billing month.
 -- The CHECK below makes "current lower than previous" impossible at the DB
 -- level; the service layer returns the friendly error message first.

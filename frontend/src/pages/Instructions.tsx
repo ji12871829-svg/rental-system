@@ -8,7 +8,7 @@ const SECTIONS: { title: string; icon: LucideIcon; body: string[] }[] = [
     body: [
       '1. Tenants — add a tenant and assign them to a unit. The unit becomes OCCUPIED automatically.',
       '2. Rent Collection — record rent payments. Expected rent is fetched automatically from the unit. You can record several payments for the same month; the status (PAID / PARTIAL / UNPAID / OVERPAID) is calculated for you.',
-      '3. Water Meter — record meter readings for Units 12–23 only. The previous reading is filled in automatically; the bill is Consumption × Water Rate. Units 1–11 and Unit 24 are never billed for water.',
+      '3. Water Meter — record meter readings for Units 14–24 only. The previous reading is filled in automatically; the bill is Consumption × Water Rate. Units 1–13 are never billed for water.',
       '4. Water Payments — record what tenants pay towards their water bills.',
       '5. Water Supply Costs — record how much you spend buying water. Water Collected − Supply Cost = Surplus or Deficit.',
       '6. Expenses — record property expenses. Total Money Collected − Total Expenses = Net Property Income.',
@@ -31,7 +31,7 @@ const SECTIONS: { title: string; icon: LucideIcon; body: string[] }[] = [
     title: 'Water billing rule',
     icon: Droplets,
     body: [
-      'Water billing applies ONLY to Units 12–23. Units 1–11 and Unit 24 always have a water bill of KSh 0.',
+      'Water billing applies ONLY to Units 14–24. Units 1–13 always have a water bill of KSh 0.',
       'This is enforced by the database itself — the system refuses meter readings or water payments for non-water units.',
       'The water rate (KSh 200) is set once in Settings and every bill uses the current rate.',
     ],

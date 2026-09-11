@@ -60,6 +60,14 @@ export const env = {
   twilioAuthToken: process.env.TWILIO_AUTH_TOKEN || '',
   twilioFrom: process.env.TWILIO_FROM || '',
   twilioMessagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID || '',
+  mpesaProvider: (process.env.MPESA_PROVIDER || 'mock').toLowerCase() as 'mock' | 'daraja',
+  mpesaConsumerKey: process.env.MPESA_CONSUMER_KEY || '',
+  mpesaConsumerSecret: process.env.MPESA_CONSUMER_SECRET || '',
+  mpesaShortcode: process.env.MPESA_SHORTCODE || '',
+  mpesaPasskey: process.env.MPESA_PASSKEY || '',
+  mpesaCallbackUrl: process.env.MPESA_CALLBACK_URL || '',
+  mpesaBaseUrl: process.env.MPESA_BASE_URL || 'https://sandbox.safaricom.co.ke',
+  mpesaTimeoutMs: Number(process.env.MPESA_TIMEOUT_MS) || 15_000,
 };
 
 export const isTest = env.nodeEnv === 'test';

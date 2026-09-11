@@ -92,7 +92,7 @@ export interface ReadingInput {
   notes?: string;
 }
 
-// STRICT WATER RULE: only water_enabled units (12–23 in this property) may
+// STRICT WATER RULE: only water_enabled units (14–24 in this property) may
 // have readings. Enforced here AND by the DB trigger.
 async function assertWaterEnabled(unitId: number): Promise<{ unit_number: string; tenant_id: number | null }> {
   const unit = await queryOne<{ id: number; unit_number: string; water_enabled: boolean; occupancy_status: string }>(

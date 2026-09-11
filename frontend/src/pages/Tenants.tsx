@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
-import { Plus } from 'lucide-react';
+import { MoreHorizontal, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Button, EmptyState, Field, Modal, PageHeader, Select, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
+import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { DataRequestLetterModal, type LetterData } from '../components/DataRequestLetter';
 import { api, qs } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -34,17 +34,19 @@ export default function Tenants() {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
+  const [page, setPage] = useState(1);
   const [edit, setEdit] = useState<Tenant | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [detail, setDetail] = useState<Tenant | null>(null);
   const [transferTarget, setTransferTarget] = useState<Tenant | null>(null);
   const [privacyRequest, setPrivacyRequest] = useState<{ tenant: Tenant; action: 'json' | 'csv' | 'erase' | 'letter' } | null>(null);
   const [letter, setLetter] = useState<LetterData | null>(null);
+  const [actionMenuId, setActionMenuId] = useState<number | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const { data, loading, error } = useFetch(
-    () => api.list<Tenant>(`/api/tenants${qs({ q, status: status || undefined, limit: 100 })}`),
-    [q, status, refreshKey]
+    () => api.list<Tenant>(`/api/tenants${qs({ q, status: status || undefined, page, limit: 25 })}`),
+    [q, status, page, refreshKey]
   );
   const refresh = () => setRefreshKey((k) => k + 1);
 
@@ -60,15 +62,15 @@ export default function Tenants() {
       />
 
       <div className="mb-4 flex flex-wrap gap-2">
-        <TextInput placeholder="Search name, phone, email or unit…" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-xs" />
-        <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-40">
+        <TextInput placeholder="Search name, phone, email or unit…" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} className="max-w-xs" />
+        <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="w-40">
           <option value="">All statuses</option>
           <option value="ACTIVE">Active</option>
           <option value="MOVED_OUT">Moved out</option>
         </Select>
       </div>
 
-      {loading && <div className="text-sm text-gray-500">Loading…</div>}
+      {loading && <SkeletonTable cols={8} />}
       {error && <div className="text-sm text-red-600">{error}</div>}
       {!loading && !error && data && (
         <div className="table-scroll">
@@ -108,17 +110,29 @@ export default function Tenants() {
                     )}
                   </td>
                   <td>
-                    <div className="flex flex-wrap gap-1">
-                      <Button variant="ghost" className="!px-2 !py-1 text-xs" onClick={async () => {
+                    <div className="relative flex justify-end">
+                      <button
+                        type="button"
+                        className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
+                        aria-label={`Actions for ${t.full_name}`}
+                        aria-expanded={actionMenuId === t.id}
+                        onClick={() => setActionMenuId((current) => current === t.id ? null : t.id)}
+                      >
+                        <MoreHorizontal size={18} strokeWidth={1.75} aria-hidden />
+                      </button>
+                      {actionMenuId === t.id && <div className="absolute right-0 top-10 z-20 min-w-36 rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
+                        <Button variant="ghost" className="w-full justify-start !px-3 !py-2 text-xs" onClick={async () => {
+                          setActionMenuId(null);
                         const res = await api.get<{ data: Tenant }>(`/api/tenants/${t.id}`);
                         setDetail(res.data);
                       }}>View</Button>
-                      <Button variant="ghost" className="!px-2 !py-1 text-xs" onClick={() => navigate(`/ledger?tenant=${t.id}`)}>Ledger</Button>
+                      <Button variant="ghost" className="w-full justify-start !px-3 !py-2 text-xs" onClick={() => { setActionMenuId(null); navigate(`/ledger?tenant=${t.id}`); }}>Ledger</Button>
                       {canManage && t.status === 'ACTIVE' && (
                         <>
-                          <Button variant="ghost" className="!px-2 !py-1 text-xs" onClick={() => { setEdit(t); setShowForm(true); }}>Edit</Button>
-                          <Button variant="ghost" className="!px-2 !py-1 text-xs" onClick={() => setTransferTarget(t)}>Transfer</Button>
-                          <Button variant="ghost" className="!px-2 !py-1 text-xs text-red-600" onClick={async () => {
+                          <Button variant="ghost" className="w-full justify-start !px-3 !py-2 text-xs" onClick={() => { setActionMenuId(null); setEdit(t); setShowForm(true); }}>Edit</Button>
+                          <Button variant="ghost" className="w-full justify-start !px-3 !py-2 text-xs" onClick={() => { setActionMenuId(null); setTransferTarget(t); }}>Transfer</Button>
+                          <Button variant="ghost" className="w-full justify-start !px-3 !py-2 text-xs text-red-600" onClick={async () => {
+                            setActionMenuId(null);
                             if (!window.confirm(`Move ${t.full_name} out of unit ${t.unit_number}?`)) return;
                             try {
                               await api.post(`/api/tenants/${t.id}/move-out`, { moveOutDate: new Date().toISOString().slice(0, 10) });
@@ -129,12 +143,14 @@ export default function Tenants() {
                         </>
                       )}
                       {isAdmin && (
-                        <Button variant="ghost" className="!px-2 !py-1 text-xs text-red-600" onClick={async () => {
+                        <Button variant="ghost" className="w-full justify-start !px-3 !py-2 text-xs text-red-600" onClick={async () => {
+                          setActionMenuId(null);
                           if (!window.confirm(`Permanently delete ${t.full_name}?`)) return;
                           try { await api.del(`/api/tenants/${t.id}`); toast('success', 'Tenant deleted.'); refresh(); }
                           catch (err) { toast('error', (err as Error).message); }
                         }}>Delete</Button>
                       )}
+                      </div>}
                     </div>
                   </td>
                 </tr>
@@ -144,6 +160,7 @@ export default function Tenants() {
           {data.data.length === 0 && <div className="p-6"><EmptyState message="No tenants found." /></div>}
         </div>
       )}
+      {!loading && !error && data && <Pagination page={data.pagination.page} totalPages={data.pagination.totalPages} onChange={setPage} />}
 
       <TenantForm open={showForm} tenant={edit} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); refresh(); toast('success', edit ? 'Tenant updated.' : 'Tenant added.'); }} />
 

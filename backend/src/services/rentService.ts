@@ -108,7 +108,7 @@ export async function listRentPayments(filters: RentPaymentFilters): Promise<{ r
 
 // The full payment transaction (spec §43): validate → record → receipt →
 // SMS prep → audit, all-or-nothing.
-export async function createRentPayment(input: RentPaymentInput, userId: number): Promise<unknown> {
+export async function createRentPayment(input: RentPaymentInput, userId: number | null): Promise<unknown> {
   const tenant = await queryOne<{ id: number; unit_id: number | null; full_name: string; status: string }>(
     'SELECT id, unit_id, full_name, status FROM tenants WHERE id = $1',
     [input.tenantId]

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
-import { Button, EmptyState, Field, Modal, PageHeader, Select, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
+import { Button, EmptyState, Field, Modal, PageHeader, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { api, qs } from '../lib/api';
 import { MONTHS, formatDate, money } from '../lib/format';
 import { useReportingYear } from '../lib/useReportingYear';
@@ -50,7 +50,7 @@ export default function WaterMeter() {
     <div>
       <PageHeader
         title="Water Meter"
-        subtitle={`Units 12–23 only — readings shown for reporting year ${reportingYear ?? '…'} (set in Settings); the previous reading is filled in automatically`}
+        subtitle={`Units 14–24 only — readings shown for reporting year ${reportingYear ?? '…'} (set in Settings); the previous reading is filled in automatically`}
         actions={<Button onClick={() => setShowForm(true)}><Plus size={16} strokeWidth={2} aria-hidden /> Record Reading</Button>}
       />
 
@@ -65,7 +65,7 @@ export default function WaterMeter() {
         </Select>
       </div>
 
-      {loading && <div className="text-sm text-gray-500">Loading…</div>}
+      {loading && <SkeletonTable cols={12} />}
       {error && <div className="text-sm text-red-600">{error}</div>}
       {!loading && !error && data && (
         <div className="table-scroll">

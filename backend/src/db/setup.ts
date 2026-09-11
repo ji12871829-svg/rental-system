@@ -1,6 +1,6 @@
-// `npm run db:setup` — idempotent. Applies the schema, seeds the 24 units and
-// sample data, creates the default users (password hashed at runtime), then
-// backfills receipts + SMS notifications for seeded payments.
+// `npm run db:setup` — idempotent. Applies the schema, seeds the 24-unit clean
+// configuration, creates the default users (password hashed at runtime), then
+// backfills receipts + SMS notifications for any existing payments.
 import bcrypt from 'bcryptjs';
 import fs from 'fs';
 import path from 'path';

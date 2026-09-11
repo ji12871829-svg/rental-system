@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Button, EmptyState, Field, PageHeader, Select, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
+import { Button, EmptyState, Field, PageHeader, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { api, qs } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { MONTHS, formatDate, methodLabel, money } from '../lib/format';
@@ -43,6 +43,7 @@ export default function RentCollection() {
   const [paymentReference, setPaymentReference] = useState('');
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
+  const [stkBusy, setStkBusy] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [monthFilter, setMonthFilter] = useState('');
   const [yearFilter, setYearFilter] = useState('');
@@ -118,6 +119,25 @@ export default function RentCollection() {
     }
   }
 
+  async function requestStkPush() {
+    if (tenantId === '' || !amount || Number(amount) <= 0) {
+      toast('error', 'Choose a tenant and enter an amount greater than zero.');
+      return;
+    }
+    setStkBusy(true);
+    try {
+      const res = await api.post<{ data: { accountReference: string } }>('/api/rent/stk-push', {
+        tenantId,
+        amount: Number(amount),
+      });
+      toast('success', `M-Pesa payment prompt sent to ${selectedTenant?.full_name ?? 'the tenant'} for unit ${res.data.accountReference}. The rent will post automatically after confirmation.`);
+    } catch (err) {
+      toast('error', (err as Error).message);
+    } finally {
+      setStkBusy(false);
+    }
+  }
+
   return (
     <div>
       <PageHeader title="Rent Collection" subtitle="Expected rent and tenant details are retrieved automatically — status is calculated from totals" />
@@ -163,11 +183,16 @@ export default function RentCollection() {
               <Field label="Reference"><TextInput value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="M-Pesa code…" /></Field>
             </div>
             <Field label="Notes"><TextInput value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
-            <Button onClick={recordPayment} disabled={busy} className="w-full">
-              {busy ? 'Recording…' : 'Record Rent Payment'}
-            </Button>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <Button onClick={recordPayment} disabled={busy || stkBusy}>
+                {busy ? 'Recording…' : 'Record Rent Payment'}
+              </Button>
+              <Button variant="secondary" onClick={requestStkPush} disabled={busy || stkBusy}>
+                {stkBusy ? 'Sending prompt…' : 'Send M-Pesa Prompt'}
+              </Button>
+            </div>
             <p className="text-xs text-gray-400">
-              Multiple payments per tenant and month are supported — e.g. 4,000 + 3,000 + 2,000 for a 9,000 rent becomes PAID.
+              M-Pesa prompts use the tenant&apos;s unit number as the account reference. Confirmed payments post automatically; manual entries also support multiple payments per month.
             </p>
           </div>
         </div>
@@ -188,6 +213,9 @@ export default function RentCollection() {
             </div>
           </div>
           <div className="table-scroll">
+            {!payments ? (
+              <SkeletonTable cols={8} rows={6} />
+            ) : (
             <table>
               <thead>
                 <tr>
@@ -210,6 +238,7 @@ export default function RentCollection() {
                 ))}
               </tbody>
             </table>
+            )}
             {payments && payments.data.length === 0 && <div className="p-6"><EmptyState message="No payments recorded for this filter." /></div>}
           </div>
           <div className="mt-3 flex items-center justify-between text-xs text-gray-500">

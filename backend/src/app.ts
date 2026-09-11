@@ -14,6 +14,7 @@ import privacyRequestRoutes from './routes/privacyRequests';
 import expenseRoutes from './routes/expenses';
 import receiptRoutes from './routes/receipts';
 import rentRoutes from './routes/rent';
+import mpesaRoutes from './routes/mpesa';
 import reportRoutes from './routes/reports';
 import settingsRoutes from './routes/settings';
 import smsRoutes from './routes/sms';
@@ -80,6 +81,7 @@ export function createApp() {
   app.use('/api/units', unitRoutes);
   app.use('/api/tenants', tenantRoutes);
   app.use('/api/rent', rentRoutes);
+  app.use('/api/mpesa', mpesaRoutes);
   app.use('/api/water', waterRoutes);
   app.use('/api/expenses', expenseRoutes);
   app.use('/api/receipts', receiptRoutes);

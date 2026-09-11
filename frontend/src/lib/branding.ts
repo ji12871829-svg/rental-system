@@ -9,7 +9,7 @@
 // with the real details when available.
 export const branding = {
   // --- Product name (sidebar, login, page titles, banner, receipts) ------
-  appName: 'RPMS',
+  appName: 'Olbano Plaza',
   // Short form used as a heading where space is tight (login, printed receipt).
   appNameLong: 'Olbano Property Management',
   // Full form used in the footer tagline.

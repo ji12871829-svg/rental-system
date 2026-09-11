@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
-import { Button, EmptyState, Field, Modal, PageHeader, Select, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
+import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { api, qs } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { money } from '../lib/format';
@@ -25,14 +25,15 @@ export default function Units() {
   const [q, setQ] = useState('');
   const [floor, setFloor] = useState('');
   const [occupancy, setOccupancy] = useState('');
+  const [page, setPage] = useState(1);
   const [edit, setEdit] = useState<Unit | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [history, setHistory] = useState<unknown[] | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const { data, loading, error } = useFetch(
-    () => api.list<Unit>(`/api/units${qs({ q, floorId: floor || undefined, occupancyStatus: occupancy || undefined, limit: 100 })}`),
-    [q, floor, occupancy, refreshKey]
+    () => api.list<Unit>(`/api/units${qs({ q, floorId: floor || undefined, occupancyStatus: occupancy || undefined, page, limit: 25 })}`),
+    [q, floor, occupancy, page, refreshKey]
   );
 
   const refresh = () => setRefreshKey((k) => k + 1);
@@ -46,19 +47,19 @@ export default function Units() {
       />
 
       <div className="mb-4 flex flex-wrap gap-2">
-        <TextInput placeholder="Search unit, type or tenant…" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-xs" />
-        <Select value={floor} onChange={(e) => setFloor(e.target.value)} className="w-40">
+        <TextInput placeholder="Search unit, type or tenant…" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} className="max-w-xs" />
+        <Select value={floor} onChange={(e) => { setFloor(e.target.value); setPage(1); }} className="w-40">
           <option value="">All floors</option>
           {[1, 2, 3, 4].map((f) => <option key={f} value={f}>{['', 'First Floor', 'Second Floor', 'Third Floor', 'Fourth Floor'][f]}</option>)}
         </Select>
-        <Select value={occupancy} onChange={(e) => setOccupancy(e.target.value)} className="w-40">
+        <Select value={occupancy} onChange={(e) => { setOccupancy(e.target.value); setPage(1); }} className="w-40">
           <option value="">All statuses</option>
           <option value="OCCUPIED">Occupied</option>
           <option value="VACANT">Vacant</option>
         </Select>
       </div>
 
-      {loading && <div className="text-sm text-gray-500">Loading…</div>}
+      {loading && <SkeletonTable cols={9} />}
       {error && <div className="text-sm text-red-600">{error}</div>}
       {!loading && !error && data && (
         <div className="table-scroll">
@@ -98,6 +99,7 @@ export default function Units() {
           {data.data.length === 0 && <div className="p-6"><EmptyState message="No units found." /></div>}
         </div>
       )}
+      {!loading && !error && data && <Pagination page={data.pagination.page} totalPages={data.pagination.totalPages} onChange={setPage} />}
 
       <UnitForm
         open={showForm}
@@ -176,7 +178,7 @@ function UnitForm({ open, unit, onClose, onSaved }: { open: boolean; unit: Unit 
         </div>
         {waterEnabled && (parseInt(unitNumber, 10) < 12 || parseInt(unitNumber, 10) > 23 || Number.isNaN(parseInt(unitNumber, 10))) && (
           <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            Note: the business rule allows water billing for units 12–23 only. The database will reject water transactions for other units.
+            Note: the business rule allows water billing for units 14–24 only. The database will reject water transactions for other units.
           </div>
         )}
         <div className="flex justify-end gap-2">

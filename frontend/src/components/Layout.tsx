@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BrandMark } from './BrandMark';
 import { Suspense } from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, BookUser, Building2, CalendarDays,
-  Droplets, FileBarChart, FileText, Gauge, LayoutDashboard, Loader2, LogOut, Menu, ReceiptText, Settings,
+  ChevronDown, Droplets, FileBarChart, FileText, Gauge, LayoutDashboard, Loader2, LogOut, Menu, ReceiptText, Settings,
   Smartphone, Ticket, Users as UsersIcon, Wallet, X,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
@@ -72,8 +72,15 @@ const NAV_SECTIONS: NavSection[] = [
 export default function Layout() {
   const { legalNameDisplay, lastUpdatedDisplay } = useBranding();
   const { user, logout } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    Overview: true,
+    Operations: true,
+    Management: true,
+    Help: true,
+  });
 
   const visibleSections = NAV_SECTIONS.map((section) => ({
     ...section,
@@ -83,6 +90,15 @@ export default function Layout() {
       return true;
     }),
   })).filter((section) => section.items.length > 0);
+
+  useEffect(() => {
+    const activeSection = visibleSections.find((section) => section.items.some((item) => (
+      item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to)
+    )));
+    if (activeSection?.title) {
+      setOpenSections((current) => ({ ...current, [activeSection.title as string]: true }));
+    }
+  }, [location.pathname, user?.role]);
 
   function handleLogout() {
     logout();
@@ -94,11 +110,17 @@ export default function Layout() {
       {visibleSections.map((section) => (
         <div key={section.title ?? 'section'} className="space-y-1.5">
           {section.title && (
-            <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            <button
+              type="button"
+              aria-expanded={openSections[section.title] ?? true}
+              onClick={() => setOpenSections((current) => ({ ...current, [section.title as string]: !(current[section.title as string] ?? true) }))}
+              className="flex w-full items-center justify-between px-2 pb-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 transition-colors hover:text-white"
+            >
               {section.title}
-            </div>
+              <ChevronDown size={14} className={`transition-transform duration-150 ${openSections[section.title] ?? true ? '' : '-rotate-90'}`} aria-hidden />
+            </button>
           )}
-          {section.items.map((item) => (
+          {(openSections[section.title ?? 'section'] ?? true) && section.items.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -144,14 +166,14 @@ export default function Layout() {
   );
 
   return (
-    <div className="flex h-screen bg-gray-100 [height:100dvh]">
+    <div className="flex h-[100dvh] bg-gray-100">
       {/* Desktop sidebar */}
       <aside className="hidden w-60 shrink-0 flex-col bg-slate-800 md:flex">
         {/* Logo links home. */}
         <Link to="/" className="flex items-center gap-2.5 px-4 py-4 transition-opacity duration-150 hover:opacity-90" aria-label={`${branding.appName} — go to dashboard`}>
           <BrandMark className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500 text-white" iconSize={18} />
           <div>
-            <div className="text-sm font-bold text-white">{branding.appName}</div>
+            <div className="text-sm font-bold text-white">Olbano Plaza</div>
             <div className="text-[11px] text-slate-400">Property Manager</div>
           </div>
         </Link>
@@ -165,7 +187,7 @@ export default function Layout() {
           <div className="absolute inset-0 bg-gray-900/60 animate-in fade-in duration-200" onClick={() => setMobileOpen(false)} />
           <aside className="absolute left-0 top-0 flex h-full w-64 flex-col bg-slate-800 shadow-2xl animate-in slide-in-from-left-64 duration-200">
             <div className="flex items-center justify-between px-4 py-4">
-              <span className="text-sm font-bold text-white">{branding.appName}</span>
+              <span className="text-sm font-bold text-white">Olbano Plaza</span>
               <button
                 onClick={() => setMobileOpen(false)}
                 className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-300 transition-colors duration-150 hover:bg-slate-700 hover:text-white"
@@ -195,7 +217,7 @@ export default function Layout() {
             <div className="flex items-center gap-2 md:hidden">
               <Link to="/" className="flex items-center gap-2" aria-label={`${branding.appName} — go to dashboard`}>
                 <BrandMark className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-600 text-white" iconSize={16} />
-                <span className="text-sm font-bold text-gray-900">{branding.appName}</span>
+                <span className="text-sm font-bold text-gray-900">Olbano Plaza</span>
               </Link>
             </div>
           </div>

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Download, Plus } from 'lucide-react';
-import { Button, EmptyState, Field, Modal, PageHeader, Select, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
+import { Button, EmptyState, Field, Modal, PageHeader, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { api, qs } from '../lib/api';
 import { MONTHS, formatDate, methodLabel, money } from '../lib/format';
 import { reportingYearOptions, useReportingYear } from '../lib/useReportingYear';
@@ -41,7 +41,7 @@ export default function WaterPayments() {
     [monthFilter, yearFilter, refreshKey]
   );
 
-  const waterTenants = useMemo(() => (tenants?.data ?? []).filter((t) => t.unit_number && Number(t.unit_number) >= 12 && Number(t.unit_number) <= 23), [tenants]);
+  const waterTenants = useMemo(() => (tenants?.data ?? []).filter((t) => t.unit_number && Number(t.unit_number) >= 14 && Number(t.unit_number) <= 24), [tenants]);
 
   // CSV export mirrors the rent page: respects the month/year filters.
   const exportUrl = useMemo(() => {
@@ -99,7 +99,7 @@ export default function WaterPayments() {
         </a>
       </div>
 
-      {loading && <div className="text-sm text-gray-500">Loading…</div>}
+      {loading && <SkeletonTable cols={11} />}
       {error && <div className="text-sm text-red-600">{error}</div>}
       {!loading && !error && data && (
         <div className="table-scroll">
@@ -188,7 +188,7 @@ function WaterPaymentForm({ open, tenants, onClose, onSaved }: { open: boolean; 
   return (
     <Modal open={open} title="Record Water Payment" onClose={onClose}>
       <div className="space-y-4">
-        <Field label="Tenant (water units 12–23)">
+        <Field label="Tenant (water units 14–24)">
           <Select value={tenantId} onChange={(e) => setTenantId(e.target.value === '' ? '' : Number(e.target.value))}>
             <option value="">— Select tenant —</option>
             {tenants.map((t) => <option key={t.id} value={t.id}>{t.full_name} — Unit {t.unit_number}</option>)}
