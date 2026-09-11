@@ -7,3 +7,6 @@ coverage/
 # Build artifacts — built by CI/Render, never committed
 backend/dist/
 frontend/dist/
+.neon
+.env.local
+env.txt

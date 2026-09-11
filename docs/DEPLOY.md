@@ -80,7 +80,7 @@ npx tsx -e "import {pool} from './src/config/db'; pool.query('select count(*) fr
    | Setting | Value |
    |---|---|
    | Runtime | Node |
-   | Build command | `cd frontend && npm ci && npm run build && cd ../backend && npm ci && npm run build` |
+   | Build command | `cd frontend && npm ci --include=dev && npm run build && cd ../backend && npm ci --include=dev && npm run build` |
    | Start command | `npm run start --prefix backend` |
    | Health check path | `/api/health` |
 
@@ -119,6 +119,40 @@ npx tsx -e "import {pool} from './src/config/db'; pool.query('select count(*) fr
 - Deep-link check: paste `https://…/tenants` in a fresh tab — the SPA fallback
   should render the tenants page, not a 404.
 - Offline/PWA: the service worker registers on second load; the app installs.
+
+### 3a. Scripted verification (recommended)
+
+Everything above except the in-browser PWA install is scripted (plain Node,
+no dependencies):
+
+```bash
+node scripts/verify-live.mjs https://<your-service>.onrender.com
+```
+
+It checks health + config knobs, the SPA index, manifest/service worker/icons,
+four deep links, the API 404 shape, HTTPS/HSTS, then signs in with the seed
+admin and calls three authed read endpoints. Exit code 0 = all green.
+
+- After changing passwords: `RPMS_ADMIN_EMAIL=… RPMS_ADMIN_PASSWORD=… node scripts/verify-live.mjs …`
+- A 401 on login with the seed credentials usually means the password was
+  already changed (good) or seed users were removed — not a deploy bug.
+
+### 3b. Cleaning the sample seed data (go-live)
+
+The bootstrap seeds 5 sample tenants with a year of demo payments. Before real
+money flows, wipe just the sample data — configuration (settings, property,
+floors, 24 units) and users are kept:
+
+```bash
+psql "$DATABASE_URL" -f database/cleanup-seed.sql
+# or paste the file into the Neon console → SQL Editor
+```
+
+The script is transactional and guarded: it refuses to run if any row looks
+user-created (a non-sample tenant, a payment without a `SEED-RP-*` reference,
+…), so it cannot eat real data. Occupied sample units flip back to VACANT.
+Order: run it once verification is done and before (or right after) recording
+the first real tenant.
 
 ## 4. Go-live checklist (before real money flows)
 

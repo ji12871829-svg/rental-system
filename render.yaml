@@ -13,9 +13,9 @@ services:
     runtime: node
     plan: free
     # Build the frontend first (outputs frontend/dist), then compile the API.
-    # --include=dev: TypeScript must be installed to build (Render defaults
-    # NODE_ENV=production, which would skip devDependencies otherwise).
-    buildCommand: cd frontend && npm ci && npm run build && cd ../backend && npm ci --include=dev && npm run build
+    # --include=dev on BOTH installs: TypeScript must be installed to build (Render
+    # defaults NODE_ENV=production, which would skip devDependencies otherwise).
+    buildCommand: cd frontend && npm ci --include=dev && npm run build && cd ../backend && npm ci --include=dev && npm run build
     startCommand: npm run start --prefix backend
     healthCheckPath: /api/health
     autoDeploy: true

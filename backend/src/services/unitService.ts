@@ -58,7 +58,9 @@ export async function listUnits(filters: UnitFilters): Promise<{ rows: unknown[]
      JOIN floors f ON f.id = u.floor_id
      LEFT JOIN tenants t ON t.unit_id = u.id AND t.status = 'ACTIVE'
      ${whereSql}
-     ORDER BY (u.unit_number ~ '^[0-9]+$') DESC, (u.unit_number::int) ASC, u.unit_number ASC
+     ORDER BY (u.unit_number ~ '^[0-9]+$') DESC,
+              (CASE WHEN u.unit_number ~ '^[0-9]+$' THEN u.unit_number::int END) ASC,
+              u.unit_number ASC
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
     [...params, filters.limit, offset]
   );
