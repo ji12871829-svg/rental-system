@@ -1,4 +1,5 @@
 import { poolExec, query, queryOne, withTransaction, type SqlExec } from '../config/db';
+import { paginate } from './paginate';
 import type { Pagination, ReceiptType } from '../types';
 import { conflict, notFound } from '../utils/httpError';
 import { balanceDue, formatReceiptNumber, receiptPrefixFor } from '../utils/businessRules';
@@ -103,26 +104,17 @@ export async function listReceipts(filters: ReceiptFilters): Promise<{ rows: unk
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  const totalRow = await queryOne<{ count: string }>(
-    `SELECT COUNT(*)::text AS count FROM receipts r ${whereSql}`,
-    params
-  );
-  const total = Number(totalRow?.count ?? 0);
-  const offset = (filters.page - 1) * filters.limit;
-  const rows = await query(
-    `SELECT r.*, t.full_name AS tenant_name, t.phone_number, u.unit_number, u.unit_type
-     FROM receipts r
+  return paginate<Record<string, unknown>>({
+    selectSql: `r.*, t.full_name AS tenant_name, t.phone_number, u.unit_number, u.unit_type`,
+    tableSql: `FROM receipts r
      JOIN tenants t ON t.id = r.tenant_id
-     JOIN units u ON u.id = r.unit_id
-     ${whereSql}
-     ORDER BY r.generated_at DESC
-     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    [...params, filters.limit, offset]
-  );
-  return {
-    rows,
-    pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
-  };
+     JOIN units u ON u.id = r.unit_id`,
+    whereSql,
+    params,
+    orderBy: `ORDER BY r.generated_at DESC`,
+    page: filters.page,
+    limit: filters.limit,
+  });
 }
 
 export async function getReceiptById(id: number): Promise<unknown> {
@@ -246,13 +238,18 @@ export async function backfillReceipts(): Promise<number> {
        WHERE rp.receipt_number IS NULL
        ORDER BY rp.payment_date, rp.id`
     );
+    // Precompute balances set-based — the per-row SUMs below used to be one
+    // round-trip per payment (N+1 on first boot with seeded data).
+    const rentPaidRows = await client.query(
+      `SELECT tenant_id, billing_month, billing_year, COALESCE(SUM(amount), 0) AS paid
+       FROM rent_payments GROUP BY tenant_id, billing_month, billing_year`
+    );
+    const rentPaidByKey = new Map(
+      rentPaidRows.rows.map((r: any) => [r.tenant_id + ":" + r.billing_month + ":" + r.billing_year, n(r.paid)])
+    );
     for (const p of rentPayments.rows) {
-      const paid = await client.query(
-        `SELECT COALESCE(SUM(amount), 0) AS paid FROM rent_payments
-         WHERE tenant_id = $1 AND billing_month = $2 AND billing_year = $3`,
-        [p.tenant_id, p.billing_month, p.billing_year]
-      );
-      const balance = balanceDue(n(p.monthly_rent), n(paid.rows[0].paid));
+      const paid = rentPaidByKey.get(p.tenant_id + ":" + p.billing_month + ":" + p.billing_year) ?? 0;
+      const balance = balanceDue(n(p.monthly_rent), paid);
       const receipt = await createReceipt(
         {
           type: 'RENT', tenantId: p.tenant_id, unitId: p.unit_id,
@@ -272,18 +269,24 @@ export async function backfillReceipts(): Promise<number> {
        WHERE wp.receipt_number IS NULL
        ORDER BY wp.payment_date, wp.id`
     );
+    const waterBillRows = await client.query(
+      `SELECT unit_id, billing_month, billing_year, COALESCE(SUM(water_bill), 0) AS bill
+       FROM water_meter_readings GROUP BY unit_id, billing_month, billing_year`
+    );
+    const waterBillByKey = new Map(
+      waterBillRows.rows.map((r: any) => [r.unit_id + ":" + r.billing_month + ":" + r.billing_year, n(r.bill)])
+    );
+    const waterPaidRows = await client.query(
+      `SELECT tenant_id, billing_month, billing_year, COALESCE(SUM(amount), 0) AS paid
+       FROM water_payments GROUP BY tenant_id, billing_month, billing_year`
+    );
+    const waterPaidByKey = new Map(
+      waterPaidRows.rows.map((r: any) => [r.tenant_id + ":" + r.billing_month + ":" + r.billing_year, n(r.paid)])
+    );
     for (const p of waterPayments.rows) {
-      const billRes = await client.query(
-        `SELECT COALESCE(SUM(water_bill), 0) AS bill FROM water_meter_readings
-         WHERE unit_id = $1 AND billing_month = $2 AND billing_year = $3`,
-        [p.unit_id, p.billing_month, p.billing_year]
-      );
-      const paid = await client.query(
-        `SELECT COALESCE(SUM(amount), 0) AS paid FROM water_payments
-         WHERE tenant_id = $1 AND billing_month = $2 AND billing_year = $3`,
-        [p.tenant_id, p.billing_month, p.billing_year]
-      );
-      const balance = balanceDue(n(billRes.rows[0].bill), n(paid.rows[0].paid));
+      const bill = waterBillByKey.get(p.unit_id + ":" + p.billing_month + ":" + p.billing_year) ?? 0;
+      const paid = waterPaidByKey.get(p.tenant_id + ":" + p.billing_month + ":" + p.billing_year) ?? 0;
+      const balance = balanceDue(bill, paid);
       const receipt = await createReceipt(
         {
           type: 'WATER', tenantId: p.tenant_id, unitId: p.unit_id,

@@ -1,4 +1,5 @@
 import { query, queryOne, withTransaction } from '../config/db';
+import { paginate } from './paginate';
 import { MONTH_NAMES, type Pagination } from '../types';
 import { balanceDue, computeWaterBill, paymentStatus, waterCollectionRate, waterSurplusDeficit } from '../utils/businessRules';
 import { badRequest, conflict, notFound, unprocessable } from '../utils/httpError';
@@ -42,44 +43,37 @@ export async function listReadings(filters: ReadingFilters): Promise<{ rows: unk
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  const totalRow = await queryOne<{ count: string }>(
-    `SELECT COUNT(*)::text AS count FROM water_meter_readings wmr ${whereSql}`,
-    params
+  // One grouped SUM query replaces a per-row paid lookup (N+1).
+  const paidRows = await query<{ tenant_id: number; billing_month: number; billing_year: number; paid: string }>(
+    `SELECT tenant_id, billing_month, billing_year, COALESCE(SUM(amount), 0)::text AS paid
+     FROM water_payments
+     GROUP BY tenant_id, billing_month, billing_year`
   );
-  const total = Number(totalRow?.count ?? 0);
-  const offset = (filters.page - 1) * filters.limit;
-  const rows = await query(
-    `SELECT wmr.*, t.full_name AS tenant_name, u.unit_number, u.unit_type
-     FROM water_meter_readings wmr
-     JOIN units u ON u.id = wmr.unit_id
-     LEFT JOIN tenants t ON t.id = wmr.tenant_id
-     ${whereSql}
-     ORDER BY wmr.reading_date DESC, wmr.id DESC
-     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    [...params, filters.limit, offset]
-  );
+  const paidByKey = new Map(paidRows.map((r) => [r.tenant_id + ":" + r.billing_month + ":" + r.billing_year, n(r.paid)]));
 
-  const enriched = await Promise.all(
-    rows.map(async (row: any) => {
-      const paidRes = await queryOne<{ paid: string }>(
-        `SELECT COALESCE(SUM(amount), 0)::text AS paid FROM water_payments
-         WHERE tenant_id = $1 AND billing_month = $2 AND billing_year = $3`,
-        [row.tenant_id, row.billing_month, row.billing_year]
-      );
-      const paid = n(paidRes?.paid);
-      const bill = n(row.water_bill);
-      return {
-        ...row,
-        totalWaterPaid: round2(paid),
-        waterBalance: balanceDue(bill, paid),
-        status: paymentStatus(bill, paid),
-      };
-    })
-  );
-  return {
-    rows: enriched,
-    pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
-  };
+  const { rows, pagination } = await paginate<Record<string, unknown>>({
+    selectSql: `wmr.*, t.full_name AS tenant_name, u.unit_number, u.unit_type`,
+    tableSql: `FROM water_meter_readings wmr
+     JOIN units u ON u.id = wmr.unit_id
+     LEFT JOIN tenants t ON t.id = wmr.tenant_id`,
+    whereSql,
+    params,
+    orderBy: `ORDER BY wmr.reading_date DESC, wmr.id DESC`,
+    page: filters.page,
+    limit: filters.limit,
+  });
+
+  const enriched = rows.map((row: any) => {
+    const paid = paidByKey.get(row.tenant_id + ":" + row.billing_month + ":" + row.billing_year) ?? 0;
+    const bill = n(row.water_bill);
+    return {
+      ...row,
+      totalWaterPaid: round2(paid),
+      waterBalance: balanceDue(bill, paid),
+      status: paymentStatus(bill, paid),
+    };
+  });
+  return { rows: enriched, pagination };
 }
 
 export interface ReadingInput {
@@ -285,53 +279,45 @@ export async function listWaterPayments(filters: WaterPaymentFilters): Promise<{
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  const totalRow = await queryOne<{ count: string }>(
-    `SELECT COUNT(*)::text AS count
-     FROM water_payments wp
+  // Grouped lookups replace per-row SUM round-trips (bill by unit+month,
+  // paid by tenant+month) — two queries total instead of two per row.
+  const billRows = await query<{ unit_id: number; billing_month: number; billing_year: number; bill: string }>(
+    `SELECT unit_id, billing_month, billing_year, COALESCE(SUM(water_bill), 0)::text AS bill
+     FROM water_meter_readings
+     GROUP BY unit_id, billing_month, billing_year`
+  );
+  const paidRows = await query<{ tenant_id: number; billing_month: number; billing_year: number; paid: string }>(
+    `SELECT tenant_id, billing_month, billing_year, COALESCE(SUM(amount), 0)::text AS paid
+     FROM water_payments
+     GROUP BY tenant_id, billing_month, billing_year`
+  );
+  const billByKey = new Map(billRows.map((r) => [r.unit_id + ":" + r.billing_month + ":" + r.billing_year, n(r.bill)]));
+  const paidByKey = new Map(paidRows.map((r) => [r.tenant_id + ":" + r.billing_month + ":" + r.billing_year, n(r.paid)]));
+
+  const { rows, pagination } = await paginate<Record<string, unknown>>({
+    selectSql: `wp.*, t.full_name AS tenant_name, u.unit_number`,
+    tableSql: `FROM water_payments wp
      JOIN tenants t ON t.id = wp.tenant_id
-     JOIN units u ON u.id = wp.unit_id
-     ${whereSql}`,
-    params
-  );
-  const total = Number(totalRow?.count ?? 0);
-  const offset = (filters.page - 1) * filters.limit;
-  const rows = await query(
-    `SELECT wp.*, t.full_name AS tenant_name, u.unit_number
-     FROM water_payments wp
-     JOIN tenants t ON t.id = wp.tenant_id
-     JOIN units u ON u.id = wp.unit_id
-     ${whereSql}
-     ORDER BY wp.payment_date DESC, wp.id DESC
-     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    [...params, filters.limit, offset]
-  );
-  const enriched = await Promise.all(
-    rows.map(async (row: any) => {
-      const billRes = await queryOne<{ bill: string }>(
-        `SELECT COALESCE(SUM(water_bill), 0)::text AS bill FROM water_meter_readings
-         WHERE unit_id = $1 AND billing_month = $2 AND billing_year = $3`,
-        [row.unit_id, row.billing_month, row.billing_year]
-      );
-      const paidRes = await queryOne<{ paid: string }>(
-        `SELECT COALESCE(SUM(amount), 0)::text AS paid FROM water_payments
-         WHERE tenant_id = $1 AND billing_month = $2 AND billing_year = $3`,
-        [row.tenant_id, row.billing_month, row.billing_year]
-      );
-      const bill = n(billRes?.bill);
-      const paid = n(paidRes?.paid);
-      return {
-        ...row,
-        waterBill: bill,
-        totalWaterPaid: round2(paid),
-        waterBalance: balanceDue(bill, paid),
-        status: paymentStatus(bill, paid),
-      };
-    })
-  );
-  return {
-    rows: enriched,
-    pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
-  };
+     JOIN units u ON u.id = wp.unit_id`,
+    whereSql,
+    params,
+    orderBy: `ORDER BY wp.payment_date DESC, wp.id DESC`,
+    page: filters.page,
+    limit: filters.limit,
+  });
+
+  const enriched = rows.map((row: any) => {
+    const bill = billByKey.get(row.unit_id + ":" + row.billing_month + ":" + row.billing_year) ?? 0;
+    const paid = paidByKey.get(row.tenant_id + ":" + row.billing_month + ":" + row.billing_year) ?? 0;
+    return {
+      ...row,
+      waterBill: bill,
+      totalWaterPaid: round2(paid),
+      waterBalance: balanceDue(bill, paid),
+      status: paymentStatus(bill, paid),
+    };
+  });
+  return { rows: enriched, pagination };
 }
 
 export interface WaterPaymentInput {
@@ -461,22 +447,15 @@ export async function listPurchases(filters: PurchaseFilters): Promise<{ rows: u
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  const totalRow = await queryOne<{ count: string }>(
-    `SELECT COUNT(*)::text AS count FROM water_purchases ${whereSql}`,
-    params
-  );
-  const total = Number(totalRow?.count ?? 0);
-  const offset = (filters.page - 1) * filters.limit;
-  const rows = await query(
-    `SELECT * FROM water_purchases ${whereSql}
-     ORDER BY purchase_date DESC, id DESC
-     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    [...params, filters.limit, offset]
-  );
-  return {
-    rows,
-    pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
-  };
+  return paginate<Record<string, unknown>>({
+    selectSql: `*`,
+    tableSql: `FROM water_purchases`,
+    whereSql,
+    params,
+    orderBy: `ORDER BY purchase_date DESC, id DESC`,
+    page: filters.page,
+    limit: filters.limit,
+  });
 }
 
 export interface PurchaseInput {

@@ -1,6 +1,61 @@
 import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { queryOne } from '../config/db';
+
+// A DB round-trip per request just to re-check user status is the single
+// biggest fixed cost on a remote database (every API call paid it). A short
+// TTL cache keeps the security property that matters — an INACTIVE or deleted
+// user loses access within CACHE_TTL_MS instead of instantly — while making
+// the common case a Map lookup. Admin writes (updateUser/deleteUser) call
+// invalidateUserCache so role/status changes apply immediately.
+const CACHE_TTL_MS = 30_000;
+
+interface CachedUser {
+  id: number;
+  name: string;
+  email: string;
+  role: Role;
+  status: string;
+  expiresAt: number;
+}
+
+const userCache = new Map<number, CachedUser>();
+const inFlight = new Map<number, Promise<CachedUser | null>>();
+
+async function loadUser(id: number): Promise<CachedUser | null> {
+  const user = await queryOne<{ id: number; name: string; email: string; role: Role; status: string }>(
+    'SELECT id, name, email, role, status FROM users WHERE id = $1',
+    [id]
+  );
+  if (!user || user.status !== 'ACTIVE') return null;
+  return { ...user, expiresAt: Date.now() + CACHE_TTL_MS };
+}
+
+// Concurrent requests from the same user share one load instead of stampeding
+// the database with identical queries.
+function getUserCached(id: number): Promise<CachedUser | null> {
+  const hit = userCache.get(id);
+  if (hit && hit.expiresAt > Date.now()) return Promise.resolve(hit);
+  userCache.delete(id);
+  let pending = inFlight.get(id);
+  if (!pending) {
+    pending = loadUser(id)
+      .then((user) => {
+        if (user) userCache.set(id, user);
+        return user;
+      })
+      .finally(() => inFlight.delete(id));
+    inFlight.set(id, pending);
+  }
+  return pending;
+}
+
+// Drop one user (admin changed/deleted them) or the whole cache (JWT_SECRET
+// rotation invalidates everything anyway). Exported for userService.
+export function invalidateUserCache(id?: number): void {
+  if (id === undefined) userCache.clear();
+  else userCache.delete(id);
+}
 import { env } from '../config/env';
 import type { AuthUser, Role } from '../types';
 import { forbidden, unauthorized } from '../utils/httpError';
@@ -36,13 +91,10 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       return next(unauthorized('Invalid or expired session.'));
     }
 
-    // Re-validate against the DB on every request: an INACTIVE user (or a
-    // deleted one) loses access immediately.
-    const user = await queryOne<{ id: number; name: string; email: string; role: Role; status: string }>(
-      'SELECT id, name, email, role, status FROM users WHERE id = $1',
-      [payload.sub]
-    );
-    if (!user || user.status !== 'ACTIVE') {
+    // Cached re-validation (see note above): an INACTIVE or deleted user is
+    // refused within CACHE_TTL_MS; admin writes invalidate immediately.
+    const user = await getUserCached(payload.sub);
+    if (!user) {
       return next(unauthorized('Account is no longer active.'));
     }
 

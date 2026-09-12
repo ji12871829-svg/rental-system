@@ -1,4 +1,5 @@
 import { query, queryOne, withTransaction } from '../config/db';
+import { paginate } from './paginate';
 import type { Pagination } from '../types';
 import { conflict, notFound, unprocessable } from '../utils/httpError';
 import { n, round2 } from '../utils/money';
@@ -43,33 +44,21 @@ export async function listUnits(filters: UnitFilters): Promise<{ rows: unknown[]
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  const totalRow = await queryOne<{ count: string }>(
-    `SELECT COUNT(*)::text AS count FROM units u
-     LEFT JOIN tenants t ON t.unit_id = u.id AND t.status = 'ACTIVE'
-     ${whereSql}`,
-    params
-  );
-  const total = Number(totalRow?.count ?? 0);
-  const offset = (filters.page - 1) * filters.limit;
-  const rows = await query(
-    `SELECT u.*, f.floor_number, f.name AS floor_name,
-            t.id AS tenant_id, t.full_name AS tenant_name, t.phone_number
-     FROM units u
+  return paginate<Record<string, unknown>>({
+    selectSql: `u.*, f.floor_number, f.name AS floor_name,
+            t.id AS tenant_id, t.full_name AS tenant_name, t.phone_number`,
+    tableSql: `FROM units u
      JOIN floors f ON f.id = u.floor_id
-     LEFT JOIN tenants t ON t.unit_id = u.id AND t.status = 'ACTIVE'
-     ${whereSql}
-     ORDER BY (u.unit_number ~ '^[0-9]+$') DESC,
+     LEFT JOIN tenants t ON t.unit_id = u.id AND t.status = 'ACTIVE'`,
+    whereSql,
+    params,
+    orderBy: `ORDER BY (u.unit_number ~ '^[0-9]+$') DESC,
               (CASE WHEN u.unit_number ~ '^[0-9]+$' THEN u.unit_number::int END) ASC,
-              u.unit_number ASC
-     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    [...params, filters.limit, offset]
-  );
-  return {
-    rows,
-    pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
-  };
+              u.unit_number ASC`,
+    page: filters.page,
+    limit: filters.limit,
+  });
 }
-
 export async function getUnit(id: number): Promise<unknown> {
   const row = await queryOne(
     `SELECT u.*, f.floor_number, f.name AS floor_name,

@@ -4,6 +4,7 @@ import { env } from '../config/env';
 import type { Pagination, Role } from '../types';
 import { conflict, notFound, unprocessable } from '../utils/httpError';
 import { logAudit } from './auditService';
+import { invalidateUserCache } from '../middleware/auth';
 
 export interface UserInput {
   name: string;
@@ -54,6 +55,7 @@ export async function updateUser(
      RETURNING id, name, email, phone, role, status, created_at`,
     [id, input.name ?? null, input.phone ?? null, input.role ?? null, input.status ?? null, passwordHash]
   );
+  invalidateUserCache(id);
   await logAudit({
     userId,
     action: 'USER_UPDATED',
@@ -70,6 +72,7 @@ export async function deleteUser(id: number, userId: number): Promise<void> {
   const existing = await queryOne<{ id: number }>('SELECT id FROM users WHERE id = $1', [id]);
   if (!existing) throw notFound('User not found.');
   await query('DELETE FROM users WHERE id = $1', [id]);
+  invalidateUserCache(id);
   await logAudit({ userId, action: 'USER_DELETED', entity: 'users', entityId: id });
 }
 

@@ -1,4 +1,5 @@
 import { query, queryOne, withTransaction } from '../config/db';
+import { paginate } from './paginate';
 import type { Pagination } from '../types';
 import { balanceDue } from '../utils/businessRules';
 import { conflict, notFound, unprocessable } from '../utils/httpError';
@@ -40,27 +41,16 @@ export async function listTenants(filters: TenantFilters): Promise<{ rows: unkno
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  const totalRow = await queryOne<{ count: string }>(
-    `SELECT COUNT(*)::text AS count FROM tenants t
-     LEFT JOIN units u ON u.id = t.unit_id
-     ${whereSql}`,
-    params
-  );
-  const total = Number(totalRow?.count ?? 0);
-  const offset = (filters.page - 1) * filters.limit;
-  const rows = await query(
-    `SELECT t.*, u.unit_number, u.unit_type, u.monthly_rent, u.water_enabled
-     FROM tenants t
-     LEFT JOIN units u ON u.id = t.unit_id
-     ${whereSql}
-     ORDER BY t.created_at DESC
-     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    [...params, filters.limit, offset]
-  );
-  return {
-    rows,
-    pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
-  };
+  return paginate<Record<string, unknown>>({
+    selectSql: `t.*, u.unit_number, u.unit_type, u.monthly_rent, u.water_enabled`,
+    tableSql: `FROM tenants t
+     LEFT JOIN units u ON u.id = t.unit_id`,
+    whereSql,
+    params,
+    orderBy: `ORDER BY t.created_at DESC`,
+    page: filters.page,
+    limit: filters.limit,
+  });
 }
 
 export async function getTenant(id: number, reportingYear: number): Promise<unknown> {

@@ -1,4 +1,5 @@
 import { query, queryOne, withTransaction } from '../config/db';
+import { paginate } from './paginate';
 import { MONTH_NAMES, type Pagination } from '../types';
 import { balanceDue, paymentStatus } from '../utils/businessRules';
 import { badRequest, notFound, unprocessable } from '../utils/httpError';
@@ -60,51 +61,40 @@ export async function listRentPayments(filters: RentPaymentFilters): Promise<{ r
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  const totalRow = await queryOne<{ count: string }>(
-    `SELECT COUNT(*)::text AS count
-     FROM rent_payments rp
-     JOIN tenants t ON t.id = rp.tenant_id
-     JOIN units u ON u.id = rp.unit_id
-     ${whereSql}`,
-    params
+  // Per-row enrichment (expected vs total paid for the month) comes from ONE
+  // grouped query instead of a SUM round-trip per row.
+  const paidRows = await query<{ tenant_id: number; billing_month: number; billing_year: number; paid: string }>(
+    `SELECT tenant_id, billing_month, billing_year, COALESCE(SUM(amount), 0)::text AS paid
+     FROM rent_payments
+     GROUP BY tenant_id, billing_month, billing_year`
   );
-  const total = Number(totalRow?.count ?? 0);
-  const offset = (filters.page - 1) * filters.limit;
-  const rows = await query(
-    `SELECT rp.*, t.full_name AS tenant_name, t.phone_number, u.unit_number, u.monthly_rent
-     FROM rent_payments rp
-     JOIN tenants t ON t.id = rp.tenant_id
-     JOIN units u ON u.id = rp.unit_id
-     ${whereSql}
-     ORDER BY rp.payment_date DESC, rp.id DESC
-     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    [...params, filters.limit, offset]
-  );
+  const paidByKey = new Map(paidRows.map((r) => [r.tenant_id + ":" + r.billing_month + ":" + r.billing_year, n(r.paid)]));
 
-  // Status/balance per row: expected rent (current) vs total paid in month.
-  const enriched = await Promise.all(
-    rows.map(async (row: any) => {
-      const paidRes = await queryOne<{ paid: string }>(
-        `SELECT COALESCE(SUM(amount), 0)::text AS paid FROM rent_payments
-         WHERE tenant_id = $1 AND billing_month = $2 AND billing_year = $3`,
-        [row.tenant_id, row.billing_month, row.billing_year]
-      );
-      const paid = n(paidRes?.paid);
-      const expected = n(row.monthly_rent);
-      return {
-        ...row,
-        expectedRent: expected,
-        totalPaidForMonth: round2(paid),
-        balance: balanceDue(expected, paid),
-        status: paymentStatus(expected, paid),
-      };
-    })
-  );
+  const { rows, pagination } = await paginate<Record<string, unknown>>({
+    selectSql: `rp.*, t.full_name AS tenant_name, t.phone_number, u.unit_number, u.monthly_rent`,
+    tableSql: `FROM rent_payments rp
+     JOIN tenants t ON t.id = rp.tenant_id
+     JOIN units u ON u.id = rp.unit_id`,
+    whereSql,
+    params,
+    orderBy: `ORDER BY rp.payment_date DESC, rp.id DESC`,
+    page: filters.page,
+    limit: filters.limit,
+  });
 
-  return {
-    rows: enriched,
-    pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
-  };
+  const enriched = rows.map((row: any) => {
+    const paid = paidByKey.get(row.tenant_id + ":" + row.billing_month + ":" + row.billing_year) ?? 0;
+    const expected = n(row.monthly_rent);
+    return {
+      ...row,
+      expectedRent: expected,
+      totalPaidForMonth: round2(paid),
+      balance: balanceDue(expected, paid),
+      status: paymentStatus(expected, paid),
+    };
+  });
+
+  return { rows: enriched, pagination };
 }
 
 // The full payment transaction (spec §43): validate → record → receipt →

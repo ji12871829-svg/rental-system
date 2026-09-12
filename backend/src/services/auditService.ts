@@ -1,4 +1,5 @@
-import { query, queryOne } from '../config/db';
+import { query } from '../config/db';
+import { paginate } from './paginate';
 import type { Pagination } from '../types';
 
 // Writes one audit row. Never throws — auditing must not break the
@@ -53,23 +54,14 @@ export async function listAuditLogs(opts: {
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  const totalRow = await queryOne<{ count: string }>(
-    `SELECT COUNT(*)::text AS count FROM audit_logs a ${whereSql}`,
-    params
-  );
-  const total = Number(totalRow?.count ?? 0);
-  const offset = (opts.page - 1) * opts.limit;
-  const rows = await query(
-    `SELECT a.*, u.name AS user_name, u.email AS user_email
-     FROM audit_logs a
-     LEFT JOIN users u ON u.id = a.user_id
-     ${whereSql}
-     ORDER BY a.created_at DESC
-     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    [...params, opts.limit, offset]
-  );
-  return {
-    rows,
-    pagination: { page: opts.page, limit: opts.limit, total, totalPages: Math.ceil(total / opts.limit) },
-  };
+  return paginate<Record<string, unknown>>({
+    selectSql: `a.*, u.name AS user_name, u.email AS user_email`,
+    tableSql: `FROM audit_logs a
+     LEFT JOIN users u ON u.id = a.user_id`,
+    whereSql,
+    params,
+    orderBy: `ORDER BY a.created_at DESC`,
+    page: opts.page,
+    limit: opts.limit,
+  });
 }

@@ -3,6 +3,7 @@
 // listable. The rendered HTML is stored with the row so the record is a
 // faithful copy of what was sent.
 import { pool, query, queryOne } from '../config/db';
+import { paginate } from './paginate';
 import type { Pagination } from '../types';
 import { getBusinessIdentity } from './brandingService';
 import { env, isTest } from '../config/env';
@@ -328,29 +329,17 @@ export async function listEmails(filters: EmailFilters): Promise<{ rows: EmailRo
   // a missing tenant name.
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  const totalRow = await queryOne<{ count: string }>(
-    `SELECT COUNT(*)::text AS count
-     FROM email_notifications e
+  return paginate<EmailRow>({
+    selectSql: `e.*, t.full_name AS tenant_name, u.unit_number`,
+    tableSql: `FROM email_notifications e
      LEFT JOIN tenants t ON t.id = e.tenant_id
-     ${whereSql}`,
-    params
-  );
-  const total = Number(totalRow?.count ?? 0);
-  const offset = (filters.page - 1) * filters.limit;
-  const rows = await query<EmailRow>(
-    `SELECT e.*, t.full_name AS tenant_name, u.unit_number
-     FROM email_notifications e
-     LEFT JOIN tenants t ON t.id = e.tenant_id
-     LEFT JOIN units u ON u.id = t.unit_id
-     ${whereSql}
-     ORDER BY e.created_at DESC
-     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    [...params, filters.limit, offset]
-  );
-  return {
-    rows,
-    pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
-  };
+     LEFT JOIN units u ON u.id = t.unit_id`,
+    whereSql,
+    params,
+    orderBy: `ORDER BY e.created_at DESC`,
+    page: filters.page,
+    limit: filters.limit,
+  });
 }
 
 // Backfill for seeded receipts: creates PENDING email rows for any receipt

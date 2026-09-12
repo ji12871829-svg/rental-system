@@ -1,4 +1,5 @@
 import { poolExec, query, queryOne, type SqlExec } from '../config/db';
+import { paginate } from './paginate';
 import { env, isTest } from '../config/env';
 import { MONTH_NAMES, type Pagination } from '../types';
 import { combinedReceiptMessage, rentReceiptMessage, waterReceiptMessage } from '../utils/businessRules';
@@ -184,28 +185,19 @@ export async function listSms(filters: SmsFilters): Promise<{
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  // The count needs the same joins as the list query — the q filter can
-  // reference t.full_name (and would 500 with a missing FROM-clause otherwise).
-  const totalRow = await queryOne<{ count: string }>(
-    `SELECT COUNT(*)::text AS count
-     FROM sms_notifications s
+  const { rows, pagination } = await paginate<Record<string, unknown>>({
+    // The q filter can reference t.full_name, so the count window shares the
+    // same JOINs as the list query.
+    selectSql: `s.*, t.full_name AS tenant_name, u.unit_number`,
+    tableSql: `FROM sms_notifications s
      JOIN tenants t ON t.id = s.tenant_id
-     LEFT JOIN units u ON u.id = t.unit_id
-     ${whereSql}`,
-    params
-  );
-  const total = Number(totalRow?.count ?? 0);
-  const offset = (filters.page - 1) * filters.limit;
-  const rows = await query(
-    `SELECT s.*, t.full_name AS tenant_name, u.unit_number
-     FROM sms_notifications s
-     JOIN tenants t ON t.id = s.tenant_id
-     LEFT JOIN units u ON u.id = t.unit_id
-     ${whereSql}
-     ORDER BY s.created_at DESC
-     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    [...params, filters.limit, offset]
-  );
+     LEFT JOIN units u ON u.id = t.unit_id`,
+    whereSql,
+    params,
+    orderBy: `ORDER BY s.created_at DESC`,
+    page: filters.page,
+    limit: filters.limit,
+  });
   // Total provider-reported spend across the WHOLE filtered set (not just the
   // visible page), grouped by currency. Only SENT rows carry a cost —
   // simulated sends cost nothing and FAILED deliveries were never charged.
@@ -221,7 +213,7 @@ export async function listSms(filters: SmsFilters): Promise<{
   );
   return {
     rows,
-    pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
+    pagination,
     spendByCurrency: spendRows.map((r) => ({ currency: r.currency, total: Number(r.total_cost) })),
   };
 }

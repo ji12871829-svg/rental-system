@@ -1,4 +1,5 @@
 import { query, queryOne } from '../config/db';
+import { paginate } from './paginate';
 import { MONTH_NAMES, type Pagination } from '../types';
 import { notFound } from '../utils/httpError';
 import { n, round2 } from '../utils/money';
@@ -44,21 +45,15 @@ export async function listExpenses(filters: ExpenseFilters): Promise<{ rows: unk
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  const totalRow = await queryOne<{ count: string }>(
-    `SELECT COUNT(*)::text AS count FROM expenses ${whereSql}`, params
-  );
-  const total = Number(totalRow?.count ?? 0);
-  const offset = (filters.page - 1) * filters.limit;
-  const rows = await query(
-    `SELECT * FROM expenses ${whereSql}
-     ORDER BY expense_date DESC, id DESC
-     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    [...params, filters.limit, offset]
-  );
-  return {
-    rows,
-    pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
-  };
+  return paginate<Record<string, unknown>>({
+    selectSql: `*`,
+    tableSql: `FROM expenses`,
+    whereSql,
+    params,
+    orderBy: `ORDER BY expense_date DESC, id DESC`,
+    page: filters.page,
+    limit: filters.limit,
+  });
 }
 
 export async function createExpense(input: ExpenseInput, userId: number): Promise<unknown> {

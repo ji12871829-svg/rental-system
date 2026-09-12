@@ -12,6 +12,10 @@ services:
     name: rpms
     runtime: node
     plan: free
+    # Co-locate with the Neon database (eu-central-1). Without this the
+    # service lands in Oregon and every DB query pays a transatlantic
+    # round-trip (~300ms) — the single biggest latency cost in the app.
+    region: frankfurt
     # Build the frontend first (outputs frontend/dist), then compile the API.
     # --include=dev on BOTH installs: TypeScript must be installed to build (Render
     # defaults NODE_ENV=production, which would skip devDependencies otherwise).

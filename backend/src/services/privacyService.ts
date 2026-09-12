@@ -1,4 +1,5 @@
 import { query, queryOne, withTransaction } from '../config/db';
+import { paginate } from './paginate';
 import type { Pagination } from '../types';
 import { badRequest, conflict, notFound } from '../utils/httpError';
 import { logAudit } from './auditService';
@@ -132,29 +133,17 @@ export async function listPrivacyRequests(
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  const totalRow = await queryOne<{ count: string }>(
-    `SELECT COUNT(*)::text AS count
-     FROM privacy_requests p
+  return paginate<PrivacyRequestRow>({
+    selectSql: `p.*, t.full_name AS tenant_name, u.name AS performed_by_name`,
+    tableSql: `FROM privacy_requests p
      LEFT JOIN tenants t ON t.id = p.tenant_id
-     ${whereSql}`,
-    params
-  );
-  const total = Number(totalRow?.count ?? 0);
-  const offset = (filters.page - 1) * filters.limit;
-  const rows = await query<PrivacyRequestRow>(
-    `SELECT p.*, t.full_name AS tenant_name, u.name AS performed_by_name
-     FROM privacy_requests p
-     LEFT JOIN tenants t ON t.id = p.tenant_id
-     LEFT JOIN users u ON u.id = p.performed_by
-     ${whereSql}
-     ORDER BY p.created_at DESC
-     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    [...params, filters.limit, offset]
-  );
-  return {
-    rows,
-    pagination: { page: filters.page, limit: filters.limit, total, totalPages: Math.ceil(total / filters.limit) },
-  };
+     LEFT JOIN users u ON u.id = p.performed_by`,
+    whereSql,
+    params,
+    orderBy: `ORDER BY p.created_at DESC`,
+    page: filters.page,
+    limit: filters.limit,
+  });
 }
 
 interface TenantRow {

@@ -34,8 +34,13 @@ export async function dashboard(year?: number): Promise<unknown> {
   const targetYear = year ?? settings.reporting_year;
   const currentMonth = currentMonthForYear(targetYear);
 
-  const totalUnits = Number((await queryOne<{ count: string }>('SELECT COUNT(*)::text AS count FROM units'))?.count ?? 0);
-  const occupied = Number((await queryOne<{ count: string }>(`SELECT COUNT(*)::text AS count FROM units WHERE occupancy_status = 'OCCUPIED'`))?.count ?? 0);
+  const counts = await queryOne<{ total: string; occupied: string }>(
+    `SELECT COUNT(*)::text AS total,
+            COUNT(*) FILTER (WHERE occupancy_status = 'OCCUPIED')::text AS occupied
+     FROM units`
+  );
+  const totalUnits = Number(counts?.total ?? 0);
+  const occupied = Number(counts?.occupied ?? 0);
   const vacant = totalUnits - occupied;
 
   // Expected rent for the current month (occupied units).
