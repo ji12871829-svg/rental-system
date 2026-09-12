@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth } from '../middleware/auth';
-import { validateParams } from '../middleware/validate';
+import { managerOrAdmin, requireAuth } from '../middleware/auth';
+import { validateBody, validateParams } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
 import { getEmailConfig } from '../services/emailProvider';
-import { listEmails, sendEmailNotification } from '../services/emailService';
+import { listEmails, sendEmailNotification, sendTenantCampaign } from '../services/emailService';
 
 const router = Router();
 router.use(requireAuth);
@@ -33,6 +33,17 @@ router.get('/', asyncHandler(async (req, res) => {
   const q = listQuerySchema.parse(req.query);
   const result = await listEmails({ ...q });
   res.json({ data: result.rows, pagination: result.pagination });
+}));
+
+const campaignSchema = z.object({
+  tenantIds: z.array(z.number().int().positive()).max(1000).optional(),
+  subject: z.string().trim().min(3).max(180),
+  message: z.string().trim().min(3).max(5000),
+});
+
+router.post('/campaign', managerOrAdmin, validateBody(campaignSchema), asyncHandler(async (req, res) => {
+  const result = await sendTenantCampaign({ ...req.body, userId: req.user!.userId });
+  res.status(201).json({ data: result });
 }));
 
 const paramsSchema = z.object({ id: z.coerce.number().int().positive() });

@@ -6,6 +6,7 @@ import { n, round2 } from '../utils/money';
 import { logAudit } from './auditService';
 import { createReceipt } from './receiptService';
 import { autoSendEnabled, dispatchAutoSend, prepareForReceipt } from './smsService';
+import { dispatchAutoEmail } from './emailService';
 import { getSettings } from './settingsService';
 
 export interface RentPaymentInput {
@@ -130,6 +131,7 @@ export async function createRentPayment(input: RentPaymentInput, userId: number 
   // The prepared notification's id escapes the transaction closure so the
   // dispatch can happen strictly after commit.
   let preparedSmsId: number | null = null;
+  let receiptId: number | null = null;
   const result = await withTransaction(async (client) => {
     const inserted = await client.query(
       `INSERT INTO rent_payments
@@ -167,6 +169,7 @@ export async function createRentPayment(input: RentPaymentInput, userId: number 
       },
       client
     );
+    receiptId = receipt.id;
     await client.query('UPDATE rent_payments SET receipt_number = $1 WHERE id = $2', [receipt.receipt_number, payment.id]);
     preparedSmsId = await prepareForReceipt(receipt as any, client);
 
@@ -206,7 +209,8 @@ export async function createRentPayment(input: RentPaymentInput, userId: number 
   // provider). Row exists in the DB either way; PENDING rows without a phone
   // never happen, so null just means "no phone on file".
   dispatchAutoSend(preparedSmsId);
-  return { ...result, sms: { queued: preparedSmsId != null, autoSend: autoSendEnabled() } };
+  dispatchAutoEmail(receiptId);
+  return { ...result, sms: { queued: preparedSmsId != null, autoSend: autoSendEnabled() }, email: { queued: receiptId != null, autoSend: true } };
 }
 
 export async function deleteRentPayment(id: number, userId: number): Promise<void> {

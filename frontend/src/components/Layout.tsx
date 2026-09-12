@@ -4,7 +4,7 @@ import { Suspense } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, BookUser, Building2, CalendarDays,
-  ChevronDown, Droplets, FileBarChart, FileText, Gauge, LayoutDashboard, Loader2, LogOut, Menu, ReceiptText, Settings,
+  ChevronDown, Droplets, FileBarChart, FileText, Gauge, LayoutDashboard, Loader2, LogOut, Mail, Menu, ReceiptText, Settings,
   Smartphone, Ticket, Users as UsersIcon, Wallet, X,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
@@ -50,6 +50,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/arrears', label: 'Arrears', icon: AlertTriangle },
       { to: '/receipts', label: 'Receipts', icon: Ticket },
       { to: '/sms', label: 'SMS Notifications', icon: Smartphone },
+      { to: '/email-campaign', label: 'Tenant Email', icon: Mail, managerOnly: true },
     ],
   },
   {

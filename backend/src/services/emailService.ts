@@ -5,6 +5,7 @@
 import { pool, query, queryOne } from '../config/db';
 import type { Pagination } from '../types';
 import { getBusinessIdentity } from './brandingService';
+import { env, isTest } from '../config/env';
 import { isValidEmail, sendEmail } from './emailProvider';
 import { logAudit } from './auditService';
 import { monthlyReportPdf, tenantStatementPdf } from './financeService';
@@ -175,6 +176,72 @@ export async function sendEmailNotification(id: number): Promise<EmailRow> {
     );
   }
   return queryOne<EmailRow>('SELECT * FROM email_notifications WHERE id = $1', [id]) as Promise<EmailRow>;
+}
+
+// Queue and send a receipt email only after the payment transaction commits.
+// A missing tenant email or provider outage must never undo a recorded payment.
+export function dispatchAutoEmail(receiptId: number | null | undefined): void {
+  if (!receiptId || isTest || !env.emailAutoSend) return;
+  setTimeout(() => {
+    prepareForReceipt(receiptId)
+      .then((pending) => sendEmailNotification(pending.id))
+      .catch((err) => console.error(`[email] auto-send failed for receipt ${receiptId}: ${(err as Error).message}`));
+  }, 0);
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character] ?? character));
+}
+
+export async function sendTenantCampaign(opts: {
+  tenantIds?: number[];
+  subject: string;
+  message: string;
+  userId?: number | null;
+}): Promise<{ total: number; queued: number; sent: number; failed: number; skipped: number }> {
+  const params: unknown[] = [];
+  const where = opts.tenantIds?.length
+    ? `AND t.id = ANY($1::int[])`
+    : '';
+  if (opts.tenantIds?.length) params.push(opts.tenantIds);
+  const tenants = await query<{ id: number; full_name: string; email: string | null; unit_number: string | null }>(
+    `SELECT t.id, t.full_name, t.email, u.unit_number
+     FROM tenants t LEFT JOIN units u ON u.id = t.unit_id
+     WHERE t.status = 'ACTIVE' ${where}
+     ORDER BY t.id`,
+    params
+  );
+  let queued = 0;
+  let sent = 0;
+  let failed = 0;
+  let skipped = 0;
+  for (const tenant of tenants) {
+    if (!tenant.email || !isValidEmail(tenant.email)) {
+      skipped += 1;
+      continue;
+    }
+    const messageText = opts.message
+      .replaceAll('{{name}}', tenant.full_name)
+      .replaceAll('{{unit}}', tenant.unit_number ?? 'unassigned');
+    const subject = opts.subject.replaceAll('{{name}}', tenant.full_name).replaceAll('{{unit}}', tenant.unit_number ?? 'unassigned');
+    const html = `<div style="font-family:Arial,Helvetica,sans-serif;color:#111827;line-height:1.5"><p>Dear ${escapeHtml(tenant.full_name)},</p><p>${escapeHtml(messageText).replaceAll('\n', '<br>')}</p><p style="color:#6b7280;font-size:13px">Olbano Plaza</p></div>`;
+    const inserted = await query<EmailRow>(
+      `INSERT INTO email_notifications (tenant_id, email_address, subject, body_html, body_text, status)
+       VALUES ($1, $2, $3, $4, $5, 'PENDING') RETURNING *`,
+      [tenant.id, tenant.email, subject, html, messageText]
+    );
+    queued += 1;
+    const result = await sendEmailNotification(inserted[0].id);
+    if (result.status === 'SENT') sent += 1;
+    else failed += 1;
+  }
+  await logAudit({
+    userId: opts.userId ?? null,
+    action: 'TENANT_EMAIL_CAMPAIGN',
+    entity: 'tenants',
+    newValue: { total: tenants.length, queued, sent, failed, skipped, subject: opts.subject },
+  });
+  return { total: tenants.length, queued, sent, failed, skipped };
 }
 
 // --- Data-request response letter (with the data file attached) --------------

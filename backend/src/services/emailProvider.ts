@@ -30,6 +30,7 @@ export interface EmailConfig {
   provider: 'mock' | 'smtp' | 'brevo';
   live: boolean;
   from: string | null;
+  autoSend: boolean;
 }
 
 export interface EmailPayload {
@@ -55,6 +56,7 @@ export function getEmailConfig(): EmailConfig {
     provider,
     live: provider === 'smtp' ? credsReady : provider === 'brevo' && brevoReady,
     from: env.emailFrom || env.businessEmail || null,
+    autoSend: env.emailAutoSend,
   };
 }
 

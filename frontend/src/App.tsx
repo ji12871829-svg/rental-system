@@ -30,6 +30,7 @@ const Expenses = lazy(() => import('./pages/Expenses'));
 const Arrears = lazy(() => import('./pages/Arrears'));
 const Receipts = lazy(() => import('./pages/Receipts'));
 const SmsNotifications = lazy(() => import('./pages/SmsNotifications'));
+const EmailCampaign = lazy(() => import('./pages/EmailCampaign'));
 const Users = lazy(() => import('./pages/Users'));
 const AuditLogs = lazy(() => import('./pages/AuditLogs'));
 const PrivacyRegister = lazy(() => import('./pages/PrivacyRegister'));
@@ -72,6 +73,7 @@ const TITLES: Record<string, string> = {
   '/arrears': 'Arrears',
   '/receipts': 'Receipts',
   '/sms': 'SMS Notifications',
+  '/email-campaign': 'Tenant Email',
   '/users': 'Users',
   '/audit': 'Audit Logs',
   '/privacy-register': 'Privacy Register',
@@ -126,6 +128,7 @@ export default function App() {
             <Route path="/arrears" element={<Arrears />} />
             <Route path="/receipts" element={<Receipts />} />
             <Route path="/sms" element={<SmsNotifications />} />
+            <Route path="/email-campaign" element={<EmailCampaign />} />
             <Route
               path="/users"
               element={

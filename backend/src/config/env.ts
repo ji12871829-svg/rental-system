@@ -33,6 +33,7 @@ export const env = {
   smsRetryBaseDelayMs: Number(process.env.SMS_RETRY_BASE_DELAY_MS) || 60_000,
   // Email receipt delivery (optional — see .env.example).
   emailProvider: (process.env.EMAIL_PROVIDER || 'mock').toLowerCase() as 'mock' | 'smtp' | 'brevo',
+  emailAutoSend: (process.env.EMAIL_AUTO_SEND || 'true').toLowerCase() !== 'false',
   smtpHost: process.env.SMTP_HOST || '',
   smtpPort: Number(process.env.SMTP_PORT) || 587,
   smtpSecure: process.env.SMTP_SECURE === 'true',
