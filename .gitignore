@@ -13,3 +13,6 @@ env.txt
 
 # Stray duplicate clone of this repo (had its own .git); never commit it
 rental-system/
+
+# Freebuff client workspace state (logs, project id) — machine-local, not source
+.freebuff/

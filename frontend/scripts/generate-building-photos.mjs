@@ -1,8 +1,12 @@
-// One-off: generate optimized web versions of the building photos from the
+// One-off: generate optimized web versions of the building photo from the
 // project root into frontend/public/building/. Run:
 //   node scripts/generate-building-photos.mjs
 // (uses the devDependency `sharp`; kept in-repo for regenerating when a new
 // photo is dropped in the root with the same filename)
+//
+// Only building-1 exists now: it backs the Login facade. The old building-2
+// strip (dashboard cards) was removed from the UI, so its source photo
+// (webaliser-…-unsplash.jpg) was deleted — reinstate both here if it returns.
 import sharp from 'sharp';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -13,11 +17,10 @@ const project = join(root, '..');
 const PHOTOS = [
   // Source in the project root → output basename in public/building/.
   { src: 'naksha-banwao-3ddHcjHmiGw-unsplash.jpg', out: 'building-1' },
-  { src: 'webaliser-_TPTXZd9mOo-unsplash.jpg', out: 'building-2' },
 ];
 
-// Breakpoints: the login hero needs ~1600px for large desktop; the dashboard
-// cards top out ~800px. Quality 72 keeps each file in the 60–250 kB range.
+// Breakpoints: the login hero needs ~1600px for large desktop. Quality 72
+// keeps each file in the 60–250 kB range.
 const WIDTHS = [480, 800, 1600];
 
 for (const { src, out } of PHOTOS) {
