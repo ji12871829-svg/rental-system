@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { MoreHorizontal, Plus } from 'lucide-react';
+import { ChevronDown, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { DataRequestLetterModal, type LetterData } from '../components/DataRequestLetter';
@@ -113,25 +113,26 @@ export default function Tenants() {
                     <div className="relative flex justify-end">
                       <button
                         type="button"
-                        className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
+                        className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50 hover:text-gray-900"
                         aria-label={`Actions for ${t.full_name}`}
+                        aria-haspopup="menu"
                         aria-expanded={actionMenuId === t.id}
                         onClick={() => setActionMenuId((current) => current === t.id ? null : t.id)}
                       >
-                        <MoreHorizontal size={18} strokeWidth={1.75} aria-hidden />
+                        Actions <ChevronDown size={14} strokeWidth={2} aria-hidden />
                       </button>
-                      {actionMenuId === t.id && <div className="absolute right-0 top-10 z-20 min-w-36 rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
-                        <Button variant="ghost" className="w-full justify-start !px-3 !py-2 text-xs" onClick={async () => {
+                      {actionMenuId === t.id && <div role="menu" className="absolute right-0 top-11 z-30 min-w-40 rounded-lg border border-gray-200 bg-white p-1.5 shadow-xl">
+                        <button type="button" role="menuitem" className="flex w-full items-center rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50" onClick={async () => {
                           setActionMenuId(null);
-                        const res = await api.get<{ data: Tenant }>(`/api/tenants/${t.id}`);
-                        setDetail(res.data);
-                      }}>View</Button>
-                      <Button variant="ghost" className="w-full justify-start !px-3 !py-2 text-xs" onClick={() => { setActionMenuId(null); navigate(`/ledger?tenant=${t.id}`); }}>Ledger</Button>
+                          const res = await api.get<{ data: Tenant }>(`/api/tenants/${t.id}`);
+                          setDetail(res.data);
+                        }}>View details</button>
+                        <button type="button" role="menuitem" className="flex w-full items-center rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50" onClick={() => { setActionMenuId(null); navigate(`/ledger?tenant=${t.id}`); }}>Open ledger</button>
                       {canManage && t.status === 'ACTIVE' && (
                         <>
-                          <Button variant="ghost" className="w-full justify-start !px-3 !py-2 text-xs" onClick={() => { setActionMenuId(null); setEdit(t); setShowForm(true); }}>Edit</Button>
-                          <Button variant="ghost" className="w-full justify-start !px-3 !py-2 text-xs" onClick={() => { setActionMenuId(null); setTransferTarget(t); }}>Transfer</Button>
-                          <Button variant="ghost" className="w-full justify-start !px-3 !py-2 text-xs text-red-600" onClick={async () => {
+                          <button type="button" role="menuitem" className="flex w-full items-center rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50" onClick={() => { setActionMenuId(null); setEdit(t); setShowForm(true); }}>Edit tenant</button>
+                          <button type="button" role="menuitem" className="flex w-full items-center rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50" onClick={() => { setActionMenuId(null); setTransferTarget(t); }}>Transfer unit</button>
+                          <button type="button" role="menuitem" className="flex w-full items-center rounded-md px-3 py-2 text-left text-xs font-medium text-red-600 hover:bg-red-50" onClick={async () => {
                             setActionMenuId(null);
                             if (!window.confirm(`Move ${t.full_name} out of unit ${t.unit_number}?`)) return;
                             try {
@@ -139,16 +140,16 @@ export default function Tenants() {
                               toast('success', `${t.full_name} moved out — unit is now VACANT.`);
                               refresh();
                             } catch (err) { toast('error', (err as Error).message); }
-                          }}>Move Out</Button>
+                          }}>Move out</button>
                         </>
                       )}
                       {isAdmin && (
-                        <Button variant="ghost" className="w-full justify-start !px-3 !py-2 text-xs text-red-600" onClick={async () => {
+                        <button type="button" role="menuitem" className="flex w-full items-center rounded-md px-3 py-2 text-left text-xs font-medium text-red-600 hover:bg-red-50" onClick={async () => {
                           setActionMenuId(null);
                           if (!window.confirm(`Permanently delete ${t.full_name}?`)) return;
                           try { await api.del(`/api/tenants/${t.id}`); toast('success', 'Tenant deleted.'); refresh(); }
                           catch (err) { toast('error', (err as Error).message); }
-                        }}>Delete</Button>
+                        }}>Delete tenant</button>
                       )}
                       </div>}
                     </div>
