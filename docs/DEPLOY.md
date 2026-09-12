@@ -166,8 +166,11 @@ the first real tenant.
    `https://<your-service>.onrender.com/api/sms/delivery-reports`
    (AT requires an HTTPS endpoint — Render gives you one for free).
    Optionally set `SMS_LOW_BALANCE_THRESHOLD`.
-4. **Email** — set `EMAIL_PROVIDER=smtp` + `SMTP_*` + `EMAIL_FROM` when you
-   want emailed receipts/letters to actually send.
+4. **Email** — for safe Brevo testing, set `EMAIL_PROVIDER=brevo`, a Brevo
+   `BREVO_API_KEY`, verified `EMAIL_FROM` / `EMAIL_FROM_NAME`, and
+   `BREVO_TEST_RECIPIENTS` to a comma-separated allowlist. Only those test
+   recipients can receive mail while the allowlist is configured. For SMTP,
+   set `EMAIL_PROVIDER=smtp` plus `SMTP_*` and `EMAIL_FROM`.
 5. **Backups** — Neon free tier does not include scheduled backups. Until you
    upgrade, take manual exports: Neon console → **Backup & restore** → or
    `pg_dump "$DATABASE_URL" > backup-$(date +%F).sql` from a cron machine.

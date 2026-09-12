@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Download, Mail, Plus } from 'lucide-react';
-import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
+import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { api, getToken, qs } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { branding, receiptFooterLines } from '../lib/branding';
@@ -29,7 +29,7 @@ interface Receipt {
 interface TenantOption { id: number; full_name: string; unit_number: string | null }
 
 interface EmailConfig {
-  provider: 'mock' | 'smtp';
+  provider: 'mock' | 'smtp' | 'brevo';
   live: boolean;
   from: string | null;
 }
@@ -216,7 +216,7 @@ export default function Receipts() {
         )}
       </div>
 
-      {loading && <div className="text-sm text-gray-500">Loading receipts…</div>}
+      {loading && <SkeletonTable cols={11} />}
       {error && <div className="text-sm text-red-600">{error}</div>}
       {!loading && !error && data && (
         <>
@@ -315,7 +315,7 @@ export default function Receipts() {
 // receipt PDF as attachment via the configured provider (mock = simulated).
 function EmailModal({ receipt, provider, live, from, onClose }: {
   receipt: Receipt | null;
-  provider: 'mock' | 'smtp';
+  provider: 'mock' | 'smtp' | 'brevo';
   live: boolean;
   from: string | null;
   onClose: () => void;
@@ -362,10 +362,14 @@ function EmailModal({ receipt, provider, live, from, onClose }: {
           </Field>
           <p className={`rounded-lg px-3 py-2 text-xs ${provider === 'mock' ? 'bg-amber-50 text-amber-800' : 'bg-blue-50 text-blue-800'}`}>
             {provider === 'mock'
-              ? 'Email provider is in simulated mode — the send is recorded in history but not delivered. Set EMAIL_PROVIDER=smtp with SMTP_HOST / SMTP_USER / SMTP_PASS / EMAIL_FROM in backend/.env to go live.'
+              ? 'Email provider is in simulated mode — the send is recorded in history but not delivered. Set EMAIL_PROVIDER=brevo with BREVO_API_KEY, EMAIL_FROM, and BREVO_TEST_RECIPIENTS for safe testing.'
               : live
-                ? `Delivers via SMTP from ${from ?? 'the configured sender'}.`
-                : 'SMTP is selected but not fully configured — sends will fail until SMTP_HOST / SMTP_USER / SMTP_PASS / EMAIL_FROM are set in backend/.env.'}
+                ? provider === 'brevo'
+                  ? `Delivers via Brevo from ${from ?? 'the configured sender'}; test recipients are controlled by BREVO_TEST_RECIPIENTS.`
+                  : `Delivers via SMTP from ${from ?? 'the configured sender'}.`
+                : provider === 'brevo'
+                  ? 'Brevo is selected but not fully configured — set BREVO_API_KEY, EMAIL_FROM, and EMAIL_FROM_NAME.'
+                  : 'SMTP is selected but not fully configured — sends will fail until SMTP_HOST / SMTP_USER / SMTP_PASS / EMAIL_FROM are set in backend/.env.'}
           </p>
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={onClose}>Cancel</Button>

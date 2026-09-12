@@ -6,6 +6,8 @@
 //                                  recorded with a MOCK-<id> reference
 //   EMAIL_PROVIDER=smtp            real delivery via any SMTP server
 //   SMTP_HOST / SMTP_PORT / SMTP_SECURE / SMTP_USER / SMTP_PASS
+//   EMAIL_PROVIDER=brevo          Brevo transactional email API
+//   BREVO_API_KEY / BREVO_TEST_RECIPIENTS
 //   EMAIL_FROM                     e.g. "RPMS <no-reply@yourdomain.com>"
 //   EMAIL_FROM_NAME                display name (defaults to BUSINESS_NAME)
 //
@@ -25,7 +27,7 @@ export interface EmailSendResult {
 }
 
 export interface EmailConfig {
-  provider: 'mock' | 'smtp';
+  provider: 'mock' | 'smtp' | 'brevo';
   live: boolean;
   from: string | null;
 }
@@ -46,11 +48,12 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 // Current mode, safe to expose to the UI — contains no secrets.
 export function getEmailConfig(): EmailConfig {
   const provider: EmailConfig['provider'] =
-    !isTest && env.emailProvider === 'smtp' ? 'smtp' : 'mock';
+    !isTest && (env.emailProvider === 'smtp' || env.emailProvider === 'brevo') ? env.emailProvider : 'mock';
   const credsReady = Boolean(env.smtpHost && env.smtpUser && env.smtpPass && env.emailFrom);
+  const brevoReady = Boolean(env.brevoApiKey && env.emailFrom && env.emailFromName);
   return {
     provider,
-    live: provider === 'smtp' && credsReady,
+    live: provider === 'smtp' ? credsReady : provider === 'brevo' && brevoReady,
     from: env.emailFrom || env.businessEmail || null,
   };
 }
@@ -116,6 +119,46 @@ async function smtpSend(payload: EmailPayload): Promise<EmailSendResult> {
   }
 }
 
+async function brevoSend(payload: EmailPayload): Promise<EmailSendResult> {
+  const cfg = getEmailConfig();
+  if (!cfg.live) {
+    return { ok: false, failureReason: 'EMAIL_PROVIDER=brevo requires BREVO_API_KEY, EMAIL_FROM, and EMAIL_FROM_NAME.' };
+  }
+  const recipient = payload.to.trim().toLowerCase();
+  if (env.brevoTestRecipients.length > 0 && !env.brevoTestRecipients.includes(recipient)) {
+    return { ok: false, failureReason: `Brevo test mode blocked recipient ${payload.to}; add it to BREVO_TEST_RECIPIENTS.` };
+  }
+  const attachments = payload.attachments.map((attachment) => ({
+    name: attachment.filename,
+    content: attachment.contentType?.startsWith('application/pdf')
+      ? attachment.content
+      : Buffer.from(attachment.content, 'utf8').toString('base64'),
+  }));
+  try {
+    const response = await fetch(env.brevoApiUrl, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'api-key': env.brevoApiKey,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: { email: extractAddress(env.emailFrom), name: env.emailFromName },
+        to: [{ email: payload.to }],
+        subject: payload.subject,
+        textContent: payload.text,
+        htmlContent: payload.html,
+        ...(attachments.length > 0 ? { attachment: attachments } : {}),
+      }),
+    });
+    const body = await response.json().catch(() => ({})) as { messageId?: string; message?: string };
+    if (!response.ok) return { ok: false, failureReason: `Brevo send failed (${response.status}): ${body.message ?? 'provider error'}` };
+    return { ok: true, providerMessageId: body.messageId ?? 'brevo-accepted' };
+  } catch (error) {
+    return { ok: false, failureReason: `Brevo send failed: ${(error as Error).message}` };
+  }
+}
+
 // "Display Name" may come from EMAIL_FROM_NAME while EMAIL_FROM holds the
 // bare address; nodemailer would double-wrap a quoted name, so rebuild it.
 function extractAddress(raw: string): string {
@@ -126,5 +169,5 @@ function extractAddress(raw: string): string {
 export async function sendEmail(payload: EmailPayload): Promise<EmailSendResult> {
   const { provider } = getEmailConfig();
   if (provider === 'mock') return mockSend();
-  return smtpSend(payload);
+  return provider === 'brevo' ? brevoSend(payload) : smtpSend(payload);
 }

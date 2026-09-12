@@ -32,13 +32,20 @@ export const env = {
   smsMaxSendAttempts: Number(process.env.SMS_MAX_SEND_ATTEMPTS) || 3,
   smsRetryBaseDelayMs: Number(process.env.SMS_RETRY_BASE_DELAY_MS) || 60_000,
   // Email receipt delivery (optional — see .env.example).
-  emailProvider: (process.env.EMAIL_PROVIDER || 'mock').toLowerCase() as 'mock' | 'smtp',
+  emailProvider: (process.env.EMAIL_PROVIDER || 'mock').toLowerCase() as 'mock' | 'smtp' | 'brevo',
   smtpHost: process.env.SMTP_HOST || '',
   smtpPort: Number(process.env.SMTP_PORT) || 587,
   smtpSecure: process.env.SMTP_SECURE === 'true',
   smtpUser: process.env.SMTP_USER || '',
   smtpPass: process.env.SMTP_PASS || '',
   emailFrom: process.env.EMAIL_FROM || '',
+  emailFromName: process.env.EMAIL_FROM_NAME || process.env.BUSINESS_NAME || '',
+  brevoApiKey: process.env.BREVO_API_KEY || '',
+  brevoApiUrl: process.env.BREVO_API_URL || 'https://api.brevo.com/v3/smtp/email',
+  brevoTestRecipients: (process.env.BREVO_TEST_RECIPIENTS || '')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean),
   // Business identity appended to tenant receipt SMS (optional — see .env.example).
   businessName: process.env.BUSINESS_NAME || '',
   businessRegNo: process.env.BUSINESS_REG_NO || '',
@@ -47,7 +54,6 @@ export const env = {
   businessPhone: process.env.BUSINESS_PHONE || '',
   businessEmail: process.env.BUSINESS_EMAIL || '',
   // Sender identity for emailed receipts (defaults to BUSINESS_EMAIL).
-  emailFromName: process.env.EMAIL_FROM_NAME || process.env.BUSINESS_NAME || '',
   smsApiKey: process.env.SMS_API_KEY || '',
   smsUsername: process.env.SMS_USERNAME || '',
   smsSenderId: process.env.SMS_SENDER_ID || '',

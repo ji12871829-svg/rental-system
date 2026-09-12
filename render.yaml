@@ -35,5 +35,7 @@ services:
         value: mock
       - key: EMAIL_PROVIDER
         value: mock
+      # Set EMAIL_PROVIDER=brevo plus BREVO_API_KEY, EMAIL_FROM and
+      # BREVO_TEST_RECIPIENTS in the Render dashboard for safe testing.
       # Same-origin deploy: Express serves frontend/dist, CORS never fires.
       # Add CORS_ORIGIN only if you later split the frontend to its own host.
