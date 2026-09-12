@@ -82,3 +82,36 @@ jobs:
       # missing, but a same-origin deploy without it is still broken.
       - name: Assert frontend/dist/index.html was produced
         run: test -f frontend/dist/index.html
+
+  # Post-deploy verification against the real Render service. Render does not
+  # post deploy statuses to GitHub, so the job polls /api/health until the
+  # service answers (instant when the deploy is already live), then runs the
+  # full public-surface check suite. Authed checks are skipped until repo
+  # secrets VERIFY_ADMIN_EMAIL / VERIFY_ADMIN_PASSWORD exist — add them (the
+  # real admin credentials) and set VERIFY_SKIP_AUTH to '0' to enable them.
+  # To repoint at a recreated service (e.g. the Frankfurt one), set the
+  # RENDER_URL repository variable — same variable the keep-warm job uses.
+  verify-live:
+    needs: [backend, frontend, render-build]
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: ${{ vars.RENDER_URL || 'https://rpms-gakt.onrender.com' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for the service to answer (deploy already live → instant)
+        run: |
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$BASE_URL/api/health" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "health 200 (attempt $i)"
+              exit 0
+            fi
+            echo "attempt $i: HTTP $code — deploy in progress or cold start; retrying in 15s"
+            sleep 15
+          done
+          echo "service never returned 200 within 10 minutes" >&2
+          exit 1
+      - name: Verify live deployment
+        env:
+          VERIFY_SKIP_AUTH: '1'
+        run: node scripts/verify-live.mjs "$BASE_URL"

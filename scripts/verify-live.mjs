@@ -7,6 +7,7 @@
 // Optional env overrides (defaults use the seed admin — change passwords on
 // first login, then set these to the real credentials):
 //   RPMS_BASE_URL=https://…  RPMS_ADMIN_EMAIL=…  RPMS_ADMIN_PASSWORD=…
+//   VERIFY_SKIP_AUTH=1 skips sign-in + authed checks (CI without credentials)
 //
 // Plain Node 18+ (global fetch, no deps) so it runs anywhere, including CI
 // or a cron job pinging the service after each deploy.
@@ -169,8 +170,11 @@ try {
 } catch { /* already reported above */ }
 
 // --------------------------------------------------------------- auth flow --
+const SKIP_AUTH = process.env.VERIFY_SKIP_AUTH === '1';
+if (SKIP_AUTH) console.log('(VERIFY_SKIP_AUTH=1 — skipping sign-in and authed endpoint checks)');
 console.log('');
 let token = null;
+if (!SKIP_AUTH) {
 try {
   const res = await postJson('/api/auth/login', { email: ADMIN_EMAIL, password: ADMIN_PASSWORD });
   const body = await res.json().catch(() => null);
@@ -189,6 +193,7 @@ try {
   }
 } catch (err) {
   record('POST /api/auth/login', false, err.message);
+}
 }
 
 if (token) {

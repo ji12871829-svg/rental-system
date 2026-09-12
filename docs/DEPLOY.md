@@ -143,6 +143,10 @@ admin and calls three authed read endpoints. Exit code 0 = all green.
 - After changing passwords: `RPMS_ADMIN_EMAIL=… RPMS_ADMIN_PASSWORD=… node scripts/verify-live.mjs …`
 - A 401 on login with the seed credentials usually means the password was
   already changed (good) or seed users were removed — not a deploy bug.
+- CI runs this automatically after every deploy (the `verify-live` job in
+  `.github/workflows/ci.yml`, pointed at the `RENDER_URL` variable). It skips
+  the sign-in checks unless the `VERIFY_ADMIN_EMAIL` / `VERIFY_ADMIN_PASSWORD`
+  repo secrets exist and `VERIFY_SKIP_AUTH` is set to `'0'` in the workflow.
 
 ### 3b. Cleaning the sample seed data (go-live)
 

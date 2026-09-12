@@ -63,3 +63,11 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => console.log(`mock RPMS listening on http://localhost:${PORT}`));
+
+// Graceful shutdown: on Windows, SIGTERM-kill while libuv is closing handles
+// trips a uv_assert crash that poisons the shell's exit code (observed 127).
+process.on('SIGTERM', () => {
+  server.closeAllConnections?.();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 500).unref(); // close() can hang on stragglers
+});
