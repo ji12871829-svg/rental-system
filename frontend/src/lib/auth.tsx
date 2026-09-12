@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { api, getToken, setToken } from './api';
 
-export type Role = 'ADMIN' | 'PROPERTY_MANAGER' | 'STAFF';
+type Role = 'ADMIN' | 'PROPERTY_MANAGER' | 'STAFF';
 
 export interface User {
   id: number;

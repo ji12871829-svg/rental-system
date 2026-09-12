@@ -117,7 +117,8 @@ export function gsm7EffectiveLength(text: string): number {
 // Appends the business identity on its own line, choosing the first (most
 // informative) variant that keeps the whole message within the 2-segment
 // budget. If nothing fits, the receipt body stands alone.
-export function withIdentity(message: string, businessIdentity?: string | string[]): string {
+// Module-private: smsService composes the same budgeting inline (buildMessage).
+function withIdentity(message: string, businessIdentity?: string | string[]): string {
   if (!businessIdentity || (Array.isArray(businessIdentity) && businessIdentity.length === 0)) {
     return message;
   }

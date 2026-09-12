@@ -114,7 +114,7 @@ export function Field({ label, children, hint }: { label: string; children: Reac
   );
 }
 
-export const inputClass =
+const inputClass =
   // text-base (<16px) on touch devices prevents iOS Safari's focus auto-zoom.
   'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base text-gray-900 shadow-sm transition-[border-color,box-shadow] duration-150 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500 md:text-sm';
 
@@ -164,33 +164,6 @@ export function Modal({ open, title, onClose, children, wide }: { open: boolean;
   );
 }
 
-// ------------------------------------------------------------- ConfirmDialog
-export function ConfirmDialog({ open, title, message, onCancel, onConfirm }: { open: boolean; title: string; message: string; onCancel: () => void; onConfirm: () => void }) {
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
-    document.addEventListener('keydown', onKey);
-    panelRef.current?.focus();
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open, onCancel]);
-
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col overflow-y-auto bg-gray-900/50 p-4 animate-in fade-in" onClick={onCancel} role="alertdialog" aria-modal="true" aria-label={title}>
-      <div ref={panelRef} tabIndex={-1} className="mx-auto my-auto w-full max-w-md rounded-2xl bg-white p-5 shadow-xl outline-none animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-        <p className="mt-2 text-sm text-gray-600">{message}</p>
-        <div className="mt-5 flex justify-end gap-2">
-          <Button variant="secondary" onClick={onCancel}>Cancel</Button>
-          <Button variant="danger" onClick={onConfirm}>Confirm</Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------- EmptyState
 export function EmptyState({ message }: { message: string }) {
   return (
@@ -207,7 +180,7 @@ export function Skeleton({ className = '' }: { className?: string }) {
   return <div aria-hidden className={`animate-pulse rounded bg-gray-200 ${className}`} />;
 }
 
-export function SkeletonStatGroupCard({ title, stats = 3 }: { title?: boolean; stats?: number }) {
+function SkeletonStatGroupCard({ title, stats = 3 }: { title?: boolean; stats?: number }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       {title && <Skeleton className="mb-3 h-3 w-20" />}
@@ -223,7 +196,7 @@ export function SkeletonStatGroupCard({ title, stats = 3 }: { title?: boolean; s
   );
 }
 
-export function SkeletonChartCard() {
+function SkeletonChartCard() {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <Skeleton className="mb-3 h-3.5 w-40" />

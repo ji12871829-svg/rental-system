@@ -18,6 +18,12 @@ const RULE = rgb(0.85, 0.87, 0.9);
 const RED = rgb(0.72, 0.11, 0.11);
 const GREEN = rgb(0.08, 0.5, 0.28);
 
+/**
+ * Exported because financeService.ts references this type via an inline
+ * `import('../utils/arrearsReportPdf').ArrearsPdfRow[]` cast — invisible to
+ * static import analysis (knip).
+ * @public
+ */
 export interface ArrearsPdfRow {
   unitNumber: string;
   tenantName: string;

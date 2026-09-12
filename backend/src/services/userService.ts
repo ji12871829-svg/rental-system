@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { query, queryOne } from '../config/db';
 import { env } from '../config/env';
-import type { Pagination, Role } from '../types';
+import type { Role } from '../types';
 import { conflict, notFound, unprocessable } from '../utils/httpError';
 import { logAudit } from './auditService';
 import { invalidateUserCache } from '../middleware/auth';
@@ -74,8 +74,4 @@ export async function deleteUser(id: number, userId: number): Promise<void> {
   await query('DELETE FROM users WHERE id = $1', [id]);
   invalidateUserCache(id);
   await logAudit({ userId, action: 'USER_DELETED', entity: 'users', entityId: id });
-}
-
-export function userPagination(): Pagination {
-  return { page: 1, limit: 100, total: 0, totalPages: 0 };
 }

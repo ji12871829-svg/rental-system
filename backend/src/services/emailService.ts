@@ -45,7 +45,7 @@ interface ReceiptWithEmail extends ReceiptDocument {
 
 // Fetches the full receipt (with tenant contact + currency) needed to
 // compose the email.
-export async function getReceiptForEmail(receiptId: number): Promise<ReceiptWithEmail> {
+async function getReceiptForEmail(receiptId: number): Promise<ReceiptWithEmail> {
   const row = await queryOne<ReceiptWithEmail>(
     `SELECT r.id, r.receipt_number, r.receipt_type, r.payment_date, r.billing_month, r.billing_year,
             r.rent_amount, r.water_amount, r.total_amount, r.balance, r.generated_at,
@@ -343,8 +343,10 @@ export async function listEmails(filters: EmailFilters): Promise<{ rows: EmailRo
 }
 
 // Backfill for seeded receipts: creates PENDING email rows for any receipt
-// whose tenant has an email address but no email row yet (used by db:setup).
-export async function backfillEmails(): Promise<number> {
+// whose tenant has an email address but no email row yet. Currently unused —
+// the db:setup backfill path imports backfillReceipts/backfillSms only. Kept
+// module-private as ready-made parity with the SMS backfill.
+async function backfillEmails(): Promise<number> {
   const receipts = await query<ReceiptWithEmail>(
     `SELECT r.*, t.email AS tenant_email
      FROM receipts r
@@ -370,7 +372,7 @@ export interface PreparedReportEmail {
 }
 
 // Subject line for the monthly financial report email.
-export function monthlyReportEmailSubject(year: number): string {
+function monthlyReportEmailSubject(year: number): string {
   return `Monthly Financial Report ${year}`;
 }
 

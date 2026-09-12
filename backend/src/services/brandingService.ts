@@ -30,7 +30,7 @@ const TABLE = 'business_branding';
 
 // DB row with env fallbacks applied. The env vars only fill gaps — a stored
 // value always wins. Returns nulls (not placeholders) for unfilled fields.
-export async function getBranding(): Promise<BrandingRow> {
+async function getBranding(): Promise<BrandingRow> {
   await ensureRow();
   const row = await queryOne<BrandingRow>(`SELECT * FROM ${TABLE} WHERE id = 1`);
   return {
@@ -232,7 +232,7 @@ export interface BusinessIdentity {
   email: string | null;
 }
 
-export function identityOf(row: BrandingRow): BusinessIdentity {
+function identityOf(row: BrandingRow): BusinessIdentity {
   return {
     name: row.legal_name,
     regNo: row.registration_number,

@@ -106,7 +106,8 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
 }
 
 // requireRoles('ADMIN') or requireRoles('ADMIN', 'PROPERTY_MANAGER')
-export function requireRoles(...roles: Role[]) {
+// Module-private: consumers use the prebuilt adminOnly / managerOrAdmin below.
+function requireRoles(...roles: Role[]) {
   return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) return next(unauthorized());
     if (!roles.includes(req.user.role)) {

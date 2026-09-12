@@ -26,7 +26,7 @@ const ERASED_SMS = '[Erased on request — personal data removed]';
 // principles. Written by the service functions themselves, so no code path
 // can serve personal data or erase it without leaving a register entry.
 // Logging never throws — a register failure must not break the operation.
-export type PrivacyRequestType = 'EXPORT_JSON' | 'EXPORT_CSV' | 'ERASURE';
+type PrivacyRequestType = 'EXPORT_JSON' | 'EXPORT_CSV' | 'ERASURE';
 
 export interface PrivacyRequestRow {
   id: number;
@@ -42,7 +42,7 @@ export interface PrivacyRequestRow {
   performed_by_name?: string | null;
 }
 
-export async function logPrivacyRequest(entry: {
+async function logPrivacyRequest(entry: {
   tenantId: number | null;
   type: PrivacyRequestType;
   requester: string;
@@ -259,7 +259,7 @@ export interface DataRequestLetter {
 
 // Per-category counts and money totals for the letter's export-summary
 // section (the letter describes the scope; the JSON enclosure has the detail).
-export function summarizeBundle(bundle: Record<string, unknown>): DataRequestLetter['summary'] {
+function summarizeBundle(bundle: Record<string, unknown>): DataRequestLetter['summary'] {
   const data = (bundle.data ?? {}) as Record<string, Record<string, unknown>[]>;
   const stat = (key: string, field?: string): { count: number; total: number } => {
     const rows = data[key] ?? [];

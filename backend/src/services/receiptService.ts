@@ -135,7 +135,7 @@ export async function getReceiptById(id: number): Promise<unknown> {
 
 // IDs of every receipt in a billing period, ordered for the bulk export
 // (rent first, then water, then combined — within each type by date).
-export async function listReceiptIdsForPeriod(month: number, year: number): Promise<number[]> {
+async function listReceiptIdsForPeriod(month: number, year: number): Promise<number[]> {
   const rows = await query<{ id: number }>(
     `SELECT id FROM receipts
      WHERE billing_month = $1 AND billing_year = $2

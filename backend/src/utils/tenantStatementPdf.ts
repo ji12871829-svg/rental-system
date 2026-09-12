@@ -66,7 +66,7 @@ const HEADERS: Record<ColKey, string> = {
   totalBal: 'Total Bal.',
 };
 
-export interface StatementPdfMonthRow {
+interface StatementPdfMonthRow {
   month: number;
   monthName: string;
   unit: string | null;

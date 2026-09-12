@@ -18,7 +18,7 @@ const MUTED = rgb(0.42, 0.45, 0.5);
 const RULE = rgb(0.85, 0.87, 0.9);
 const RED = rgb(0.72, 0.11, 0.11);
 
-export interface MonthlyReportPdfRow {
+interface MonthlyReportPdfRow {
   month: number;
   monthName: string;
   expectedRent: number | string;

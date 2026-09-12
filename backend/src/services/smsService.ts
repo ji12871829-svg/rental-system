@@ -39,6 +39,12 @@ interface ReceiptLike {
 // the legal identity never is. Contacts are plain text because SMS cannot
 // carry markup — phones auto-linkify numbers/emails and the SMS history
 // modal renders links.
+/**
+ * Exported for backend/tests/unit/buildMessage.test.ts, which must load this
+ * module via a runtime require() (env vars must be set before env.ts reads
+ * them at import time) — invisible to static import analysis (knip).
+ * @public
+ */
 export function buildMessage(receipt: ReceiptLike, opts: {
   tenantName: string;
   unitNumber: string;

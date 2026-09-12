@@ -9,8 +9,8 @@ import { tenantStatementPdfBytes } from '../utils/tenantStatementPdf';
 import { getSmsBalance } from './smsService';
 
 // Shape of the Dashboard's compact SMS health strip.
-export type BalanceStatusLike = ReturnType<typeof getSmsBalance> extends Promise<infer T> ? T : never;
-export interface SmsHealth {
+type BalanceStatusLike = ReturnType<typeof getSmsBalance> extends Promise<infer T> ? T : never;
+interface SmsHealth {
   balance: BalanceStatusLike;
   sentThisMonth: number;
   failedThisMonth: number;
@@ -438,7 +438,7 @@ export async function tenantStatementPdf(
 // mock/Twilio degrade to 'unknown' without erroring) composed with this
 // month's send/failed counts. Never throws; the badge must not break the
 // dashboard render.
-export async function dashboardSmsHealth(): Promise<SmsHealth> {
+async function dashboardSmsHealth(): Promise<SmsHealth> {
   const [balance, counts] = await Promise.all([
     getSmsBalance().catch(() => ({ state: 'unknown' as const, reason: 'Balance check failed.' })),
     queryOne<{ sent: string; failed: string }>(

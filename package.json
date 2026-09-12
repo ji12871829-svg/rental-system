@@ -2,7 +2,7 @@
   "name": "rental-system-workspace",
   "private": true,
   "scripts": {
-    "knip": "knip",
+    "knip": "knip --include files,dependencies,exports,types",
     "typecheck": "npm --prefix backend run typecheck",
     "typecheck:backend": "npm --prefix backend run typecheck",
     "typecheck:frontend": "npm --prefix frontend run typecheck",

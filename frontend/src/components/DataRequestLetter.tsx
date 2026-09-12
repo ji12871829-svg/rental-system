@@ -5,7 +5,7 @@ import { MONTHS, money } from '../lib/format';
 
 // --- Types mirroring POST /api/tenants/:id/data-request-letter ---------------
 
-export interface LetterBundle {
+interface LetterBundle {
   exportedAt: string;
   subject: Record<string, unknown>;
   unit: Record<string, unknown> | null;
@@ -13,7 +13,7 @@ export interface LetterBundle {
   retentionNote: string;
 }
 
-export interface LetterSummaryEntry {
+interface LetterSummaryEntry {
   count: number;
   total: number;
 }
@@ -125,7 +125,7 @@ const ANNEX_SECTIONS: { heading: string; key: string; cols: [string, (r: Record<
 
 // --- The formal letter, as a standalone printable document -------------------
 
-export function letterHtml(letter: LetterData, opts: { withButton?: boolean } = {}): string {
+function letterHtml(letter: LetterData, opts: { withButton?: boolean } = {}): string {
   const { branding, bundle } = letter;
   const subject = bundle.subject;
   const unit = bundle.unit;

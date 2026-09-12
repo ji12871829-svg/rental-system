@@ -116,12 +116,12 @@ jobs:
           VERIFY_SKIP_AUTH: '1'
         run: node scripts/verify-live.mjs "$BASE_URL"
 
-  # Dead-code detector (knip): blocks on unused files and dependencies — high
-  # signal, zero false positives in this repo. Unused exports are a known
-  # backlog reported non-blocking: several flagged ones are consumed by tests
-  # via dynamic require() or namespaced imports static analysis cannot trace
-  # (removing them broke the build once already — see knip.json history).
-  # Triage `npx knip` locally, fix or annotate, then promote to blocking.
+  # Dead-code detector (knip): blocks on unused files, dependencies, exports
+  # and exported types. The 41-item export backlog was triaged (removed or
+  # un-exported; the two consumed via dynamic require() / inline import() casts
+  # are annotated with @public JSDoc tags — search that tag before deleting an
+  # "unused" export). The full report runs non-blocking to surface other
+  # categories without gating CI on them.
   knip:
     runs-on: ubuntu-latest
     steps:
@@ -137,8 +137,8 @@ jobs:
       - run: npm ci --include=dev
       - run: npm ci --include=dev --prefix backend
       - run: npm ci --include=dev --prefix frontend
-      - name: Block on unused files and dependencies
-        run: npx knip --include files,dependencies
-      - name: Report unused exports (non-blocking backlog)
+      - name: Block on unused files, dependencies, exports and types
+        run: npx knip --include files,dependencies,exports,types
+      - name: Full report (informational, non-blocking)
         run: npx knip
         continue-on-error: true

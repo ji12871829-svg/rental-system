@@ -4,7 +4,7 @@
 
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined) || '';
 
-export interface ApiError {
+interface ApiError {
   error: string;
   message: string;
   details?: Record<string, unknown>;
