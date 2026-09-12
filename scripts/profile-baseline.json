@@ -1,0 +1,15 @@
+{
+  "_note": "Approximate per-endpoint minimums from the pre-optimization live profile (2026-09-11/12, commit 63b43c6-era code: COUNT+SELECT double queries, per-request auth DB hit, Oregon<->Frankfurt DB RTT ~290ms). Endpoints in the same measured band share a value.",
+  "GET /api/units?limit=5": { "min": 750 },
+  "GET /api/tenants?limit=5": { "min": 750 },
+  "GET /api/rent/payments?limit=5": { "min": 810 },
+  "GET /api/water/readings?limit=5": { "min": 810 },
+  "GET /api/water/payments?limit=5": { "min": 810 },
+  "GET /api/receipts?limit=5": { "min": 810 },
+  "GET /api/expenses?limit=5": { "min": 810 },
+  "GET /api/audit?limit=5": { "min": 750 },
+  "GET /api/settings": { "min": 610 },
+  "GET /api/branding": { "min": 610 },
+  "GET /api/health (no DB — floor)": { "min": 310 },
+  "GET /api/nope (404 — floor)": { "min": 313 }
+}
