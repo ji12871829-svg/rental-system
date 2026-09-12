@@ -192,11 +192,41 @@ the first real tenant.
 | Task | How |
 |---|---|
 | Deploy an update | push to the default branch — Render auto-deploys (`autoDeploy: true`) |
+| Watch a deploy | `RENDER_API_KEY=rnd_… node scripts/render-deploy.mjs wait <sha>` — real status from Render's API (also `list`, `status`, `deploys`) |
 | Roll back | Render dashboard → the bad deploy → **Roll back** |
 | See API logs | Render dashboard → Logs tab (stdout/stderr) |
 | Inspect the DB | Neon console → SQL Editor (or `psql "$DATABASE_URL"`) |
 | Rotate JWT_SECRET | dashboard env change → redeploy (logs everyone out) |
 | Change branding | in-app Settings page — no redeploy needed |
+
+### 5a. Migrating the service to a new region (Oregon → Frankfurt)
+
+`render.yaml` pins `region: frankfurt` so new services are created next to the
+Neon database (eu-central-1). **A Render service's region is fixed at creation** — an
+existing service cannot be moved. Migrating = recreating:
+
+1. **Snapshot env vars** from the old service (Dashboard → Environment): `DATABASE_URL` and
+   `JWT_SECRET` matter most — reuse `JWT_SECRET` verbatim so staff stay logged in. Skip
+   `PORT` and `RENDER_*` (Render injects those).
+2. **New → Blueprint** → this repo, branch `main`. Confirm the review screen shows
+   region **Frankfurt**. Paste the pooled `DATABASE_URL`; replace the generated
+   `JWT_SECRET` with the old value; re-add any `BUSINESS_*`, SMS/EMAIL/MPESA vars.
+   Find the new service's URL with
+   `RENDER_API_KEY=rnd_… node scripts/render-deploy.mjs list`
+   (API key from Render Dashboard → Account Settings → API Keys).
+3. **Verify before cutover** — the database is untouched (only the Node process moves):
+
+   ```bash
+   RPMS_ADMIN_EMAIL=… RPMS_ADMIN_PASSWORD=… \
+     node scripts/verify-live.mjs https://<new-url>.onrender.com
+   node scripts/profile-live.mjs https://<new-url>.onrender.com scripts/profile-baseline.json
+   ```
+
+   Over-floor DB cost should collapse from ~130–280 ms to ~5–30 ms.
+4. **Cutover**: update `.github/workflows/keep-warm.yml` to the new URL; update M-Pesa
+   callback and SMS delivery-report URLs in the Safaricom/AT dashboards; give staff the
+   new URL (PWAs must be reinstalled); leave the old service idle for a few days as a
+   free rollback (spun-down services cost no instance-hours), then delete it.
 
 ## 6. Known trade-offs of the free tier
 
