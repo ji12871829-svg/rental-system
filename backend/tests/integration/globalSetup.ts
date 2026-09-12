@@ -19,9 +19,12 @@ export default async function globalSetup(): Promise<void> {
   process.env.DATABASE_URL = `postgres://rms_user:rms_password@localhost:5432/${TEST_DB}`;
   const { pool } = await import('../../src/config/db');
 
-  // 3. Schema + seed.
+  // 3. Schema + test fixture. The production database/seed.sql is a clean
+  // go-live seed (no sample tenants) since commit 8936c6b — the integration
+  // tests depend on the historical sample dataset, which lives in
+  // tests/fixtures/sample-data.sql so tests own their data (hermetic).
   const schema = fs.readFileSync(path.resolve(__dirname, '../../../database/schema.sql'), 'utf8');
-  const seed = fs.readFileSync(path.resolve(__dirname, '../../../database/seed.sql'), 'utf8');
+  const seed = fs.readFileSync(path.resolve(__dirname, '../fixtures/sample-data.sql'), 'utf8');
   await pool.query(schema);
   await pool.query(seed);
 
