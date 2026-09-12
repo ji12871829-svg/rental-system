@@ -76,12 +76,7 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    Overview: true,
-    Operations: true,
-    Management: true,
-    Help: true,
-  });
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
   const visibleSections = NAV_SECTIONS.map((section) => ({
     ...section,
@@ -113,15 +108,18 @@ export default function Layout() {
           {section.title && (
             <button
               type="button"
-              aria-expanded={openSections[section.title] ?? true}
+              id={`sidebar-${section.title.toLowerCase()}`}
+              aria-controls={`sidebar-${section.title.toLowerCase()}-menu`}
+              aria-expanded={openSections[section.title] ?? false}
               onClick={() => setOpenSections((current) => ({ ...current, [section.title as string]: !(current[section.title as string] ?? true) }))}
-              className="flex w-full items-center justify-between px-2 pb-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 transition-colors hover:text-white"
+              className="flex min-h-10 w-full items-center justify-between rounded-lg border border-slate-700/70 bg-slate-800/60 px-3 text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-300 transition-colors hover:border-slate-600 hover:bg-slate-700/70 hover:text-white"
             >
               {section.title}
-              <ChevronDown size={14} className={`transition-transform duration-150 ${openSections[section.title] ?? true ? '' : '-rotate-90'}`} aria-hidden />
+              <ChevronDown size={16} className={`transition-transform duration-150 ${openSections[section.title] ?? true ? '' : '-rotate-90'}`} aria-hidden />
             </button>
           )}
-          {(openSections[section.title ?? 'section'] ?? true) && section.items.map((item) => (
+          {(openSections[section.title ?? 'section'] ?? false) && <div id={`sidebar-${section.title?.toLowerCase() ?? 'section'}-menu`} className="space-y-1 pl-1">
+            {section.items.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -138,7 +136,8 @@ export default function Layout() {
               <item.icon size={18} strokeWidth={1.75} aria-hidden className="shrink-0" />
               {item.label}
             </NavLink>
-          ))}
+            ))}
+          </div>}
         </div>
       ))}
     </nav>
