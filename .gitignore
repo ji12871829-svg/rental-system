@@ -16,3 +16,6 @@ rental-system/
 
 # Freebuff client workspace state (logs, project id) — machine-local, not source
 .freebuff/
+
+# Regenerable output of scripts/profile-live.mjs
+scripts/profile-baseline.after.json
