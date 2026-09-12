@@ -115,3 +115,25 @@ jobs:
         env:
           VERIFY_SKIP_AUTH: '1'
         run: node scripts/verify-live.mjs "$BASE_URL"
+
+  # Dead-code detector (knip): blocks on unused files and dependencies — high
+  # signal, zero false positives in this repo. Unused exports are a known
+  # backlog reported non-blocking: several flagged ones are consumed by tests
+  # via dynamic require() or namespaced imports static analysis cannot trace
+  # (removing them broke the build once already — see knip.json history).
+  # Triage `npx knip` locally, fix or annotate, then promote to blocking.
+  knip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26 # matches local dev and Render's pinned NODE_VERSION
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --include=dev
+      - name: Block on unused files and dependencies
+        run: npx knip --include files,dependencies
+      - name: Report unused exports (non-blocking backlog)
+        run: npx knip
+        continue-on-error: true

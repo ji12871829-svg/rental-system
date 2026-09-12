@@ -2,10 +2,13 @@
   "name": "rental-system-workspace",
   "private": true,
   "scripts": {
+    "knip": "knip",
     "typecheck": "npm --prefix backend run typecheck",
     "typecheck:backend": "npm --prefix backend run typecheck",
     "typecheck:frontend": "npm --prefix frontend run typecheck",
     "typecheck:all": "npm run typecheck:backend && npm run typecheck:frontend"
   },
-  "dependencies": {}
+  "devDependencies": {
+    "knip": "^6.35.1"
+  }
 }
