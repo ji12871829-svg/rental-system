@@ -112,10 +112,10 @@ export default function Layout() {
               aria-controls={`sidebar-${section.title.toLowerCase()}-menu`}
               aria-expanded={openSections[section.title] ?? false}
               onClick={() => setOpenSections((current) => ({ ...current, [section.title as string]: !(current[section.title as string] ?? true) }))}
-              className="flex min-h-10 w-full items-center justify-between rounded-lg border border-slate-700/70 bg-slate-800/60 px-3 text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-300 transition-colors hover:border-slate-600 hover:bg-slate-700/70 hover:text-white"
+              className="group flex min-h-8 w-full items-center justify-between px-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 transition-colors hover:text-slate-200"
             >
               {section.title}
-              <ChevronDown size={16} className={`transition-transform duration-150 ${openSections[section.title] ?? true ? '' : '-rotate-90'}`} aria-hidden />
+              <ChevronDown size={14} strokeWidth={2} className={`text-slate-600 transition-transform duration-150 group-hover:text-slate-300 ${openSections[section.title] ?? true ? '' : '-rotate-90'}`} aria-hidden />
             </button>
           )}
           {(openSections[section.title ?? 'section'] ?? false) && <div id={`sidebar-${section.title?.toLowerCase() ?? 'section'}-menu`} className="space-y-1 pl-1">
