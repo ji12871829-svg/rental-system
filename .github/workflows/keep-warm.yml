@@ -20,8 +20,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping /api/health
+        # To cut over to a recreated service (e.g. the Frankfurt one), set the
+        # repository variable RENDER_URL (repo Settings → Secrets and variables
+        # → Actions → Variables → New repository variable) to e.g.
+        # https://rpms-abcd1234.onrender.com — no commit needed. While unset,
+        # the pinger keeps targeting the original Oregon service.
+        env:
+          TARGET_URL: ${{ vars.RENDER_URL || 'https://rpms-gakt.onrender.com' }}
         run: |
-          URL=https://rpms-gakt.onrender.com/api/health
+          URL="$TARGET_URL/api/health"
+          echo "pinging $URL"
           for i in 1 2 3; do
             code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 "$URL")
             if [ "$code" = "200" ]; then
