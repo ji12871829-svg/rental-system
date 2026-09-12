@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { ChevronDown, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { DataRequestLetterModal, type LetterData } from '../components/DataRequestLetter';
@@ -41,7 +41,6 @@ export default function Tenants() {
   const [transferTarget, setTransferTarget] = useState<Tenant | null>(null);
   const [privacyRequest, setPrivacyRequest] = useState<{ tenant: Tenant; action: 'json' | 'csv' | 'erase' | 'letter' } | null>(null);
   const [letter, setLetter] = useState<LetterData | null>(null);
-  const [actionMenuId, setActionMenuId] = useState<number | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const { data, loading, error } = useFetch(
@@ -49,6 +48,34 @@ export default function Tenants() {
     [q, status, page, refreshKey]
   );
   const refresh = () => setRefreshKey((k) => k + 1);
+
+  async function handleTenantAction(action: string, tenant: Tenant) {
+    if (action === 'view') {
+      const res = await api.get<{ data: Tenant }>(`/api/tenants/${tenant.id}`);
+      setDetail(res.data);
+    } else if (action === 'ledger') {
+      navigate(`/ledger?tenant=${tenant.id}`);
+    } else if (action === 'edit') {
+      setEdit(tenant);
+      setShowForm(true);
+    } else if (action === 'transfer') {
+      setTransferTarget(tenant);
+    } else if (action === 'move-out') {
+      if (!window.confirm(`Move ${tenant.full_name} out of unit ${tenant.unit_number}?`)) return;
+      try {
+        await api.post(`/api/tenants/${tenant.id}/move-out`, { moveOutDate: new Date().toISOString().slice(0, 10) });
+        toast('success', `${tenant.full_name} moved out — unit is now VACANT.`);
+        refresh();
+      } catch (err) { toast('error', (err as Error).message); }
+    } else if (action === 'delete') {
+      if (!window.confirm(`Permanently delete ${tenant.full_name}?`)) return;
+      try {
+        await api.del(`/api/tenants/${tenant.id}`);
+        toast('success', 'Tenant deleted.');
+        refresh();
+      } catch (err) { toast('error', (err as Error).message); }
+    }
+  }
 
   // Data-subject rights actions run through PrivacyRequestModal, which
   // captures requester + reason and logs every action in the register.
@@ -110,48 +137,31 @@ export default function Tenants() {
                     )}
                   </td>
                   <td>
-                    <div className="relative flex justify-end">
-                      <button
-                        type="button"
-                        className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50 hover:text-gray-900"
+                    <div className="flex justify-end">
+                      <select
                         aria-label={`Actions for ${t.full_name}`}
-                        aria-haspopup="menu"
-                        aria-expanded={actionMenuId === t.id}
-                        onClick={() => setActionMenuId((current) => current === t.id ? null : t.id)}
+                        defaultValue=""
+                        onChange={(event) => {
+                          const action = event.target.value;
+                          event.currentTarget.value = '';
+                          void handleTenantAction(action, t);
+                        }}
+                        className="min-h-9 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 shadow-sm outline-none transition-colors hover:border-gray-300 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
                       >
-                        Actions <ChevronDown size={14} strokeWidth={2} aria-hidden />
-                      </button>
-                      {actionMenuId === t.id && <div role="menu" className="absolute right-0 top-11 z-30 min-w-40 rounded-lg border border-gray-200 bg-white p-1.5 shadow-xl">
-                        <button type="button" role="menuitem" className="flex w-full items-center rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50" onClick={async () => {
-                          setActionMenuId(null);
-                          const res = await api.get<{ data: Tenant }>(`/api/tenants/${t.id}`);
-                          setDetail(res.data);
-                        }}>View details</button>
-                        <button type="button" role="menuitem" className="flex w-full items-center rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50" onClick={() => { setActionMenuId(null); navigate(`/ledger?tenant=${t.id}`); }}>Open ledger</button>
+                        <option value="" disabled>Actions</option>
+                        <option value="view">View details</option>
+                        <option value="ledger">Open ledger</option>
                       {canManage && t.status === 'ACTIVE' && (
                         <>
-                          <button type="button" role="menuitem" className="flex w-full items-center rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50" onClick={() => { setActionMenuId(null); setEdit(t); setShowForm(true); }}>Edit tenant</button>
-                          <button type="button" role="menuitem" className="flex w-full items-center rounded-md px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50" onClick={() => { setActionMenuId(null); setTransferTarget(t); }}>Transfer unit</button>
-                          <button type="button" role="menuitem" className="flex w-full items-center rounded-md px-3 py-2 text-left text-xs font-medium text-red-600 hover:bg-red-50" onClick={async () => {
-                            setActionMenuId(null);
-                            if (!window.confirm(`Move ${t.full_name} out of unit ${t.unit_number}?`)) return;
-                            try {
-                              await api.post(`/api/tenants/${t.id}/move-out`, { moveOutDate: new Date().toISOString().slice(0, 10) });
-                              toast('success', `${t.full_name} moved out — unit is now VACANT.`);
-                              refresh();
-                            } catch (err) { toast('error', (err as Error).message); }
-                          }}>Move out</button>
+                          <option value="edit">Edit tenant</option>
+                          <option value="transfer">Transfer unit</option>
+                          <option value="move-out">Move out</option>
                         </>
                       )}
                       {isAdmin && (
-                        <button type="button" role="menuitem" className="flex w-full items-center rounded-md px-3 py-2 text-left text-xs font-medium text-red-600 hover:bg-red-50" onClick={async () => {
-                          setActionMenuId(null);
-                          if (!window.confirm(`Permanently delete ${t.full_name}?`)) return;
-                          try { await api.del(`/api/tenants/${t.id}`); toast('success', 'Tenant deleted.'); refresh(); }
-                          catch (err) { toast('error', (err as Error).message); }
-                        }}>Delete tenant</button>
+                        <option value="delete">Delete tenant</option>
                       )}
-                      </div>}
+                      </select>
                     </div>
                   </td>
                 </tr>
