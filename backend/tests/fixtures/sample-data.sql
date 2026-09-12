@@ -1,10 +1,10 @@
 -- ============================================================================
--- TEST-ONLY FIXTURE: historical sample dataset frozen at commit 8936c6b^.
+-- TEST-ONLY FIXTURE: historical sample dataset, frozen from before the M-Pesa seed-cleanup commit ("feat: automate M-Pesa rent payments", 2026-09-11).
 -- ----------------------------------------------------------------------------
 -- The integration tests (backend/tests/integration/api.test.ts) were written
 -- against this dataset: tenants (Peter Otieno, Grace Njeri, ...), rent
 -- payments, water readings (unit 13/15), arrears, and water purchases.
--- Commit 8936c6b emptied database/seed.sql into a clean go-live seed (no
+-- The M-Pesa seed-cleanup commit emptied database/seed.sql into a clean go-live seed (no
 -- sample tenants), which broke the suite everywhere. This copy lives HERE so
 -- tests own their data and the production seed stays clean. Do not edit
 -- without updating the tests that depend on it.

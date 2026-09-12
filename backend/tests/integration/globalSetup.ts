@@ -20,7 +20,7 @@ export default async function globalSetup(): Promise<void> {
   const { pool } = await import('../../src/config/db');
 
   // 3. Schema + test fixture. The production database/seed.sql is a clean
-  // go-live seed (no sample tenants) since commit 8936c6b — the integration
+  // go-live seed (no sample tenants) since the M-Pesa seed-cleanup commit of 2026-09-11 — the integration
   // tests depend on the historical sample dataset, which lives in
   // tests/fixtures/sample-data.sql so tests own their data (hermetic).
   const schema = fs.readFileSync(path.resolve(__dirname, '../../../database/schema.sql'), 'utf8');
