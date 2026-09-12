@@ -227,14 +227,23 @@ existing service cannot be moved. Migrating = recreating:
    ```
 
    Over-floor DB cost should collapse from ~130–280 ms to ~5–30 ms.
-4. **Cutover**: update `.github/workflows/keep-warm.yml` to the new URL; update M-Pesa
-   callback and SMS delivery-report URLs in the Safaricom/AT dashboards; give staff the
-   new URL (PWAs must be reinstalled); leave the old service idle for a few days as a
-   free rollback (spun-down services cost no instance-hours), then delete it.
+4. **Cutover**: set the `RENDER_URL` repository variable (GitHub → Settings →
+   Secrets and variables → Actions → **Variables**) to the new URL — keep-warm and
+   verify-live retarget automatically on their next run, no commit needed. Update
+   M-Pesa callback and SMS delivery-report URLs in the Safaricom/AT dashboards;
+   give staff the new URL (PWAs must be reinstalled); leave the old service idle
+   for a few days as a free rollback (spun-down services cost no instance-hours),
+   then delete it.
 
 ## 6. Known trade-offs of the free tier
 
 - **Sleeps**: explained above. Upgrading Render to Starter ($7/mo) removes it.
+- **Keep-warm cron is flaky on GitHub free** — observed: only 1 scheduled run
+  fired in ~20 hours (2026-09-12), letting the service cold-boot (a 32 s first
+  request). Scheduled workflows are skipped when runners are saturated. The
+  workflow still works as a best-effort pinger + uptime alarm, but if warm
+  always-on matters, point an external monitor (UptimeRobot/Better Stack, free
+  5-min interval) at `/api/health`, or upgrade the Render instance.
 - **0.5 GB Neon storage**: years of receipts/PDFs/audit rows for one property
   fit easily; email attachments are stored base64 in `email_notifications`,
   which grows fastest — the retention sweep keeps tenant data trimmed, but

@@ -6,6 +6,11 @@
 # Bonus: a red X here means the live site failed its health check 3 times in a
 # row — a crude but effective uptime alarm.
 #
+# KNOWN LIMIT: GitHub skips scheduled workflows when free runners are saturated
+# (observed: 1 run fired in ~20 hours, letting the service cold-boot). This is
+# best-effort. For guaranteed warm, point an external monitor (UptimeRobot,
+# Better Stack — free 5-min interval) at /api/health, or use a paid instance.
+#
 # Render plans: upgrade to any paid instance type and this file can be
 # deleted (paid services never spin down).
 name: Keep warm
