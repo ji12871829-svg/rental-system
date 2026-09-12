@@ -2,10 +2,9 @@ import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from '../components/charts';
-import { StatGroupCard, PageHeader, useFetch } from '../components/ui';
+import { StatGroupCard, PageHeader, useFetch, SkeletonDashboard } from '../components/ui';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
-import { useBranding } from '../lib/BrandingContext';
 import { MONTHS, money, methodLabel } from '../lib/format';
 
 interface DashboardData {
@@ -53,12 +52,11 @@ interface DashboardData {
 const PIE_COLORS = ['#1d6fd6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#14b8a6'];
 
 export default function Dashboard() {
-  const { identity } = useBranding();
   const { data, loading, error } = useFetch<DashboardData>(() =>
     api.get<{ data: DashboardData }>('/api/reports/dashboard').then((r) => r.data)
   );
 
-  if (loading) return <div className="text-sm text-gray-500">Loading dashboard…</div>;
+  if (loading) return <SkeletonDashboard />;
   if (error) return <div className="text-sm text-red-600">Unable to load dashboard: {error}</div>;
   if (!data) return null;
 
@@ -71,49 +69,6 @@ export default function Dashboard() {
         title="Dashboard"
         subtitle={`Reporting year ${reportingYear} — everything below updates automatically from recorded transactions`}
       />
-
-      {/* The buildings this software runs — photo strip with subtle 1px
-          outlines (pure black/white by color-scheme) for consistent depth. */}
-      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <figure className="relative overflow-hidden rounded-xl shadow-sm ring-1 ring-black/10">
-          <picture>
-            <source
-              type="image/webp"
-              srcSet="/building/building-1-480.webp 480w, /building/building-1-800.webp 800w, /building/building-1-1600.webp 1600w"
-              sizes="(min-width: 640px) 50vw, 100vw"
-            />
-            <img
-              src="/building/building-1-800.webp"
-              alt="Residential building managed with RPMS"
-              className="h-44 w-full object-cover transition-transform duration-300 hover:scale-[1.02] sm:h-52"
-              loading="lazy"
-              decoding="async"
-            />
-          </picture>
-          <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-4 py-2.5 text-sm font-medium text-white">
-            {identity?.address ?? 'Our building'}
-          </figcaption>
-        </figure>
-        <figure className="relative overflow-hidden rounded-xl shadow-sm ring-1 ring-black/10">
-          <picture>
-            <source
-              type="image/webp"
-              srcSet="/building/building-2-480.webp 480w, /building/building-2-800.webp 800w, /building/building-2-1600.webp 1600w"
-              sizes="(min-width: 640px) 50vw, 100vw"
-            />
-            <img
-              src="/building/building-2-800.webp"
-              alt="Second building under management"
-              className="h-44 w-full object-cover transition-transform duration-300 hover:scale-[1.02] sm:h-52"
-              loading="lazy"
-              decoding="async"
-            />
-          </picture>
-          <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-4 py-2.5 text-sm font-medium text-white">
-            Managed with RPMS
-          </figcaption>
-        </figure>
-      </div>
 
       {/* Property summary */}
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Property</h2>

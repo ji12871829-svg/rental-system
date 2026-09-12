@@ -3,7 +3,7 @@ import { Download, Mail } from 'lucide-react';
 import {
   Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from '../components/charts';
-import { KpiCard, PageHeader, Select, useFetch, useToast } from '../components/ui';
+import { KpiCard, PageHeader, Select, SkeletonTable, useFetch, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { money, number } from '../lib/format';
 
@@ -216,6 +216,7 @@ export default function MonthlySummary() {
         </div>
       </div>
 
+      {rows.length > 0 && (
       <div className="table-scroll">
         <table>
           <thead>
@@ -259,8 +260,9 @@ export default function MonthlySummary() {
             ))}
           </tbody>
         </table>
-        {rows.length === 0 && <div className="p-6 text-sm text-gray-500">Loading summary…</div>}
       </div>
+      )}
+      {rows.length === 0 && <SkeletonTable cols={13} rows={12} />}
     </div>
   );
 }

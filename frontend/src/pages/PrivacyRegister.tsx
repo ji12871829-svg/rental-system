@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, EmptyState, Modal, PageHeader, Pagination, Select, TextInput, useFetch } from '../components/ui';
+import { Button, EmptyState, Modal, PageHeader, Pagination, Select, SkeletonTable, TextInput, useFetch } from '../components/ui';
 import { api, qs } from '../lib/api';
 import { formatDate } from '../lib/format';
 
@@ -74,7 +74,7 @@ export default function PrivacyRegister() {
         </Select>
       </div>
 
-      {loading && <div className="text-sm text-gray-500">Loading register…</div>}
+      {loading && <SkeletonTable cols={8} />}
       {error && <div className="text-sm text-red-600">{error}</div>}
       {!loading && !error && data && (
         <>

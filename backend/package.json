@@ -13,8 +13,8 @@
     "db:setup": "tsx src/db/setup.ts",
     "db:reset": "tsx src/db/reset.ts",
     "test": "cross-env NODE_ENV=test jest --runInBand",
-    "test:unit": "cross-env NODE_ENV=test jest --runInBand --testPathPatterns tests/unit",
-    "test:integration": "cross-env NODE_ENV=test jest --runInBand --testPathPatterns tests/integration"
+    "test:unit": "cross-env NODE_ENV=test jest --runInBand --testPathPattern tests/unit",
+    "test:integration": "cross-env NODE_ENV=test jest --runInBand --testPathPattern tests/integration"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Download, Mail } from 'lucide-react';
-import { EmptyState, KpiCard, PageHeader, Select, StatusBadge, useFetch, useToast } from '../components/ui';
+import { EmptyState, KpiCard, PageHeader, Select, SkeletonTable, StatusBadge, useFetch, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { money } from '../lib/format';
 
@@ -130,7 +130,7 @@ export default function TenantLedger() {
         </Select>
       </div>
 
-      {loading && <div className="text-sm text-gray-500">Loading ledger…</div>}
+      {loading && <SkeletonTable cols={14} />}
       {error && <div className="text-sm text-red-600">{error}</div>}
       {!loading && !error && tenantId === '' && (
         <EmptyState message="Select a tenant to view their month-by-month ledger." />

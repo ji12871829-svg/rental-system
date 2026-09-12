@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download } from 'lucide-react';
-import { Button, EmptyState, KpiCard, PageHeader, Select, StatusBadge, useFetch, useToast } from '../components/ui';
+import { Button, EmptyState, KpiCard, PageHeader, Select, SkeletonTable, StatusBadge, useFetch, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { money } from '../lib/format';
 
@@ -137,7 +137,7 @@ export default function Arrears() {
         </Select>
       </div>
 
-      {loading && <div className="text-sm text-gray-500">Loading arrears…</div>}
+      {loading && <SkeletonTable cols={11} />}
       {error && <div className="text-sm text-red-600">{error}</div>}
       {!loading && !error && (
         <div className="table-scroll">

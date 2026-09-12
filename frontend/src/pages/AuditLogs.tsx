@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, EmptyState, Modal, PageHeader, Pagination, Select, TextInput, useFetch } from '../components/ui';
+import { Button, EmptyState, Modal, PageHeader, Pagination, Select, SkeletonTable, TextInput, useFetch } from '../components/ui';
 import { api, qs } from '../lib/api';
 
 interface AuditRow {
@@ -73,7 +73,7 @@ export default function AuditLogs() {
         </Select>
       </div>
 
-      {loading && <div className="text-sm text-gray-500">Loading…</div>}
+      {loading && <SkeletonTable cols={6} />}
       {error && <div className="text-sm text-red-600">{error}</div>}
       {!loading && !error && data && (
         <>

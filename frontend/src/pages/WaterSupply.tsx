@@ -3,7 +3,7 @@ import { Plus } from 'lucide-react';
 import {
   Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from '../components/charts';
-import { Button, EmptyState, Field, KpiCard, Modal, PageHeader, Pagination, Select, TextInput, useFetch, useToast } from '../components/ui';
+import { Button, EmptyState, Field, KpiCard, Modal, PageHeader, Pagination, Select, SkeletonTable, TextInput, useFetch, useToast } from '../components/ui';
 import { api, qs } from '../lib/api';
 import { formatDate, methodLabel, money } from '../lib/format';
 
@@ -92,7 +92,7 @@ export default function WaterSupply() {
         </div>
       )}
 
-      {loading && <div className="text-sm text-gray-500">Loading…</div>}
+      {loading && <SkeletonTable cols={9} />}
       {error && <div className="text-sm text-red-600">{error}</div>}
       {!loading && !error && data && (
         <>

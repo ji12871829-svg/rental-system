@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { CheckCircle2, CircleDashed } from 'lucide-react';
-import { Button, Field, PageHeader, TextInput, useFetch, useToast } from '../components/ui';
+import { Button, Field, PageHeader, Skeleton, TextInput, useFetch, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useBranding, type BrandingView } from '../lib/BrandingContext';
@@ -187,7 +187,7 @@ export default function Settings() {
             </li>
           ))}
           {plateStatus.length === 0 && (
-            <li className="py-3 text-sm text-gray-400">Loading identity…</li>
+            <li className="py-3"><Skeleton className="h-4 w-48" /></li>
           )}
         </ul>
       </div>

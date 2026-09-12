@@ -200,6 +200,113 @@ export function EmptyState({ message }: { message: string }) {
   );
 }
 
+// ---------------------------------------------------------------- Skeleton
+// Loading placeholders that mirror the real layout's geometry, so the page
+// doesn't jump when data arrives. Pure Tailwind pulse — no dependencies.
+export function Skeleton({ className = '' }: { className?: string }) {
+  return <div aria-hidden className={`animate-pulse rounded bg-gray-200 ${className}`} />;
+}
+
+export function SkeletonStatGroupCard({ title, stats = 3 }: { title?: boolean; stats?: number }) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      {title && <Skeleton className="mb-3 h-3 w-20" />}
+      <div className="flex flex-wrap gap-y-3">
+        {Array.from({ length: stats }, (_, i) => (
+          <div key={i} className={`min-w-[7.5rem] flex-1 px-3 first:pl-0 ${i > 0 ? 'border-l border-gray-100' : ''}`}>
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="mt-1.5 h-5 w-20 max-w-full" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function SkeletonChartCard() {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <Skeleton className="mb-3 h-3.5 w-40" />
+      <Skeleton className="h-[260px] w-full" />
+    </div>
+  );
+}
+
+// Loading stand-in for the app's standard .table-scroll data table. Uses real
+// table markup so it inherits the exact stylesheet geometry (padding, sticky
+// first column, header tint, hairlines) — zero layout shift when data lands.
+export function SkeletonTable({ cols, rows = 8 }: { cols: number; rows?: number }) {
+  // Deterministic bar widths per column: mimics mixed content widths
+  // (wide identity columns, narrower numeric ones) without looking uniform.
+  const widths = ['w-32', 'w-20', 'w-24', 'w-16', 'w-28', 'w-20', 'w-24', 'w-16', 'w-28', 'w-24', 'w-16', 'w-20', 'w-24', 'w-16'];
+  return (
+    <div className="table-scroll" aria-hidden>
+      <table>
+        <thead>
+          <tr>
+            {Array.from({ length: cols }, (_, i) => (
+              <th key={i}>
+                <Skeleton className={`h-3 ${i === 0 ? 'w-24' : 'w-14'}`} />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: rows }, (_, r) => (
+            <tr key={r}>
+              {Array.from({ length: cols }, (_, c) => (
+                <td key={c}>
+                  <Skeleton className={`h-3.5 ${widths[c % widths.length]} ${r % 2 === 0 ? '' : 'opacity-60'}`} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function SkeletonDashboard() {
+  return (
+    <div>
+      <div className="mb-6">
+        <Skeleton className="h-8 w-44" />
+        <Skeleton className="mt-2 h-4 w-96 max-w-full" />
+      </div>
+
+      {[
+        { heading: 'w-16', grid: 'md:grid-cols-3', cards: 3 },
+        { heading: 'w-12', grid: 'md:grid-cols-2', cards: 2 },
+        { heading: 'w-20', grid: '', cards: 1 },
+      ].map((section, s) => (
+        <div key={s} className={s === 0 ? '' : 'mt-8'}>
+          <Skeleton className={`mb-3 h-3.5 ${section.heading}`} />
+          <div className={`grid grid-cols-1 gap-3 ${section.grid}`}>
+            {Array.from({ length: section.cards }, (_, i) => (
+              <SkeletonStatGroupCard key={i} title={section.cards > 1} />
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <div className="mt-8">
+        <Skeleton className="mb-3 h-3.5 w-12" />
+        <Skeleton className="h-[72px] w-full rounded-xl" />
+      </div>
+
+      <div className="mt-8">
+        <Skeleton className="mb-3 h-3.5 w-14" />
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {Array.from({ length: 6 }, (_, i) => (
+            <SkeletonChartCard key={i} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- Pagination
 export function Pagination({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (p: number) => void }) {
   if (totalPages <= 1) return null;

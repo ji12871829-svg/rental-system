@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AlertTriangle, Info } from 'lucide-react';
-import { Button, EmptyState, Modal, PageHeader, Pagination, Select, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
+import { Button, EmptyState, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { api, qs } from '../lib/api';
 import { formatDate } from '../lib/format';
 
@@ -214,7 +214,7 @@ export default function SmsNotifications() {
         )}
       </div>
 
-      {loading && <div className="text-sm text-gray-500">Loading…</div>}
+      {loading && <SkeletonTable cols={9} />}
       {error && <div className="text-sm text-red-600">{error}</div>}
       {!loading && !error && data && (
         <>
