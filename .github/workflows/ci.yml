@@ -131,7 +131,12 @@ jobs:
           node-version: 26 # matches local dev and Render's pinned NODE_VERSION
           cache: npm
           cache-dependency-path: package-lock.json
+      # knip parses each workspace's sources, so every workspace's deps must
+      # be resolvable — the repo is not an npm-workspaces monorepo, so install
+      # all three explicitly (the root install alone hoists nothing).
       - run: npm ci --include=dev
+      - run: npm ci --include=dev --prefix backend
+      - run: npm ci --include=dev --prefix frontend
       - name: Block on unused files and dependencies
         run: npx knip --include files,dependencies
       - name: Report unused exports (non-blocking backlog)
