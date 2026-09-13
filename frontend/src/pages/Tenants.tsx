@@ -20,6 +20,10 @@ interface Tenant {
   unit_type: string | null;
   monthly_rent: string | null;
   water_enabled: boolean;
+  rent_deadline: string | null;
+  current_month_rent_paid: string;
+  current_month_rent_status: string;
+  has_rent_payment_history: boolean;
   notes: string | null;
   balances?: {
     reportingYear: number;
@@ -48,6 +52,16 @@ export default function Tenants() {
     [q, status, page, refreshKey]
   );
   const refresh = () => setRefreshKey((k) => k + 1);
+
+  function deadlineStatus(deadline: string | null): string {
+    if (!deadline) return 'NO MOVE-IN DATE';
+    const today = new Date();
+    const due = new Date(`${deadline.slice(0, 10)}T00:00:00`);
+    today.setHours(0, 0, 0, 0);
+    if (due.getTime() > today.getTime()) return 'UPCOMING';
+    if (due.getTime() === today.getTime()) return 'DUE TODAY';
+    return 'OVERDUE';
+  }
 
   async function handleTenantAction(action: string, tenant: Tenant) {
     if (action === 'view') {
@@ -84,7 +98,7 @@ export default function Tenants() {
     <div>
       <PageHeader
         title="Tenants"
-        subtitle="Tenant details automatically appear wherever their unit is referenced"
+        subtitle="Current-month rent status, payment history, and the 10-day move-in deadline"
         actions={canManage ? <Button onClick={() => { setEdit(null); setShowForm(true); }}><Plus size={16} strokeWidth={2} aria-hidden /> Add Tenant</Button> : undefined}
       />
 
@@ -104,8 +118,8 @@ export default function Tenants() {
           <table>
             <thead>
               <tr>
-                <th>Tenant</th><th>Phone</th><th>Unit</th><th>Move In</th><th>Deposit</th>
-                <th>Status</th><th>Balances (YTD)</th><th>Actions</th>
+                <th>Tenant</th><th>Phone</th><th>Unit</th><th>Move In</th><th>Rent Deadline</th>
+                <th>Current Month</th><th>Payment History</th><th>Deposit</th><th>Status</th><th>Balances (YTD)</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -126,6 +140,15 @@ export default function Tenants() {
                   </td>
                   <td>{t.unit_number ? `Unit ${t.unit_number}` : '—'}</td>
                   <td>{formatDate(t.move_in_date)}</td>
+                  <td>
+                    <div>{formatDate(t.rent_deadline)}</div>
+                    <div className="text-xs text-gray-500">{deadlineStatus(t.rent_deadline)}</div>
+                  </td>
+                  <td>
+                    <StatusBadge status={t.current_month_rent_status} />
+                    <div className="mt-1 text-xs text-gray-500">{money(t.current_month_rent_paid)} paid</div>
+                  </td>
+                  <td><StatusBadge status={t.has_rent_payment_history ? 'PAID' : 'UNPAID'} /></td>
                   <td>{money(t.security_deposit)}</td>
                   <td><StatusBadge status={t.status} /></td>
                   <td>

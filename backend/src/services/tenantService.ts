@@ -42,9 +42,25 @@ export async function listTenants(filters: TenantFilters): Promise<{ rows: unkno
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   return paginate<Record<string, unknown>>({
-    selectSql: `t.*, u.unit_number, u.unit_type, u.monthly_rent, u.water_enabled`,
+    selectSql: `t.*, u.unit_number, u.unit_type, u.monthly_rent, u.water_enabled,
+      CASE WHEN t.move_in_date IS NULL THEN NULL ELSE t.move_in_date + INTERVAL '10 days' END AS rent_deadline,
+      COALESCE(current_month.paid, 0)::text AS current_month_rent_paid,
+      CASE
+        WHEN COALESCE(current_month.paid, 0) = 0 THEN 'UNPAID'
+        WHEN COALESCE(u.monthly_rent, 0) = 0 OR COALESCE(current_month.paid, 0) > COALESCE(u.monthly_rent, 0) THEN 'OVERPAID'
+        WHEN COALESCE(current_month.paid, 0) < COALESCE(u.monthly_rent, 0) THEN 'PARTIAL'
+        ELSE 'PAID'
+      END AS current_month_rent_status,
+      EXISTS (SELECT 1 FROM rent_payments history WHERE history.tenant_id = t.id) AS has_rent_payment_history`,
     tableSql: `FROM tenants t
-     LEFT JOIN units u ON u.id = t.unit_id`,
+     LEFT JOIN units u ON u.id = t.unit_id
+     LEFT JOIN LATERAL (
+       SELECT COALESCE(SUM(rp.amount), 0) AS paid
+       FROM rent_payments rp
+       WHERE rp.tenant_id = t.id
+         AND rp.billing_month = EXTRACT(MONTH FROM CURRENT_DATE)::int
+         AND rp.billing_year = EXTRACT(YEAR FROM CURRENT_DATE)::int
+     ) current_month ON TRUE`,
     whereSql,
     params,
     orderBy: `ORDER BY t.created_at DESC`,
