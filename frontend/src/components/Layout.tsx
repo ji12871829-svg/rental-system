@@ -104,7 +104,13 @@ export default function Layout() {
   const nav = (
     <nav className="no-scrollbar flex-1 space-y-4 overflow-y-auto px-3 py-4">
       {visibleSections.map((section) => (
-        <div key={section.title ?? 'section'} className="space-y-1.5">
+        <div
+          key={section.title ?? 'section'}
+          className="space-y-1.5"
+          onMouseEnter={() => {
+            if (section.title) setOpenSections((current) => ({ ...current, [section.title as string]: true }));
+          }}
+        >
           {section.title && (
             <button
               type="button"
