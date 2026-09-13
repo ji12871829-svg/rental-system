@@ -110,7 +110,7 @@ export default function Layout() {
               type="button"
               id={`sidebar-${section.title.toLowerCase()}`}
               aria-controls={`sidebar-${section.title.toLowerCase()}-menu`}
-              aria-expanded={openSections[section.title] ?? false}
+              aria-expanded={openSections[section.title] ?? true}
               onClick={() => setOpenSections((current) => ({ ...current, [section.title as string]: !(current[section.title as string] ?? true) }))}
               className="group flex min-h-8 w-full items-center justify-between px-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 transition-colors hover:text-slate-200"
             >
@@ -118,7 +118,7 @@ export default function Layout() {
               <ChevronDown size={14} strokeWidth={2} className={`text-slate-600 transition-transform duration-150 group-hover:text-slate-300 ${openSections[section.title] ?? true ? '' : '-rotate-90'}`} aria-hidden />
             </button>
           )}
-          {(openSections[section.title ?? 'section'] ?? false) && <div id={`sidebar-${section.title?.toLowerCase() ?? 'section'}-menu`} className="space-y-1 pl-1">
+          {(openSections[section.title ?? 'section'] ?? true) && <div id={`sidebar-${section.title?.toLowerCase() ?? 'section'}-menu`} className="space-y-1 pl-1">
             {section.items.map((item) => (
             <NavLink
               key={item.to}
