@@ -1,6 +1,5 @@
-// Minimal API client. The JWT is stored in localStorage (standard SPA pattern;
-// it is NOT httpOnly, so keep the app free of XSS sinks). On 401 the session
-// is cleared and the user is sent to the login page.
+// Minimal API client. Sessions use an HttpOnly cookie; only the CSRF cookie is
+// readable here so unsafe requests can prove they came from this application.
 
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined) || '';
 
@@ -10,30 +9,25 @@ interface ApiError {
   details?: Record<string, unknown>;
 }
 
-const TOKEN_KEY = 'rpms_token';
-
-export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-export function setToken(token: string | null): void {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+export function getCsrfToken(): string | null {
+  const cookie = document.cookie.split('; ').find((entry) => entry.startsWith('rpms_csrf='));
+  return cookie ? decodeURIComponent(cookie.slice('rpms_csrf='.length)) : null;
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getToken();
+  const method = options.method?.toUpperCase() ?? 'GET';
+  const csrfToken = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) ? getCsrfToken() : null;
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
       ...(options.headers ?? {}),
     },
   });
 
   if (res.status === 401) {
-    setToken(null);
     if (!path.startsWith('/api/auth/')) {
       window.location.href = '/login';
     }
@@ -81,4 +75,17 @@ export function qs(params: Record<string, string | number | boolean | undefined 
   });
   const s = search.toString();
   return s ? `?${s}` : '';
+}
+
+export async function authenticatedFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  const method = options.method?.toUpperCase() ?? 'GET';
+  const csrfToken = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) ? getCsrfToken() : null;
+  return fetch(`${API_URL}${path}`, {
+    ...options,
+    credentials: 'include',
+    headers: {
+      ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+      ...(options.headers ?? {}),
+    },
+  });
 }

@@ -3,7 +3,7 @@ import { Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { DataRequestLetterModal, type LetterData } from '../components/DataRequestLetter';
-import { api, qs } from '../lib/api';
+import { api, authenticatedFetch, qs } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { money, formatDate } from '../lib/format';
 
@@ -296,11 +296,9 @@ function PrivacyRequestModal({ request, onClose, onDone, onErased, onLetter }: {
         onDone(`Response letter ${res.data.registerRef} generated and logged in the privacy register.`);
         onLetter(res.data);
       } else {
-        const token = localStorage.getItem('rpms_token');
         const params = new URLSearchParams({ requester: requester.trim(), reason: reason.trim() });
-        const res = await fetch(
-          `${import.meta.env.VITE_API_URL ?? ''}/api/tenants/${request.tenant.id}/data-export${request.action === 'csv' ? '.csv' : ''}?${params}`,
-          { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+        const res = await authenticatedFetch(
+          `/api/tenants/${request.tenant.id}/data-export${request.action === 'csv' ? '.csv' : ''}?${params}`
         );
         if (!res.ok) {
           const body = await res.json().catch(() => null);

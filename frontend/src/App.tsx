@@ -36,7 +36,8 @@ const AuditLogs = lazy(() => import('./pages/AuditLogs'));
 const PrivacyRegister = lazy(() => import('./pages/PrivacyRegister'));
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { token } = useAuth();
+  const { token, ready } = useAuth();
+  if (!ready) return <RouteFallback />;
   if (!token) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }

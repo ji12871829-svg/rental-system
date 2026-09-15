@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { queryOne } from '../config/db';
+import { SESSION_COOKIE, readCookies } from '../utils/authCookies';
 
 // A DB round-trip per request just to re-check user status is the single
 // biggest fixed cost on a remote database (every API call paid it). A short
@@ -79,8 +80,11 @@ interface TokenPayload {
 export async function requireAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   try {
     const header = req.headers.authorization || '';
-    const [scheme, token] = header.split(' ');
-    if (scheme !== 'Bearer' || !token) {
+    const [scheme, bearerToken] = header.split(' ');
+    const token = scheme === 'Bearer' && bearerToken
+      ? bearerToken
+      : readCookies(req.headers.cookie)[SESSION_COOKIE];
+    if (!token) {
       return next(unauthorized('Missing or malformed session.'));
     }
 

@@ -10,6 +10,7 @@ import { validateBody } from '../middleware/validate';
 import { unauthorized } from '../utils/httpError';
 import { asyncHandler } from '../utils/asyncHandler';
 import { logAudit } from '../services/auditService';
+import { clearAuthCookies, setAuthCookies } from '../utils/authCookies';
 
 const router = Router();
 
@@ -48,8 +49,11 @@ router.post(
       entity: 'users',
       entityId: user.id,
     });
+    setAuthCookies(res, token);
     res.json({
       data: {
+        // Retained for existing API clients during the cookie migration. The
+        // browser client uses the HttpOnly cookie and ignores this value.
         token,
         user: { id: user.id, name: user.name, email: user.email, phone: user.phone, role: user.role },
       },
@@ -58,8 +62,7 @@ router.post(
 );
 
 router.post('/logout', requireAuth, (_req, res) => {
-  // Stateless JWT — logout is client-side token discard. Endpoint exists for
-  // API symmetry and future token-denylist support.
+  clearAuthCookies(res);
   res.json({ data: { message: 'Logged out.' } });
 });
 

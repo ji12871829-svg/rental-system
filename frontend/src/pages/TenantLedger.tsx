@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Download, Mail } from 'lucide-react';
 import { EmptyState, KpiCard, PageHeader, Select, SkeletonTable, StatusBadge, useFetch, useToast } from '../components/ui';
-import { api } from '../lib/api';
+import { api, authenticatedFetch } from '../lib/api';
 import { money } from '../lib/format';
 
 interface TenantOption { id: number; full_name: string; unit_number: string | null }
@@ -61,16 +61,12 @@ export default function TenantLedger() {
   const { toast } = useToast();
   const year = data?.reportingYear ?? new Date().getFullYear();
 
-  // Statement PDF download — same pattern as the monthly report download:
-  // fetch with the session token, save as a blob.
+  // Statement PDF download — fetch with the session cookie and save as a blob.
   const [downloading, setDownloading] = useState(false);
   const downloadStatement = () => {
-    const token = localStorage.getItem('rpms_token');
-    if (!token || !tenantId) return;
+    if (!tenantId) return;
     setDownloading(true);
-    fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/reports/tenant/${tenantId}/statement.pdf?year=${year}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    authenticatedFetch(`/api/reports/tenant/${tenantId}/statement.pdf?year=${year}`)
       .then(async (r) => {
         if (!r.ok) {
           const body = await r.json().catch(() => null);

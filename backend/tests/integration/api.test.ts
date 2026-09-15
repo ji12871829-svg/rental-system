@@ -43,9 +43,50 @@ afterAll(async () => {
 // Security (spec §67)
 // ---------------------------------------------------------------------------
 describe('Security', () => {
+  it('sets secure response headers', async () => {
+    const res = await request(app).get('/api/health');
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
+    expect(res.headers['x-frame-options']).toBe('SAMEORIGIN');
+    expect(res.headers['content-security-policy']).toBeDefined();
+  });
+
   it('rejects unauthenticated API access', async () => {
     const res = await request(app).get('/api/units');
     expect(res.status).toBe(401);
+  });
+
+  it('authenticates with the HttpOnly session cookie', async () => {
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'staff@rpms.local', password: 'Staff@2026!' });
+    expect(loginRes.status).toBe(200);
+    expect(loginRes.headers['set-cookie']).toEqual(expect.arrayContaining([
+      expect.stringContaining('rpms_session='),
+      expect.stringContaining('rpms_csrf='),
+    ]));
+
+    const cookies = (loginRes.headers['set-cookie'] as unknown as string[]).map((cookie) => cookie.split(';')[0]).join('; ');
+    const res = await request(app).get('/api/auth/me').set('Cookie', cookies);
+    expect(res.status).toBe(200);
+    expect(res.body.data.email).toBe('staff@rpms.local');
+  });
+
+  it('requires a CSRF token for state-changing cookie sessions', async () => {
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'staff@rpms.local', password: 'Staff@2026!' });
+    const setCookies = loginRes.headers['set-cookie'] as unknown as string[];
+    const cookies = setCookies.map((cookie) => cookie.split(';')[0]).join('; ');
+    const csrf = setCookies.find((cookie) => cookie.startsWith('rpms_csrf='))?.split(';')[0].split('=')[1];
+
+    const rejected = await request(app).post('/api/auth/logout').set('Cookie', cookies);
+    expect(rejected.status).toBe(403);
+
+    const accepted = await request(app)
+      .post('/api/auth/logout')
+      .set('Cookie', cookies)
+      .set('X-CSRF-Token', csrf!);
+    expect(accepted.status).toBe(200);
   });
 
   it('rejects a bad password', async () => {

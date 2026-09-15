@@ -2,10 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import cors from 'cors';
 import express from 'express';
+import helmet from 'helmet';
 import { env, isProd } from './config/env';
 import { pool } from './config/db';
 import { errorHandler } from './middleware/errorHandler';
 import { globalLimiter } from './middleware/rateLimiter';
+import { csrfProtection } from './middleware/csrf';
 import auditRoutes from './routes/audit';
 import authRoutes from './routes/auth';
 import brandingRoutes from './routes/branding';
@@ -27,15 +29,17 @@ export function createApp() {
   const app = express();
 
   app.set('trust proxy', 1); // Render terminates TLS and forwards requests — rate limiting must see the real client IP
+  app.use(helmet());
   app.use(cors({
     origin: env.corsOrigin.split(',').map((o) => o.trim()),
-    credentials: false,
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
   }));
   app.use(express.json({ limit: '1mb' }));
   // Provider callbacks (Africa's Talking delivery reports) POST
   // form-urlencoded bodies — parse them alongside JSON.
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+  app.use(csrfProtection);
   app.use(globalLimiter);
 
   // HSTS — browsers must refuse plain HTTP for this origin, ever. Response

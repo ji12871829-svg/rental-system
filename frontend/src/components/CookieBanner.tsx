@@ -7,7 +7,7 @@ const STORAGE_KEY = 'rpms.storage-notice-ack';
 
 /**
  * Storage-notice banner. The app uses no tracking cookies — only a required
- * session token and a dismissal flag in localStorage — but we say so once,
+ * an HttpOnly session cookie and a dismissal flag in localStorage — but we say so once,
  * prominently, and link to the full policy.
  */
 export default function CookieBanner() {
@@ -30,7 +30,7 @@ export default function CookieBanner() {
       <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-1 sm:px-4">
         <ShieldCheck size={18} strokeWidth={1.75} className="shrink-0 text-brand-600" aria-hidden />
         <p className="min-w-0 flex-1 text-xs leading-5 text-gray-700">
-          {branding.appName} stores a sign-in token and your preferences in this browser's local storage. No advertising or
+          {branding.appName} stores a sign-in session in a secure cookie and your preferences in this browser's local storage. No advertising or
           tracking cookies are used.{' '}
           <Link to="/cookies" className="font-medium text-brand-600 underline underline-offset-2 hover:text-brand-700">
             Learn more

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button, EmptyState, Field, PageHeader, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
-import { api, qs } from '../lib/api';
+import { api, authenticatedFetch, qs } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { MONTHS, formatDate, methodLabel, money } from '../lib/format';
 import { reportingYearOptions, useReportingYear } from '../lib/useReportingYear';
@@ -247,12 +247,8 @@ export default function RentCollection() {
               href={exportUrl}
               className="font-medium text-brand-600 hover:underline"
               onClick={(e) => {
-                const token = localStorage.getItem('rpms_token');
-                if (!token) return;
                 e.preventDefault();
-                fetch(exportUrl, {
-                  headers: { Authorization: `Bearer ${token}` },
-                })
+                authenticatedFetch(exportUrl)
                   .then((r) => r.text())
                   .then((csv) => {
                     const blob = new Blob([csv], { type: 'text/csv' });

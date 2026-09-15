@@ -1,5 +1,5 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import { api, getToken, setToken } from './api';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { api } from './api';
 
 type Role = 'ADMIN' | 'PROPERTY_MANAGER' | 'STAFF';
 
@@ -13,7 +13,8 @@ export interface User {
 
 interface AuthState {
   user: User | null;
-  token: string | null;
+  token: boolean;
+  ready: boolean;
   login: (email: string, password: string) => Promise<User>;
   logout: () => void;
   isAdmin: boolean;
@@ -24,43 +25,43 @@ interface AuthState {
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setTokenState] = useState<string | null>(() => getToken());
-  const [user, setUser] = useState<User | null>(() => {
-    try {
-      const raw = localStorage.getItem('rpms_user');
-      return raw ? (JSON.parse(raw) as User) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [token, setTokenState] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    api.get<{ data: User }>('/api/auth/me')
+      .then((res) => { setUser(res.data); setTokenState(true); })
+      .catch(() => { setUser(null); setTokenState(false); })
+      .finally(() => setReady(true));
+  }, []);
 
   const login = useCallback(async (email: string, password: string): Promise<User> => {
-    // The API wraps every payload in { data }: { data: { token, user } }.
-    const res = await api.post<{ data: { token: string; user: User } }>('/api/auth/login', { email, password });
-    const { token, user } = res.data;
-    setToken(token);
-    localStorage.setItem('rpms_user', JSON.stringify(user));
-    setTokenState(token);
+    const res = await api.post<{ data: { user: User } }>('/api/auth/login', { email, password });
+    const { user } = res.data;
+    setTokenState(true);
+    setReady(true);
     setUser(user);
     return user;
   }, []);
 
   const logout = useCallback(() => {
-    setToken(null);
-    localStorage.removeItem('rpms_user');
-    setTokenState(null);
+    void api.post('/api/auth/logout').catch(() => undefined);
+    setTokenState(false);
+    setReady(true);
     setUser(null);
   }, []);
 
   const value = useMemo<AuthState>(() => ({
     user,
     token,
+    ready,
     login,
     logout,
     isAdmin: user?.role === 'ADMIN',
     isManager: user?.role === 'ADMIN' || user?.role === 'PROPERTY_MANAGER',
     canManage: user?.role === 'ADMIN' || user?.role === 'PROPERTY_MANAGER',
-  }), [user, token, login, logout]);
+  }), [user, token, ready, login, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

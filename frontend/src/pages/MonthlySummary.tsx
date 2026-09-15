@@ -4,7 +4,7 @@ import {
   Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from '../components/charts';
 import { KpiCard, PageHeader, Select, SkeletonTable, useFetch, useToast } from '../components/ui';
-import { api } from '../lib/api';
+import { api, authenticatedFetch } from '../lib/api';
 import { money, number } from '../lib/format';
 
 interface MonthRow {
@@ -87,16 +87,12 @@ export default function MonthlySummary() {
   const monthNames = (combined ?? []).map((r) => r.monthName);
 
   // Monthly report PDF: the year's figures as a one-page document. Fetched
-  // with the session token (the endpoint requires auth) and saved as a blob.
+  // with the session cookie and saved as a blob.
   const { toast } = useToast();
   const [downloading, setDownloading] = useState(false);
   const downloadReport = () => {
-    const token = localStorage.getItem('rpms_token');
-    if (!token) return;
     setDownloading(true);
-    fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/reports/monthly.pdf?year=${year}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    authenticatedFetch(`/api/reports/monthly.pdf?year=${year}`)
       .then(async (r) => {
         if (!r.ok) {
           const body = await r.json().catch(() => null);
@@ -119,8 +115,6 @@ export default function MonthlySummary() {
   // general email). Manager/admin endpoint — 403s toast for staff.
   const [emailing, setEmailing] = useState(false);
   const emailReport = () => {
-    const token = localStorage.getItem('rpms_token');
-    if (!token) return;
     setEmailing(true);
     api
       .post<{ data: { status: string; email_address: string } }>(

@@ -77,5 +77,15 @@ export const env = {
   mpesaTimeoutMs: Number(process.env.MPESA_TIMEOUT_MS) || 15_000,
 };
 
+if (env.nodeEnv === 'production') {
+  const missing: string[] = [];
+  if (!process.env.DATABASE_URL) missing.push('DATABASE_URL');
+  if (!process.env.JWT_SECRET || env.jwtSecret === 'dev-only-secret-change-me') missing.push('JWT_SECRET');
+  if (env.jwtSecret.length < 32) missing.push('JWT_SECRET (must be at least 32 characters)');
+  if (missing.length > 0) {
+    throw new Error(`Production configuration is invalid: ${missing.join(', ')}`);
+  }
+}
+
 export const isTest = env.nodeEnv === 'test';
 export const isProd = env.nodeEnv === 'production';

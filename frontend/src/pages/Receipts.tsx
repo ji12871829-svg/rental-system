@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Download, Mail, Plus } from 'lucide-react';
 import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
-import { api, getToken, qs } from '../lib/api';
+import { api, authenticatedFetch, qs } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { branding, receiptFooterLines } from '../lib/branding';
 import { MONTHS, formatDate, money } from '../lib/format';
@@ -120,10 +120,7 @@ export default function Receipts() {
   async function downloadReceiptPdf(r: Receipt) {
     setPdfBusy(true);
     try {
-      const token = getToken();
-      const res = await fetch(`/api/receipts/${r.id}/pdf`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await authenticatedFetch(`/api/receipts/${r.id}/pdf`);
       if (!res.ok) throw new Error('Could not generate the PDF.');
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -188,12 +185,8 @@ export default function Receipts() {
             href={`${import.meta.env.VITE_API_URL ?? ''}/api/receipts/export.pdf?month=${monthFilter}&year=${yearFilter || now.getFullYear()}`}
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-50 active:scale-[0.98]"
             onClick={(e) => {
-              const token = localStorage.getItem('rpms_token');
-              if (!token) return;
               e.preventDefault();
-              fetch(`${import.meta.env.VITE_API_URL ?? ''}/api/receipts/export.pdf?month=${monthFilter}&year=${yearFilter || now.getFullYear()}`, {
-                headers: { Authorization: `Bearer ${token}` },
-              })
+              authenticatedFetch(`/api/receipts/export.pdf?month=${monthFilter}&year=${yearFilter || now.getFullYear()}`)
                 .then(async (r) => {
                   if (!r.ok) {
                     const body = await r.json().catch(() => null);

@@ -208,14 +208,14 @@ export function Cookies() {
       </Section>
       <Section heading="What we do store in your browser">
         <ul className="list-disc space-y-1 pl-5">
-          <li><strong>Session token (required):</strong> after you sign in, a token is kept in your browser's local storage so you stay signed in. Removing it signs you out.</li>
+          <li><strong>Session cookie (required):</strong> after you sign in, a secure HttpOnly cookie keeps you signed in. Signing out removes it.</li>
           <li><strong>Notice acknowledgement:</strong> whether you have dismissed the storage notice banner.</li>
         </ul>
         <p>These are functional, not behavioural: they exist only to make sign-in work and remember your choices on this device.</p>
       </Section>
       <Section heading="Clearing stored data">
         <p>
-          Signing out removes your session token. You can also clear site data at any time through your browser's
+          Signing out removes your session cookie. You can also clear site data at any time through your browser's
           settings (&ldquo;Clear browsing data&rdquo; &rarr; &ldquo;Cookies and other site data&rdquo;). The next
           visit will simply ask you to sign in again.
         </p>
