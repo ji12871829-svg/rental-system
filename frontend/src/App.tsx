@@ -35,6 +35,7 @@ const EmailCampaign = lazy(() => import('./pages/EmailCampaign'));
 const Users = lazy(() => import('./pages/Users'));
 const AuditLogs = lazy(() => import('./pages/AuditLogs'));
 const PrivacyRegister = lazy(() => import('./pages/PrivacyRegister'));
+const MpesaReview = lazy(() => import('./pages/MpesaReview'));
 
 // Tenant portal — a separate, public-facing app shell with its own auth
 // context; entirely outside the staff RequireAuth tree.
@@ -95,6 +96,7 @@ const TITLES: Record<string, string> = {
   '/users': 'Users',
   '/audit': 'Audit Logs',
   '/privacy-register': 'Privacy Register',
+  '/mpesa-review': 'M-Pesa Review',
   '/login': 'Sign in',
   '/privacy': 'Privacy Policy',
   '/terms': 'Terms & Conditions',
@@ -152,6 +154,7 @@ export default function App() {
             <Route path="/receipts" element={<Receipts />} />
             <Route path="/sms" element={<SmsNotifications />} />
             <Route path="/email-campaign" element={<EmailCampaign />} />
+            <Route path="/mpesa-review" element={<MpesaReview />} />
             <Route
               path="/users"
               element={

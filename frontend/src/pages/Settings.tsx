@@ -88,11 +88,22 @@ export default function Settings() {
   // --- Business identity (DB-backed, editable here) --------------------------
   const [identityForm, setIdentityForm] = useState<IdentityForm | null>(null);
   const [identityBusy, setIdentityBusy] = useState(false);
+  const [paybillNumber, setPaybillNumber] = useState('');
+  const [paybillName, setPaybillName] = useState('');
+  const [paybillInstructions, setPaybillInstructions] = useState('');
+  const [paybillEnabled, setPaybillEnabled] = useState(false);
+  const [paybillBusy, setPaybillBusy] = useState(false);
 
   // Fill the form the first time identity arrives; after a save the form is
   // re-synced explicitly, so live updates never clobber in-progress edits.
   useEffect(() => {
     if (identity && identityForm === null) setIdentityForm(formFromIdentity(identity));
+    if (identity) {
+      setPaybillNumber(identity.paybill_number ?? '');
+      setPaybillName(identity.paybill_name ?? '');
+      setPaybillInstructions(identity.paybill_instructions ?? '');
+      setPaybillEnabled(identity.paybill_enabled);
+    }
   }, [identity, identityForm]);
 
   const identityDirty =
@@ -114,6 +125,25 @@ export default function Settings() {
       toast('error', (err as Error).message);
     } finally {
       setIdentityBusy(false);
+    }
+  }
+
+  async function savePaybill(e: FormEvent) {
+    e.preventDefault();
+    setPaybillBusy(true);
+    try {
+      await api.put('/api/branding', {
+        paybillNumber: paybillNumber.trim(),
+        paybillName: paybillName.trim(),
+        paybillInstructions: paybillInstructions.trim(),
+        paybillEnabled,
+      });
+      await refreshBranding();
+      toast('success', 'PayBill instructions saved.');
+    } catch (err) {
+      toast('error', (err as Error).message);
+    } finally {
+      setPaybillBusy(false);
     }
   }
 
@@ -231,6 +261,31 @@ export default function Settings() {
               {identityDirty ? 'Unsaved changes' : identity ? 'All changes saved' : ''}
             </span>
           </div>
+        </form>
+      )}
+
+      {canEditIdentity && (
+        <form onSubmit={savePaybill} className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <h2 className="text-base font-semibold text-gray-900">Tenant PayBill</h2>
+          <p className="mt-1 mb-4 text-sm text-gray-500">One landlord PayBill for all tenants. Rent uses the unit number; water uses the unit number followed by <b>-WATER</b>.</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="PayBill number" hint="Digits only, 5 to 10 digits.">
+              <TextInput value={paybillNumber} inputMode="numeric" pattern="[0-9]{5,10}" onChange={(e) => setPaybillNumber(e.target.value)} disabled={paybillBusy} />
+            </Field>
+            <Field label="PayBill business name">
+              <TextInput value={paybillName} onChange={(e) => setPaybillName(e.target.value)} disabled={paybillBusy} />
+            </Field>
+            <div className="sm:col-span-2">
+              <Field label="Tenant-facing instructions">
+                <TextInput value={paybillInstructions} onChange={(e) => setPaybillInstructions(e.target.value)} disabled={paybillBusy} placeholder="e.g. Use A-204 for rent or A-204-WATER for water." />
+              </Field>
+            </div>
+          </div>
+          <label className="mt-4 flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={paybillEnabled} onChange={(e) => setPaybillEnabled(e.target.checked)} disabled={paybillBusy} />
+            Show PayBill instructions in the tenant portal
+          </label>
+          <div className="mt-4"><Button type="submit" disabled={paybillBusy}>{paybillBusy ? 'Saving…' : 'Save PayBill'}</Button></div>
         </form>
       )}
 

@@ -2,16 +2,21 @@ import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { env } from '../config/env';
+import { queryOne } from '../config/db';
 import { requireTenant } from '../middleware/portalAuth';
 import { loginLimiter } from '../middleware/rateLimiter';
 import { validateBody } from '../middleware/validate';
+import { unauthorized } from '../utils/httpError';
 import { asyncHandler } from '../utils/asyncHandler';
 import {
+  PORTAL_COOKIE,
   clearPortalCookies,
+  readCookies,
   setPortalCookies,
 } from '../utils/authCookies';
 import {
   getPortalIdentity,
+  getPortalPaymentInstructions,
   getPortalPayments,
   getPortalReceipts,
   getPortalSummary,
@@ -72,6 +77,10 @@ router.get('/payments', requireTenant, asyncHandler(async (req, res) => {
   res.json({ data: await getPortalPayments(req.tenant!.tenantId) });
 }));
 
+router.get('/payment-instructions', requireTenant, asyncHandler(async (req, res) => {
+  res.json({ data: await getPortalPaymentInstructions(req.tenant!.tenantId) });
+}));
+
 router.get('/water', requireTenant, asyncHandler(async (req, res) => {
   res.json({ data: await getPortalWaterReadings(req.tenant!.tenantId) });
 }));
@@ -106,6 +115,54 @@ router.post('/pay-rent', requireTenant, validateBody(paySchema), asyncHandler(as
     // clean 400 rather than a 500.
     throw badRequest((err as Error).message);
   }
+}));
+
+// Sliding-session renewal for the tenant portal — same grace semantics as
+// staff /api/auth/refresh: keepalive renews before expiry; a tab that slept
+// past its lease gets one last chance within the grace window, then a real
+// re-login. requireTenant re-checks the portal row + tenant status on every
+// request, so revocation always wins over grace.
+const REFRESH_GRACE_SECONDS = 24 * 60 * 60;
+
+router.post('/refresh', asyncHandler(async (req, res) => {
+  const token = readCookies(req.headers.cookie)[PORTAL_COOKIE];
+  if (!token) throw unauthorized('No portal session to refresh.');
+
+  let payload: { sub: number; email?: string; name?: string; exp?: number; aud?: string };
+  try {
+    payload = jwt.verify(token, env.jwtSecret, { ignoreExpiration: true }) as unknown as { sub: number; email?: string; name?: string; exp?: number; aud?: string };
+    if (payload.aud !== 'tenant_portal') throw new Error('wrong audience');
+  } catch {
+    throw unauthorized('Invalid portal session.');
+  }
+  if (!payload.email || !payload.name) {
+    throw unauthorized('Invalid portal session.');
+  }
+  const expiredAgoSeconds = Date.now() / 1000 - (payload.exp ?? 0);
+ if (expiredAgoSeconds > REFRESH_GRACE_SECONDS) {
+    throw unauthorized('Portal session expired. Please sign in again.');
+  }
+
+  // Same checks as login — a disabled access row or moved-out tenant cannot
+  // ride the grace window back into the portal.
+  const row = await queryOne<{ status: string; tenant_status: string }>(
+    `SELECT a.status, t.status AS tenant_status
+     FROM tenant_portal_access a
+     JOIN tenants t ON t.id = a.tenant_id
+     WHERE a.tenant_id = $1`,
+    [payload.sub]
+  );
+  if (!row || row.status !== 'ACTIVE' || row.tenant_status !== 'ACTIVE') {
+    throw unauthorized('This portal account is no longer active.');
+  }
+
+  const fresh = jwt.sign(
+    { sub: payload.sub, email: payload.email, name: payload.name },
+    env.jwtSecret,
+    { expiresIn: env.jwtExpiresIn as jwt.SignOptions['expiresIn'], audience: 'tenant_portal' }
+  );
+  setPortalCookies(res, fresh);
+  res.json({ data: { ok: true } });
 }));
 
 // Identity is needed by the shell after login; kept last for readability.

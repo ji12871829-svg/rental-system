@@ -159,9 +159,12 @@ CREATE TABLE IF NOT EXISTS mpesa_transactions (
   transaction_date    TIMESTAMPTZ,
   phone_number        VARCHAR(30),
   status              VARCHAR(20) NOT NULL DEFAULT 'RECEIVED'
-                        CHECK (status IN ('RECEIVED', 'MATCHED', 'POSTED', 'UNMATCHED', 'FAILED')),
+                        CHECK (status IN ('RECEIVED', 'MATCHED', 'POSTED', 'UNMATCHED', 'AMBIGUOUS', 'FAILED')),
   tenant_id           INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
   rent_payment_id     INTEGER REFERENCES rent_payments(id) ON DELETE SET NULL,
+  water_payment_id    INTEGER,
+  payment_kind        VARCHAR(10) NOT NULL DEFAULT 'RENT'
+                        CHECK (payment_kind IN ('RENT', 'WATER')),
   error_message       TEXT,
   raw_payload         JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -225,6 +228,17 @@ CREATE TABLE IF NOT EXISTS water_payments (
 CREATE INDEX IF NOT EXISTS idx_water_payments_tenant ON water_payments(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_water_payments_unit   ON water_payments(unit_id);
 CREATE INDEX IF NOT EXISTS idx_water_payments_month  ON water_payments(billing_year, billing_month);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'mpesa_transactions_water_payment_id_fkey'
+  ) THEN
+    ALTER TABLE mpesa_transactions
+      ADD CONSTRAINT mpesa_transactions_water_payment_id_fkey
+      FOREIGN KEY (water_payment_id) REFERENCES water_payments(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
 -- ---------------------------------------------------------------------------
 -- STRICT WATER RULE (enforced at the database level, §11/§51):
@@ -433,6 +447,10 @@ CREATE TABLE IF NOT EXISTS business_branding (
   property_scope      TEXT,
   payment_channels    VARCHAR(200),
   refund_window_days  VARCHAR(40),
+  paybill_number      VARCHAR(10),
+  paybill_name        VARCHAR(200),
+  paybill_enabled     BOOLEAN NOT NULL DEFAULT FALSE,
+  paybill_instructions TEXT,
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

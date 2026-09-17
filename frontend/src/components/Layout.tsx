@@ -6,12 +6,13 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import {
   AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, BookUser, Building2, CalendarDays,
   ChevronDown, Droplets, FileBarChart, FileText, Gauge, LayoutDashboard, Loader2, LogOut, Mail, Menu, ReceiptText, Settings,
-  Smartphone, Ticket, Users as UsersIcon, Wallet, X,
+  Smartphone, Ticket, Users as UsersIcon, Wallet, X, ClipboardCheck,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { branding } from '../lib/branding';
 import { useBranding } from '../lib/BrandingContext';
 import BrandingBanner from './BrandingBanner';
+import { ThemeToggle } from './ThemeToggle';
 
 // One icon set (lucide), one stroke weight (1.75), recolored via currentColor.
 import type { LucideIcon } from 'lucide-react';
@@ -52,6 +53,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/receipts', label: 'Receipts', icon: Ticket },
       { to: '/sms', label: 'SMS Notifications', icon: Smartphone },
       { to: '/email-campaign', label: 'Tenant Email', icon: Mail, managerOnly: true },
+      { to: '/mpesa-review', label: 'M-Pesa Review', icon: ClipboardCheck, managerOnly: true },
     ],
   },
   {
@@ -235,13 +237,16 @@ export default function Layout() {
             <BarChart3 size={16} strokeWidth={1.75} className="text-brand-600" aria-hidden />
             {branding.appNameFull}
           </div>
-          <div className="text-sm text-gray-600">
-            <span className="hidden sm:inline">
-              {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            </span>
-            <span className="sm:hidden">
-              {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-            </span>
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <div className="text-sm text-gray-600">
+              <span className="hidden sm:inline">
+                {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              </span>
+              <span className="sm:hidden">
+                {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </span>
+            </div>
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:p-6">

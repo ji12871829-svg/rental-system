@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Check, Copy, Loader2 } from 'lucide-react';
 import { PageHeader, SkeletonTable, useFetch } from '../../components/ui';
 import { money, formatDate } from '../../lib/format';
 import { portalApi } from '../../lib/portalApi';
@@ -15,6 +15,15 @@ interface PortalPayment {
   receipt_number: string | null;
 }
 
+interface PaymentInstructions {
+  enabled: boolean;
+  number: string | null;
+  name: string | null;
+  instructions: string | null;
+  rentReference: string | null;
+  waterReference: string | null;
+}
+
 const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export default function PortalPayments() {
@@ -26,6 +35,10 @@ export default function PortalPayments() {
     () => portalApi.get<{ data: PortalPayment[] }>('/api/portal/payments'),
     [],
   );
+  const { data: instructionsData } = useFetch(
+    () => portalApi.get<{ data: PaymentInstructions }>('/api/portal/payment-instructions'),
+    [],
+  );
 
   const currency = summaryData?.data.currency ?? 'KSh';
   const fmt = (n: number | null | undefined) => money(n ?? 0, currency);
@@ -35,6 +48,7 @@ export default function PortalPayments() {
   const [paying, setPaying] = useState(false);
   const [payMessage, setPayMessage] = useState<string | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
 
   const rentBalance = summaryData?.data.rentThisMonth.balance ?? 0;
   const suggested = amount === '' ? rentBalance : Number(amount);
@@ -60,9 +74,29 @@ export default function PortalPayments() {
     }
   };
 
+  const copyValue = async (label: string, value: string) => {
+    await navigator.clipboard.writeText(value);
+    setCopied(label);
+    window.setTimeout(() => setCopied(null), 1800);
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader title="Payments" subtitle="Pay rent and review everything you have paid" />
+
+      {instructionsData?.data.enabled && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <h3 className="text-sm font-semibold text-gray-900">Pay by M-Pesa PayBill</h3>
+          <p className="mt-1 text-sm text-gray-600">Use the exact account reference for the payment type. Do not use your phone number or name.</p>
+          <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+            <CopyRow label="PayBill" value={instructionsData.data.number!} onCopy={copyValue} copied={copied} />
+            {instructionsData.data.name && <CopyRow label="Business name" value={instructionsData.data.name} onCopy={copyValue} copied={copied} />}
+            {instructionsData.data.rentReference && <CopyRow label="Rent account" value={instructionsData.data.rentReference} onCopy={copyValue} copied={copied} />}
+            {instructionsData.data.waterReference && <CopyRow label="Water account" value={instructionsData.data.waterReference} onCopy={copyValue} copied={copied} />}
+          </div>
+          {instructionsData.data.instructions && <p className="mt-3 text-sm text-gray-600">{instructionsData.data.instructions}</p>}
+        </div>
+      )}
 
       <div className="rounded-xl border border-gray-200 bg-white p-4">
         <h3 className="text-sm font-semibold text-gray-900">Pay rent with M-Pesa</h3>
@@ -134,6 +168,23 @@ export default function PortalPayments() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function CopyRow({ label, value, onCopy, copied }: {
+  label: string;
+  value: string;
+  onCopy: (label: string, value: string) => void;
+  copied: string | null;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-3 py-2">
+      <span><span className="text-gray-500">{label}:</span> <b className="text-gray-900">{value}</b></span>
+      <button type="button" onClick={() => onCopy(label, value)} className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-900" aria-label={`Copy ${label}`}>
+        {copied === label ? <Check size={14} /> : <Copy size={14} />}
+        {copied === label ? 'Copied' : 'Copy'}
+      </button>
     </div>
   );
 }

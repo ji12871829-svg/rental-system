@@ -27,6 +27,17 @@ const updateSchema = z.object({
   propertyScope: z.string().max(500).nullable().optional(),
   paymentChannels: z.string().max(200).nullable().optional(),
   refundWindowDays: z.string().max(40).nullable().optional(),
+  paybillNumber: z.string().regex(/^\d{5,10}$/, 'PayBill number must contain 5 to 10 digits.').nullable().optional().or(z.literal('')),
+  paybillName: z.string().max(200).nullable().optional(),
+  paybillEnabled: z.boolean().optional(),
+  paybillInstructions: z.string().max(1000).nullable().optional(),
+}).superRefine((value, ctx) => {
+  if (value.paybillEnabled && !value.paybillNumber) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['paybillNumber'], message: 'PayBill number is required when PayBill is enabled.' });
+  }
+  if (value.paybillEnabled && !value.paybillName?.trim()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['paybillName'], message: 'PayBill business name is required when PayBill is enabled.' });
+  }
 });
 
 router.put('/', requireAuth, managerOrAdmin, validateBody(updateSchema), asyncHandler(async (req, res) => {

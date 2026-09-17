@@ -32,6 +32,14 @@ export interface BrandingView {
   propertyScope: string | null;
   paymentChannels: string | null;
   refundWindowDays: string | null;
+  paybill_number: string | null;
+  paybill_name: string | null;
+  paybill_enabled: boolean;
+  paybill_instructions: string | null;
+  paybillNumber: string | null;
+  paybillName: string | null;
+  paybillEnabled: boolean;
+  paybillInstructions: string | null;
   brandInitials: string | null;
   receiptFooterLines: string[];
   fieldStatus: { label: string; value: string; filled: boolean }[];

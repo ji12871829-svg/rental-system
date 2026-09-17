@@ -1,6 +1,7 @@
 import { query, queryOne } from '../config/db';
 import { createRentPayment } from './rentService';
-import { requestStkPush, type MpesaPaymentInput } from './mpesaProvider';
+import { parsePaybillReference, requestStkPush, type MpesaPaymentInput } from './mpesaProvider';
+import { createWaterPayment } from './waterService';
 
 export type MpesaSource = 'C2B' | 'STK';
 
@@ -145,6 +146,72 @@ export async function processMpesaPayment(input: MpesaPaymentInput, source: Mpes
     );
     throw error;
   }
+}
+
+export async function processPaybillPayment(input: MpesaPaymentInput): Promise<{
+  status: 'POSTED' | 'UNMATCHED' | 'AMBIGUOUS' | 'DUPLICATE';
+  tenantId?: number;
+  paymentId?: number;
+  waterPaymentId?: number;
+  reason?: string;
+}> {
+  const parsed = parsePaybillReference(input.accountReference);
+  const existing = await queryOne<StoredMpesaTransaction>(
+    `SELECT id, transaction_id, checkout_request_id, account_reference, status, tenant_id, rent_payment_id
+     FROM mpesa_transactions WHERE transaction_id = $1`,
+    [input.transactionId]
+  );
+  if (existing?.status === 'POSTED') {
+    return { status: 'DUPLICATE', tenantId: existing.tenant_id ?? undefined, paymentId: existing.rent_payment_id ?? undefined };
+  }
+
+  const inserted = await query<StoredMpesaTransaction>(
+    `INSERT INTO mpesa_transactions
+       (source, transaction_id, account_reference, amount, transaction_date, phone_number, payment_kind, raw_payload, status)
+     VALUES ('C2B', $1, $2, $3, $4, $5, $6, $7::jsonb, 'RECEIVED')
+     ON CONFLICT (transaction_id) DO NOTHING
+     RETURNING id, transaction_id, checkout_request_id, account_reference, status, tenant_id, rent_payment_id`,
+    [input.transactionId, input.accountReference.trim(), input.amount, input.transactionDate, input.phoneNumber, parsed.kind, JSON.stringify(input.rawPayload ?? {})]
+  );
+  const stored = inserted[0] ?? await queryOne<StoredMpesaTransaction>(
+    `SELECT id, transaction_id, checkout_request_id, account_reference, status, tenant_id, rent_payment_id
+     FROM mpesa_transactions WHERE transaction_id = $1`,
+    [input.transactionId]
+  );
+  if (!stored) throw new Error('Could not store M-Pesa transaction.');
+  if (stored.status === 'POSTED') return { status: 'DUPLICATE', tenantId: stored.tenant_id ?? undefined, paymentId: stored.rent_payment_id ?? undefined };
+
+  const tenants = await query<{ id: number; unit_id: number; unit_number: string; status: string; water_enabled: boolean }>(
+    `SELECT t.id, t.unit_id, u.unit_number, t.status, u.water_enabled
+     FROM tenants t JOIN units u ON u.id = t.unit_id
+     WHERE UPPER(TRIM(u.unit_number)) = $1 AND t.status = 'ACTIVE'`,
+    [parsed.normalizedUnitNumber]
+  );
+  if (tenants.length === 0) {
+    await query(`UPDATE mpesa_transactions SET status = 'UNMATCHED', error_message = $2 WHERE id = $1`, [stored.id, `No active tenant matched unit reference ${parsed.normalizedUnitNumber}.`]);
+    return { status: 'UNMATCHED', reason: `No active tenant matched unit reference ${parsed.normalizedUnitNumber}.` };
+  }
+  if (tenants.length !== 1) {
+    await query(`UPDATE mpesa_transactions SET status = 'AMBIGUOUS', error_message = $2 WHERE id = $1`, [stored.id, `Multiple active tenants matched unit reference ${parsed.normalizedUnitNumber}.`]);
+    return { status: 'AMBIGUOUS', reason: `Multiple active tenants matched unit reference ${parsed.normalizedUnitNumber}.` };
+  }
+  const tenant = tenants[0];
+  if (parsed.kind === 'WATER' && !tenant.water_enabled) {
+    const reason = 'Water billing is disabled for this unit.';
+    await query(`UPDATE mpesa_transactions SET status = 'UNMATCHED', error_message = $2 WHERE id = $1`, [stored.id, reason]);
+    return { status: 'UNMATCHED', tenantId: tenant.id, reason };
+  }
+
+  await query(`UPDATE mpesa_transactions SET status = 'MATCHED', tenant_id = $2, error_message = NULL WHERE id = $1`, [stored.id, tenant.id]);
+  const billing = kenyaDateParts(input.transactionDate);
+  if (parsed.kind === 'WATER') {
+    const result = await createWaterPayment({ tenantId: tenant.id, paymentDate: billing.date, billingMonth: billing.month, billingYear: billing.year, amount: input.amount, paymentMethod: 'M_PESA', notes: `Automatically posted from M-Pesa C2B confirmation.` }, null) as { payment: { id: number } };
+    await query(`UPDATE mpesa_transactions SET status = 'POSTED', water_payment_id = $2 WHERE id = $1`, [stored.id, result.payment.id]);
+    return { status: 'POSTED', tenantId: tenant.id, waterPaymentId: result.payment.id };
+  }
+  const result = await createRentPayment({ tenantId: tenant.id, paymentDate: billing.date, billingMonth: billing.month, billingYear: billing.year, amount: input.amount, paymentMethod: 'M_PESA', paymentReference: input.transactionId, notes: `Automatically posted from M-Pesa C2B confirmation.` }, null) as { payment: { id: number } };
+  await query(`UPDATE mpesa_transactions SET status = 'POSTED', rent_payment_id = $2 WHERE id = $1`, [stored.id, result.payment.id]);
+  return { status: 'POSTED', tenantId: tenant.id, paymentId: result.payment.id };
 }
 
 export async function markStkFailure(checkoutRequestId: string, reason: string, rawPayload: unknown): Promise<void> {

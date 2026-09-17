@@ -12,6 +12,17 @@ export interface MpesaPaymentInput {
   merchantRequestId?: string;
 }
 
+export function parsePaybillReference(reference: string): { normalizedUnitNumber: string; kind: 'RENT' | 'WATER' } {
+  const normalized = reference.trim().toUpperCase();
+  if (!normalized) throw new Error('M-Pesa account reference is required.');
+  if (normalized.endsWith('-WATER')) {
+    const unit = normalized.slice(0, -'-WATER'.length).trim();
+    if (!unit) throw new Error('M-Pesa water reference has no unit number.');
+    return { normalizedUnitNumber: unit, kind: 'WATER' };
+  }
+  return { normalizedUnitNumber: normalized, kind: 'RENT' };
+}
+
 export interface MpesaConfig {
   provider: 'mock' | 'daraja';
   live: boolean;

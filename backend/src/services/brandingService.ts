@@ -23,6 +23,10 @@ export interface BrandingRow {
   property_scope: string | null;
   payment_channels: string | null;
   refund_window_days: string | null;
+  paybill_number: string | null;
+  paybill_name: string | null;
+  paybill_enabled: boolean;
+  paybill_instructions: string | null;
   updated_at: string;
 }
 
@@ -46,6 +50,10 @@ async function getBranding(): Promise<BrandingRow> {
     property_scope: row?.property_scope ?? null,
     payment_channels: row?.payment_channels ?? null,
     refund_window_days: row?.refund_window_days ?? null,
+    paybill_number: row?.paybill_number ?? null,
+    paybill_name: row?.paybill_name ?? null,
+    paybill_enabled: row?.paybill_enabled ?? false,
+    paybill_instructions: row?.paybill_instructions ?? null,
     updated_at: row?.updated_at ?? new Date().toISOString(),
   };
 }
@@ -67,6 +75,10 @@ export interface BrandingInput {
   propertyScope?: string | null;
   paymentChannels?: string | null;
   refundWindowDays?: string | null;
+  paybillNumber?: string | null;
+  paybillName?: string | null;
+  paybillEnabled?: boolean;
+  paybillInstructions?: string | null;
 }
 
 const COLUMNS: Record<keyof BrandingInput, string> = {
@@ -82,6 +94,10 @@ const COLUMNS: Record<keyof BrandingInput, string> = {
   propertyScope: 'property_scope',
   paymentChannels: 'payment_channels',
   refundWindowDays: 'refund_window_days',
+  paybillNumber: 'paybill_number',
+  paybillName: 'paybill_name',
+  paybillEnabled: 'paybill_enabled',
+  paybillInstructions: 'paybill_instructions',
 };
 
 // Blank string means "clear this field"; null/undefined leaves it unchanged.
@@ -149,6 +165,10 @@ export interface BrandingView extends BrandingRow {
   propertyScope: string | null;
   paymentChannels: string | null;
   refundWindowDays: string | null;
+  paybillNumber: string | null;
+  paybillName: string | null;
+  paybillEnabled: boolean;
+  paybillInstructions: string | null;
   // Derived.
   brandInitials: string | null;
   // Printed-receipt identity footer, placeholder-smart. Values are HTML-
@@ -212,6 +232,10 @@ export function toView(row: BrandingRow): BrandingView {
     propertyScope: row.property_scope,
     paymentChannels: row.payment_channels,
     refundWindowDays: row.refund_window_days,
+    paybillNumber: row.paybill_number,
+    paybillName: row.paybill_name,
+    paybillEnabled: row.paybill_enabled,
+    paybillInstructions: row.paybill_instructions,
     brandInitials: deriveInitials(row.legal_name),
     receiptFooterLines: [identityLine, contactLine].filter((l) => l !== ''),
     fieldStatus,
@@ -221,6 +245,23 @@ export function toView(row: BrandingRow): BrandingView {
 
 export async function getBrandingView(): Promise<BrandingView> {
   return toView(await getBranding());
+}
+
+export interface PaybillInstructions {
+  enabled: boolean;
+  number: string | null;
+  name: string | null;
+  instructions: string | null;
+}
+
+export async function getPaybillInstructions(): Promise<PaybillInstructions> {
+  const row = await getBranding();
+  return {
+    enabled: row.paybill_enabled && Boolean(row.paybill_number),
+    number: row.paybill_enabled ? row.paybill_number : null,
+    name: row.paybill_enabled ? row.paybill_name : null,
+    instructions: row.paybill_enabled ? row.paybill_instructions : null,
+  };
 }
 
 // The identity block used by SMS receipts, email receipts and PDF footers —

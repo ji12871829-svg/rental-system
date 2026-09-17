@@ -17,6 +17,7 @@ import expenseRoutes from './routes/expenses';
 import receiptRoutes from './routes/receipts';
 import rentRoutes from './routes/rent';
 import mpesaRoutes from './routes/mpesa';
+import mpesaReviewRoutes from './routes/mpesaReview';
 import reportRoutes from './routes/reports';
 import settingsRoutes from './routes/settings';
 import smsRoutes from './routes/sms';
@@ -90,6 +91,7 @@ export function createApp() {
   app.use('/api/portal', tenantPortalRoutes);
   app.use('/api/rent', rentRoutes);
   app.use('/api/mpesa', mpesaRoutes);
+  app.use('/api/mpesa/review', mpesaReviewRoutes);
   app.use('/api/water', waterRoutes);
   app.use('/api/expenses', expenseRoutes);
   app.use('/api/receipts', receiptRoutes);

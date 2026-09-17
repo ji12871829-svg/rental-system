@@ -18,6 +18,7 @@ import { randomBytes } from 'crypto';
 import { queryOne, query } from '../config/db';
 import { env } from '../config/env';
 import { getSettings } from './settingsService';
+import { getPaybillInstructions } from './brandingService';
 import { logAudit } from './auditService';
 import { initiateTenantStkPush } from './mpesaService';
 import { tenantStatementPdf } from './financeService';
@@ -305,6 +306,26 @@ export async function portalPayRent(tenantId: number, amount: number): Promise<{
     checkoutRequestId: result.checkoutRequestId,
     accountReference: result.accountReference,
     provider: env.mpesaProvider,
+  };
+}
+
+export async function getPortalPaymentInstructions(tenantId: number): Promise<{
+  enabled: boolean;
+  number: string | null;
+  name: string | null;
+  instructions: string | null;
+  rentReference: string | null;
+  waterReference: string | null;
+}> {
+  const [paybill, identity] = await Promise.all([
+    getPaybillInstructions(),
+    getPortalIdentity(tenantId),
+  ]);
+  const unit = identity.unitNumber?.trim() || null;
+  return {
+    ...paybill,
+    rentReference: paybill.enabled ? unit : null,
+    waterReference: paybill.enabled && identity.waterEnabled && unit ? `${unit}-WATER` : null,
   };
 }
 
