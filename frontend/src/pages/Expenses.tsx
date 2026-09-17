@@ -7,6 +7,7 @@ import { Button, EmptyState, Field, KpiCard, Modal, PageHeader, Pagination, Sele
 import { api, qs } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { MONTHS, categoryLabel, formatDate, methodLabel, money } from '../lib/format';
+import { useQueryParam, useQueryToggle } from '../lib/useQueryParam';
 
 interface Expense {
   id: number;
@@ -33,10 +34,18 @@ export default function Expenses() {
   const { toast } = useToast();
   const now = new Date();
   const [edit, setEdit] = useState<Expense | null>(null);
-  const [showForm, setShowForm] = useState(false);
+  // Auto-open the add form when deep-linked with ?new=1 (e.g. from the
+  // Dashboard's quick actions). The URL toggle drives it; staff can't manage
+  // expenses, so only managers get the auto-open.
+  const [formRequested, setFormRequested] = useQueryToggle('new');
+  const showForm = formRequested && canManage;
+  const setShowForm = setFormRequested;
   const [q, setQ] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [monthFilter, setMonthFilter] = useState('');
+  // Category filter syncs with ?category= so deep links can land on a
+  // single category (e.g. water costs only).
+  const [categoryFilter, setCategoryFilter] = useQueryParam('category');
+  // Month filter syncs with ?month= so deep links land pre-filtered.
+  const [monthFilter, setMonthFilter] = useQueryParam('month');
   const [yearFilter, setYearFilter] = useState(String(now.getFullYear()));
   const [page, setPage] = useState(1);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -52,6 +61,9 @@ export default function Expenses() {
 
   const refresh = () => setRefreshKey((k) => k + 1);
 
+  // ?new=1 and ?month= are mirrored to the URL by useQueryToggle and
+  // useQueryParam — no manual sync effect needed.
+
   return (
     <div>
       <PageHeader
@@ -63,7 +75,11 @@ export default function Expenses() {
       {summary && (
         <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
           <KpiCard label={`Total expenses ${summary.reportingYear}`} value={money(summary.totalExpenses)} tone="warn" />
-          <KpiCard label="This month" value={money(summary.byMonth.find((m) => m.month === now.getMonth() + 1)?.total ?? 0)} />
+          {/* Follows the month filter when one is active, else today's month. */}
+          <KpiCard
+            label={monthFilter ? `${MONTHS[Number(monthFilter) - 1]} spend` : 'This month'}
+            value={money(summary.byMonth.find((m) => m.month === (monthFilter ? Number(monthFilter) : now.getMonth() + 1))?.total ?? 0)}
+          />
           <KpiCard label="Biggest category" value={summary.byCategory[0] ? categoryLabel(summary.byCategory[0].category) : '—'} sub={summary.byCategory[0] ? money(summary.byCategory[0].total) : undefined} />
           <KpiCard label="Categories used" value={summary.byCategory.length} />
         </div>

@@ -5,6 +5,7 @@ import { validateBody, validateParams, validateQuery } from '../middleware/valid
 import { asyncHandler } from '../utils/asyncHandler';
 import { getSettings } from '../services/settingsService';
 import { createTenant, deleteTenant, getTenant, listTenants, moveOutTenant, transferTenant, updateTenant } from '../services/tenantService';
+import { disablePortalAccess, getPortalAccess, issuePortalAccess } from '../services/tenantPortalService';
 import {
   buildDataRequestLetter,
   eraseTenantPersonalData,
@@ -85,6 +86,54 @@ router.post('/:id/move-out', managerOrAdmin, validateParams(paramsSchema), valid
 router.delete('/:id', adminOnly, validateParams(paramsSchema), asyncHandler(async (req, res) => {
   await deleteTenant(Number(req.params.id), req.user!.userId);
   res.status(204).end();
+}));
+
+// --- Tenant portal access (manager/admin) ------------------------------------
+// Credentials for the tenant-facing self-service portal. Issuing is
+// idempotent — it rotates the password and re-enables a disabled account, so
+// "forgot password" and "grant access" are the same action. Disabling is
+// soft (the row stays for the audit trail) and takes effect on the tenant's
+// very next request.
+const portalAccessSchema = z.object({
+  // Both optional: omit them and the route issues access with the tenant's
+  // own email and a generated one-time password (the common case — one click
+  // from the Tenants page). Passing them allows a custom login or password.
+  email: z.string().email().optional(),
+  // Minimum length only — complexity rules just push tenants toward
+  // predictable patterns; the portal is rate-limited and staff-issued.
+  password: z.string().min(8, 'Password must be at least 8 characters.').optional(),
+});
+
+router.post('/:id/portal-access', managerOrAdmin, validateParams(paramsSchema), validateBody(portalAccessSchema), asyncHandler(async (req, res) => {
+  const body = req.body as z.infer<typeof portalAccessSchema>;
+  const row = await issuePortalAccess(
+    Number(req.params.id),
+    req.user!.userId,
+    body.email,
+    body.password
+  );
+  res.status(201).json({
+    data: {
+      id: row.id,
+      tenantId: row.tenant_id,
+      email: row.email,
+      status: row.status,
+      lastLoginAt: row.last_login_at,
+      // Present only when the server generated the password. Never stored in
+      // plaintext — shown once to the issuing staff user and gone.
+      temporaryPassword: row.generatedPassword,
+    },
+  });
+}));
+
+router.get('/:id/portal-access', managerOrAdmin, validateParams(paramsSchema), asyncHandler(async (req, res) => {
+  const row = await getPortalAccess(Number(req.params.id));
+  res.json({ data: row ? { id: row.id, tenantId: row.tenant_id, email: row.email, status: row.status, lastLoginAt: row.last_login_at, createdAt: row.created_at } : null });
+}));
+
+router.delete('/:id/portal-access', managerOrAdmin, validateParams(paramsSchema), asyncHandler(async (req, res) => {
+  await disablePortalAccess(Number(req.params.id), req.user!.userId);
+  res.json({ data: { message: 'Portal access disabled.' } });
 }));
 
 // --- Data-subject rights (Kenya DPA 2019 / GDPR) — admin only ----------------

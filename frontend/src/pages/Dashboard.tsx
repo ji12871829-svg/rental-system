@@ -1,9 +1,11 @@
 import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  type ChartDatum,
 } from '../components/charts';
 import { StatGroupCard, PageHeader, useFetch, SkeletonDashboard } from '../components/ui';
-import { Link } from 'react-router-dom';
+import { QuickActions } from '../components/QuickActions';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { MONTHS, money, methodLabel } from '../lib/format';
 
@@ -55,6 +57,19 @@ export default function Dashboard() {
   const { data, loading, error } = useFetch<DashboardData>(() =>
     api.get<{ data: DashboardData }>('/api/reports/dashboard').then((r) => r.data)
   );
+  // Hooks must sit above the early returns below — they power the chart
+  // deep-link handlers rendered further down.
+  const navigate = useNavigate();
+
+  // Quick actions are shared with the mobile drawer (QuickActions component):
+  // each lands with ?new=1 to open or focus the target page's form.
+
+  // Chart → page deep links: month bars open Receipts pre-filtered to that
+  // month (rent bars → RENT receipts, water bars → WATER receipts); unit bars
+  // open Arrears pre-filtered to that unit.
+  const monthReceipts = (type: 'RENT' | 'WATER') => (d: ChartDatum) =>
+    navigate(`/receipts?month=${d.month}&receiptType=${type}`);
+  const unitArrears = (d: ChartDatum) => navigate(`/arrears?unit=${encodeURIComponent(String(d.unitNumber))}`);
 
   if (loading) return <SkeletonDashboard />;
   if (error) return <div className="text-sm text-red-600">Unable to load dashboard: {error}</div>;
@@ -68,6 +83,7 @@ export default function Dashboard() {
       <PageHeader
         title="Dashboard"
         subtitle={`Reporting year ${reportingYear} — everything below updates automatically from recorded transactions`}
+        actions={<QuickActions variant="header" />}
       />
 
       {/* Property summary */}
@@ -76,23 +92,23 @@ export default function Dashboard() {
         <StatGroupCard
           title="Units"
           stats={[
-            { label: 'Total', value: p.totalUnits },
-            { label: 'Occupied', value: p.occupiedUnits, tone: 'good' },
-            { label: 'Vacant', value: p.vacantUnits, tone: p.vacantUnits > 0 ? 'warn' : 'good' },
+            { label: 'Total', value: p.totalUnits, to: '/units' },
+            { label: 'Occupied', value: p.occupiedUnits, tone: 'good', to: '/units' },
+            { label: 'Vacant', value: p.vacantUnits, tone: p.vacantUnits > 0 ? 'warn' : 'good', to: '/units' },
           ]}
         />
         <StatGroupCard
           title="Rent"
           stats={[
-            { label: 'Expected (this month)', value: money(p.expectedRent, currency) },
-            { label: 'Collected', value: money(p.rentCollected, currency), sub: `${p.rentCollectionRate}% of YTD expected`, tone: 'good' },
-            { label: 'Outstanding', value: money(p.rentOutstanding, currency), tone: p.rentOutstanding > 0 ? 'bad' : 'good' },
+            { label: 'Expected (this month)', value: money(p.expectedRent, currency), to: '/rent' },
+            { label: 'Collected', value: money(p.rentCollected, currency), sub: `${p.rentCollectionRate}% of YTD expected`, tone: 'good', to: '/rent' },
+            { label: 'Outstanding', value: money(p.rentOutstanding, currency), tone: p.rentOutstanding > 0 ? 'bad' : 'good', to: '/arrears' },
           ]}
         />
         <StatGroupCard
           title="Financials"
           stats={[
-            { label: 'Total Expenses', value: money(p.totalExpenses, currency), tone: 'warn' },
+            { label: 'Total Expenses', value: money(p.totalExpenses, currency), tone: 'warn', to: '/expenses' },
             { label: 'Net Property Income', value: money(p.netPropertyIncome, currency), tone: p.netPropertyIncome >= 0 ? 'good' : 'bad' },
           ]}
         />
@@ -104,16 +120,16 @@ export default function Dashboard() {
         <StatGroupCard
           title="Water Billing"
           stats={[
-            { label: 'Billed', value: money(w.waterBilled, currency) },
-            { label: 'Collected', value: money(w.waterCollected, currency), sub: `${w.collectionRate}% collection rate`, tone: 'good' },
-            { label: 'Outstanding', value: money(w.waterOutstanding, currency), tone: w.waterOutstanding > 0 ? 'bad' : 'good' },
+            { label: 'Billed', value: money(w.waterBilled, currency), to: '/water-meter' },
+            { label: 'Collected', value: money(w.waterCollected, currency), sub: `${w.collectionRate}% collection rate`, tone: 'good', to: '/water-payments' },
+            { label: 'Outstanding', value: money(w.waterOutstanding, currency), tone: w.waterOutstanding > 0 ? 'bad' : 'good', to: '/arrears' },
           ]}
         />
         <StatGroupCard
           title="Water Supply"
           stats={[
-            { label: 'Purchased', value: `${w.waterPurchased} units` },
-            { label: 'Supply Cost', value: money(w.waterSupplyCost, currency), sub: `avg ${money(w.averagePurchaseCost, currency)}/unit` },
+            { label: 'Purchased', value: `${w.waterPurchased} units`, to: '/water-supply' },
+            { label: 'Supply Cost', value: money(w.waterSupplyCost, currency), sub: `avg ${money(w.averagePurchaseCost, currency)}/unit`, to: '/water-supply' },
             {
               label: w.surplus ? 'Surplus' : 'Deficit',
               value: money(Math.abs(w.surplusDeficit), currency),
@@ -127,10 +143,10 @@ export default function Dashboard() {
       <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-gray-500">Combined</h2>
       <StatGroupCard
         stats={[
-          { label: 'Rent + Water Due (this month)', value: money(c.totalDueThisMonth, currency) },
-          { label: 'Total Money Collected', value: money(c.totalCollected, currency), sub: `Rent ${money(c.rentCollected, currency)} + Water ${money(c.waterCollected, currency)}`, tone: 'good' },
-          { label: 'Total Outstanding', value: money(c.totalOutstanding, currency), tone: c.totalOutstanding > 0 ? 'bad' : 'good' },
-          { label: 'Total Expenses', value: money(c.totalExpenses, currency) },
+          { label: 'Rent + Water Due (this month)', value: money(c.totalDueThisMonth, currency), to: `/monthly?month=${new Date().getMonth() + 1}` },
+          { label: 'Total Money Collected', value: money(c.totalCollected, currency), sub: `Rent ${money(c.rentCollected, currency)} + Water ${money(c.waterCollected, currency)}`, tone: 'good', to: '/receipts' },
+          { label: 'Total Outstanding', value: money(c.totalOutstanding, currency), tone: c.totalOutstanding > 0 ? 'bad' : 'good', to: '/arrears' },
+          { label: 'Total Expenses', value: money(c.totalExpenses, currency), to: '/expenses' },
           { label: 'Net Property Income', value: money(c.netIncome, currency), tone: c.netIncome >= 0 ? 'good' : 'bad' },
         ]}
       />
@@ -164,9 +180,9 @@ export default function Dashboard() {
       {/* Charts */}
       <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-gray-500">Charts</h2>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ChartCard title="Monthly Rent Collected">
+        <ChartCard title="Monthly Rent Collected" to="/rent">
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={charts.monthlyRentCollected}>
+            <BarChart data={charts.monthlyRentCollected} onBarClick={monthReceipts('RENT')}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey={(d: any) => monthLabel(d.month)} />
               <YAxis />
@@ -176,9 +192,9 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Expected Rent vs Collected Rent">
+        <ChartCard title="Expected Rent vs Collected Rent" to="/rent">
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={charts.expectedVsCollected}>
+            <BarChart data={charts.expectedVsCollected} onBarClick={monthReceipts('RENT')}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey={(d: any) => monthLabel(d.month)} />
               <YAxis />
@@ -190,9 +206,9 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Occupied vs Vacant Units">
+        <ChartCard title="Occupied vs Vacant Units" to="/units">
           <ResponsiveContainer width="100%" height={260}>
-            <PieChart>
+            <PieChart onSliceClick={() => navigate('/units')}>
               <Pie data={[{ name: 'Occupied', value: charts.occupiedVsVacant.occupied }, { name: 'Vacant', value: charts.occupiedVsVacant.vacant }]} dataKey="value" nameKey="name" outerRadius={90} label>
                 {PIE_COLORS.slice(0, 2).map((color, i) => <Cell key={i} fill={color} />)}
               </Pie>
@@ -202,9 +218,11 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Rent Collected by Payment Method">
+        <ChartCard title="Rent Collected by Payment Method" to="/receipts">
           <ResponsiveContainer width="100%" height={260}>
-            <PieChart>
+            <PieChart onSliceClick={() => navigate('/receipts')}>
+            {/* Method-filtered receipts don't exist as a page filter yet, so
+                slice clicks land on the receipts list as a whole. */}
               <Pie data={charts.rentByPaymentMethod} dataKey="total" nameKey="method" outerRadius={90} label={(d: any) => methodLabel(d.method)}>
                 {charts.rentByPaymentMethod.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
               </Pie>
@@ -214,9 +232,9 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Outstanding Rent by Unit">
+        <ChartCard title="Outstanding Rent by Unit" to="/arrears">
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={charts.outstandingRentByUnit} layout="vertical">
+            <BarChart data={charts.outstandingRentByUnit} layout="vertical" onBarClick={unitArrears}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" />
               <YAxis type="category" dataKey="unitNumber" width={40} />
@@ -226,9 +244,9 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Monthly Water Billed vs Water Collected">
+        <ChartCard title="Monthly Water Billed vs Water Collected" to="/water-payments">
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={charts.monthlyWaterBilledVsCollected}>
+            <BarChart data={charts.monthlyWaterBilledVsCollected} onBarClick={monthReceipts('WATER')}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey={(d: any) => monthLabel(d.month)} />
               <YAxis />
@@ -240,7 +258,7 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Water Supply Cost vs Water Collected">
+        <ChartCard title="Water Supply Cost vs Water Collected" to="/water-supply">
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={charts.waterSupplyCostVsCollected}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -254,9 +272,9 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Monthly Water Surplus / Deficit">
+        <ChartCard title="Monthly Water Surplus / Deficit" to="/water-supply">
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={charts.monthlyWaterSurplusDeficit}>
+            <BarChart data={charts.monthlyWaterSurplusDeficit} onBarClick={() => navigate('/water-supply')}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey={(d: any) => monthLabel(d.month)} />
               <YAxis />
@@ -270,9 +288,9 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Outstanding Water by Unit">
+        <ChartCard title="Outstanding Water by Unit" to="/arrears">
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={charts.outstandingWaterByUnit} layout="vertical">
+            <BarChart data={charts.outstandingWaterByUnit} layout="vertical" onBarClick={unitArrears}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" />
               <YAxis type="category" dataKey="unitNumber" width={40} />
@@ -286,10 +304,21 @@ export default function Dashboard() {
   );
 }
 
-function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+function ChartCard({ title, to, children }: { title: string; to?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <h3 className="mb-3 text-sm font-semibold text-gray-700">{title}</h3>
+    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <h3 className="mb-3 text-sm font-semibold text-gray-700">
+        {to ? (
+          <Link
+            to={to}
+            className="underline-offset-2 transition-colors duration-150 hover:text-brand-700 hover:underline"
+          >
+            {title}
+          </Link>
+        ) : (
+          title
+        )}
+      </h3>
       {children}
     </div>
   );

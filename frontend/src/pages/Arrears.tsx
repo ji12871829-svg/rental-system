@@ -4,6 +4,7 @@ import { Download } from 'lucide-react';
 import { Button, EmptyState, KpiCard, PageHeader, Select, SkeletonTable, StatusBadge, useFetch, useToast } from '../components/ui';
 import { api, authenticatedFetch } from '../lib/api';
 import { money } from '../lib/format';
+import { useQueryParam } from '../lib/useQueryParam';
 
 interface ArrearRow {
   unitId: number;
@@ -31,6 +32,9 @@ export default function Arrears() {
   const navigate = useNavigate();
   const now = new Date();
   const [year, setYear] = useState(String(now.getFullYear()));
+  // Unit filter lives in the URL (?unit=2) so dashboard chart bars can
+  // deep-link straight to one unit's arrears row — shared hook syncs both ways.
+  const [unitFilter, setUnitFilter] = useQueryParam('unit');
   const [statusFilter, setStatusFilter] = useState('');
   const [sortBy, setSortBy] = useState<SortKey>('total');
 
@@ -67,13 +71,14 @@ export default function Arrears() {
 
   const rows = useMemo(() => {
     let list = data ?? [];
+    if (unitFilter) list = list.filter((r) => r.unitNumber === unitFilter);
     if (statusFilter) list = list.filter((r) => r.status === statusFilter);
     return [...list].sort((a, b) => {
       if (sortBy === 'unit') return a.unitNumber.localeCompare(b.unitNumber, undefined, { numeric: true });
       if (sortBy === 'months') return b.monthsInArrears - a.monthsInArrears;
       return b.totalOutstanding - a.totalOutstanding;
     });
-  }, [data, statusFilter, sortBy]);
+  }, [data, unitFilter, statusFilter, sortBy]);
 
   const totals = useMemo(() => {
     const list = data ?? [];
@@ -118,6 +123,14 @@ export default function Arrears() {
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
+        {/* One option per unit with arrears data — the deep-link target for
+            the dashboard's "Outstanding by Unit" charts. */}
+        <Select value={unitFilter} onChange={(e) => setUnitFilter(e.target.value)} className="w-36">
+          <option value="">All units</option>
+          {[...new Set((data ?? []).map((r) => r.unitNumber))]
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+            .map((u) => <option key={u} value={u}>Unit {u}</option>)}
+        </Select>
         <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-44">
           <option value="">All statuses</option>
           <option value="OVERDUE">Overdue</option>

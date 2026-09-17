@@ -1,9 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Button, EmptyState, Field, PageHeader, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { api, authenticatedFetch, qs } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { MONTHS, formatDate, methodLabel, money } from '../lib/format';
 import { reportingYearOptions, useReportingYear } from '../lib/useReportingYear';
+
+interface ArrearsRow {
+  tenantId: number;
+  unitNumber: string;
+  tenantName: string;
+  totalOutstanding: number;
+}
 
 interface TenantOption {
   id: number;
@@ -48,6 +56,38 @@ export default function RentCollection() {
   const [monthFilter, setMonthFilter] = useState('');
   const [yearFilter, setYearFilter] = useState('');
   const reportingYear = useReportingYear();
+  // Reads the deep link (?new=1 from the Dashboard quick action) but does not
+  // own it — the focus effect below is the whole response, so plain
+  // useSearchParams (read-only) rather than the shared sync hooks.
+  const [params] = useSearchParams();
+
+  // Deep link ?new=1 (Dashboard quick action): focus the form's first field so
+  // recording a payment starts immediately. The form is inline, not a modal.
+  useEffect(() => {
+    if (params.get('new') !== '1') return;
+    document.getElementById('new-payment-tenant')?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Quick-action smart default: preselect the tenant with the largest
+  // outstanding balance so the day's most urgent payment starts one click
+  // sooner. Plain visits (no ?new=1) are left untouched.
+  const { data: arrearsRows } = useFetch<ArrearsRow[]>(
+    () => api.get<{ data: ArrearsRow[] }>('/api/reports/arrears').then((r) => r.data),
+    []
+  );
+  const mostInArrears = useMemo(() => {
+    const list = arrearsRows ?? [];
+    return [...list].sort((a, b) => b.totalOutstanding - a.totalOutstanding)[0] ?? null;
+  }, [arrearsRows]);
+  const [prefilledTenant, setPrefilledTenant] = useState(false);
+  useEffect(() => {
+    if (prefilledTenant) return;
+    if (params.get('new') === '1' && tenantId === '' && mostInArrears) {
+      setTenantId(mostInArrears.tenantId);
+      setPrefilledTenant(true);
+    }
+  }, [params, tenantId, mostInArrears, prefilledTenant]);
 
   const { data: tenants } = useFetch(() => api.list<TenantOption>('/api/tenants?status=ACTIVE&limit=100'));
   const { data: payments } = useFetch(
@@ -148,7 +188,7 @@ export default function RentCollection() {
           <h2 className="mb-4 text-base font-semibold text-gray-900">Record Rent Payment</h2>
           <div className="space-y-3">
             <Field label="Tenant / Unit">
-              <Select value={tenantId} onChange={(e) => setTenantId(e.target.value === '' ? '' : Number(e.target.value))}>
+              <Select id="new-payment-tenant" value={tenantId} onChange={(e) => setTenantId(e.target.value === '' ? '' : Number(e.target.value))}>
                 <option value="">— Select tenant —</option>
                 {tenants?.data.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -161,6 +201,9 @@ export default function RentCollection() {
               <div className="rounded-lg bg-blue-50 px-3 py-2 text-sm">
                 <div className="font-semibold text-blue-900">{selectedTenant.full_name}</div>
                 <div className="text-blue-800">Unit {selectedTenant.unit_number} · Expected rent: <b>{money(selectedTenant.monthly_rent)}</b></div>
+                {mostInArrears?.tenantId === selectedTenant.id && mostInArrears.totalOutstanding > 0 && (
+                  <div className="mt-0.5 text-xs text-blue-700">Largest outstanding balance — {money(mostInArrears.totalOutstanding)}</div>
+                )}
               </div>
             )}
             <div className="grid grid-cols-2 gap-3">

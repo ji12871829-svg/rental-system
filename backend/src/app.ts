@@ -21,6 +21,7 @@ import reportRoutes from './routes/reports';
 import settingsRoutes from './routes/settings';
 import smsRoutes from './routes/sms';
 import tenantRoutes from './routes/tenants';
+import tenantPortalRoutes from './routes/tenantPortal';
 import unitRoutes from './routes/units';
 import userRoutes from './routes/users';
 import waterRoutes from './routes/water';
@@ -84,6 +85,9 @@ export function createApp() {
   app.use('/api/settings', settingsRoutes);
   app.use('/api/units', unitRoutes);
   app.use('/api/tenants', tenantRoutes);
+  // Tenant self-service portal — separate cookie + JWT audience from staff
+  // auth (see middleware/portalAuth.ts). Mounted before the /api 404 guard.
+  app.use('/api/portal', tenantPortalRoutes);
   app.use('/api/rent', rentRoutes);
   app.use('/api/mpesa', mpesaRoutes);
   app.use('/api/water', waterRoutes);

@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useState } from 'react';
 import { Download, Mail } from 'lucide-react';
 import { EmptyState, KpiCard, PageHeader, Select, SkeletonTable, StatusBadge, useFetch, useToast } from '../components/ui';
 import { api, authenticatedFetch } from '../lib/api';
 import { money } from '../lib/format';
+import { useQueryParam } from '../lib/useQueryParam';
 
 interface TenantOption { id: number; full_name: string; unit_number: string | null }
 
@@ -38,17 +38,9 @@ interface LedgerData {
 }
 
 export default function TenantLedger() {
-  const [params, setParams] = useSearchParams();
-  const [tenantId, setTenantId] = useState<string>(params.get('tenant') ?? '');
-
-  // Keep the URL in sync so the page is deep-linkable from the Tenants page.
-  useEffect(() => {
-    const next = new URLSearchParams(params);
-    if (tenantId) next.set('tenant', tenantId);
-    else next.delete('tenant');
-    setParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId]);
+  // Tenant filter lives in the URL (?tenant=) so the Tenants page and
+  // dashboard links can land pre-selected — shared hook syncs both ways.
+  const [tenantId, setTenantId] = useQueryParam('tenant');
 
   const { data: tenants } = useFetch(() => api.list<TenantOption>('/api/tenants?limit=100'));
   const { data, loading, error } = useFetch<LedgerData>(

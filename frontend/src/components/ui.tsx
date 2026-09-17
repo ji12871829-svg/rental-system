@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { Link } from 'react-router-dom';
 import { AlertCircle, CheckCircle2, X } from 'lucide-react';
 import { statusClass } from '../lib/format';
+import { Toon } from './Toon';
 
 // ---------------------------------------------------------------- StatusBadge
 export function StatusBadge({ status }: { status: string }) {
@@ -39,6 +40,9 @@ export interface GroupStat {
   value: ReactNode;
   sub?: ReactNode;
   tone?: 'default' | 'good' | 'bad' | 'warn';
+  // Optional router link — turns the label into a link to the page behind the
+  // number (e.g. Outstanding → /arrears) so a dashboard reads as a hub.
+  to?: string;
 }
 
 export function StatGroupCard({ title, stats }: { title?: string; stats: GroupStat[] }) {
@@ -57,7 +61,18 @@ export function StatGroupCard({ title, stats }: { title?: string; stats: GroupSt
             key={i}
             className={`min-w-[7.5rem] flex-1 px-3 first:pl-0 ${i > 0 ? 'border-l border-gray-100' : ''}`}
           >
-            <div className="text-xs font-medium text-gray-500">{s.label}</div>
+            <div className="text-xs font-medium text-gray-500">
+              {s.to ? (
+                <Link
+                  to={s.to}
+                  className="-my-2 -mx-2.5 inline-block px-2.5 py-2 underline-offset-2 transition-colors duration-150 hover:text-brand-700 hover:underline"
+                >
+                  {s.label}
+                </Link>
+              ) : (
+                s.label
+              )}
+            </div>
             <div className={`mt-0.5 text-lg font-bold sm:text-xl ${toneText[s.tone ?? 'default']}`}>{s.value}</div>
             {s.sub && <div className="mt-0.5 text-[11px] text-gray-400">{s.sub}</div>}
           </div>
@@ -167,8 +182,9 @@ export function Modal({ open, title, onClose, children, wide }: { open: boolean;
 // ---------------------------------------------------------------- EmptyState
 export function EmptyState({ message }: { message: string }) {
   return (
-    <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500">
-      {message}
+    <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500">
+      <Toon size={84} pose="wave" animated className="shrink-0" />
+      <p className="max-w-sm">{message}</p>
     </div>
   );
 }

@@ -67,6 +67,17 @@ p {
   display: none;
 }
 
+/* The launch-video mascot's wave (see components/Toon.tsx). Disabled along
+   with every other animation by the prefers-reduced-motion guard below. */
+@keyframes toon-wave {
+  from { transform: rotate(-118deg); }
+  to { transform: rotate(-160deg); -webkit-transform: rotate(-160deg); }
+}
+.toon-wave-arm {
+  animation: toon-wave 0.9s ease-in-out infinite alternate;
+  transform-origin: 135px 152px;
+}
+
 /* Respect users who turn off animations at the OS level. */
 @media (prefers-reduced-motion: reduce) {
   *,

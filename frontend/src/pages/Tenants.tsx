@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Plus } from 'lucide-react';
+import { KeyRound, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { DataRequestLetterModal, type LetterData } from '../components/DataRequestLetter';
@@ -46,6 +46,7 @@ export default function Tenants() {
   const [privacyRequest, setPrivacyRequest] = useState<{ tenant: Tenant; action: 'json' | 'csv' | 'erase' | 'letter' } | null>(null);
   const [letter, setLetter] = useState<LetterData | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [portalTenant, setPortalTenant] = useState<Tenant | null>(null);
 
   const { data, loading, error } = useFetch(
     () => api.list<Tenant>(`/api/tenants${qs({ q, status: status || undefined, page, limit: 25 })}`),
@@ -81,6 +82,8 @@ export default function Tenants() {
         toast('success', `${tenant.full_name} moved out — unit is now VACANT.`);
         refresh();
       } catch (err) { toast('error', (err as Error).message); }
+    } else if (action === 'portal') {
+      setPortalTenant(tenant);
     } else if (action === 'delete') {
       if (!window.confirm(`Permanently delete ${tenant.full_name}?`)) return;
       try {
@@ -174,6 +177,9 @@ export default function Tenants() {
                         <option value="" disabled>Actions</option>
                         <option value="view">View details</option>
                         <option value="ledger">Open ledger</option>
+                        {canManage && t.status === 'ACTIVE' && t.email && (
+                          <option value="portal">Portal access…</option>
+                        )}
                       {canManage && t.status === 'ACTIVE' && (
                         <>
                           <option value="edit">Edit tenant</option>
@@ -255,7 +261,81 @@ export default function Tenants() {
       <DataRequestLetterModal letter={letter} onClose={() => setLetter(null)} tenantEmail={detail?.email ?? null} />
 
       <TransferModal tenant={transferTarget} onClose={() => setTransferTarget(null)} onDone={() => { setTransferTarget(null); refresh(); toast('success', 'Tenant transferred.'); }} />
+
+      <PortalAccessModal
+        tenant={portalTenant}
+        onClose={() => setPortalTenant(null)}
+        onDone={(msg) => { setPortalTenant(null); refresh(); toast('success', msg); }}
+      />
     </div>
+  );
+}
+
+// Staff dialog to grant/rotate/revoke a tenant's portal credentials.
+// The generated password is shown exactly once — only its hash is stored.
+function PortalAccessModal({ tenant, onClose, onDone }: {
+  tenant: Tenant | null;
+  onClose: () => void;
+  onDone: (msg: string) => void;
+}) {
+  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+  const [credentials, setCredentials] = useState<{ email: string; password: string } | null>(null);
+
+  async function issue() {
+    if (!tenant) return;
+    setBusy(true);
+    try {
+      const res = await api.post<{ email: string; temporaryPassword: string }>(
+        `/api/tenants/${tenant.id}/portal-access`,
+        {},
+      );
+      setCredentials({ email: res.email, password: res.temporaryPassword });
+      onDone('Portal access issued. Share the password securely — it is shown only once.');
+    } catch (err) {
+      toast('error', (err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revoke() {
+    if (!tenant || !window.confirm(`Disable portal access for ${tenant.full_name}?`)) return;
+    setBusy(true);
+    try {
+      await api.del(`/api/tenants/${tenant.id}/portal-access`);
+      onDone('Portal access revoked.');
+    } catch (err) {
+      toast('error', (err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={tenant !== null} title={`Tenant Portal — ${tenant?.full_name ?? ''}`} onClose={() => { setCredentials(null); onClose(); }}>
+      {tenant && (
+        <div className="space-y-4 text-sm">
+          <p className="text-gray-600">
+            Issues a login for <b>{tenant.email}</b> at <b>/portal</b>. The tenant can view their
+            rent balance, water charges, payment history and download their statement, and can pay
+            rent via M-Pesa.
+          </p>
+          {credentials && (
+            <div className="rounded-lg border border-brand-200 bg-brand-50 p-3">
+              <div className="font-medium text-brand-800">Share these credentials now — shown only once:</div>
+              <div className="mt-2 font-mono text-xs text-gray-800">Email: {credentials.email}</div>
+              <div className="font-mono text-xs text-gray-800">Password: {credentials.password}</div>
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => { setCredentials(null); onClose(); }}>Close</Button>
+            <Button variant="secondary" onClick={revoke} disabled={busy}><KeyRound size={14} className="mr-1" /> Revoke</Button>
+            <Button onClick={issue} disabled={busy}>{busy ? 'Working…' : credentials ? 'Regenerate password' : 'Issue access'}</Button>
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
 

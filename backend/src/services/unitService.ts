@@ -45,8 +45,12 @@ export async function listUnits(filters: UnitFilters): Promise<{ rows: unknown[]
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   return paginate<Record<string, unknown>>({
+    // last_reading_date powers the Water Meter form's "longest without a
+    // reading" preselection (quick action deep link) — null for units never
+    // read.
     selectSql: `u.*, f.floor_number, f.name AS floor_name,
-            t.id AS tenant_id, t.full_name AS tenant_name, t.phone_number`,
+            t.id AS tenant_id, t.full_name AS tenant_name, t.phone_number,
+            (SELECT MAX(wmr.reading_date) FROM water_meter_readings wmr WHERE wmr.unit_id = u.id) AS last_reading_date`,
     tableSql: `FROM units u
      JOIN floors f ON f.id = u.floor_id
      LEFT JOIN tenants t ON t.unit_id = u.id AND t.status = 'ACTIVE'`,

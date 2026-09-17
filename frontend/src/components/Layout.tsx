@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BrandMark } from './BrandMark';
+import { QuickActions } from './QuickActions';
 import { Suspense } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -203,6 +204,9 @@ export default function Layout() {
               </button>
             </div>
             {nav}
+            {/* One-tap task shortcuts (same as the Dashboard header) — closed
+                by the same onNavigate as nav items. */}
+            <QuickActions variant="drawer" onNavigate={() => setMobileOpen(false)} />
             {userCard}
           </aside>
         </div>

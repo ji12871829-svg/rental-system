@@ -5,6 +5,7 @@ import { api, authenticatedFetch, qs } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { branding, receiptFooterLines } from '../lib/branding';
 import { MONTHS, formatDate, money } from '../lib/format';
+import { useQueryParam } from '../lib/useQueryParam';
 
 interface Receipt {
   id: number;
@@ -95,8 +96,11 @@ export default function Receipts() {
   const { canManage } = useAuth();
   const now = new Date();
   const [q, setQ] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
-  const [monthFilter, setMonthFilter] = useState('');
+  // Filters live in the URL (?receiptType=&month=) so dashboard chart bars
+  // can deep-link straight to a filtered receipt list — shared hook syncs
+  // both ways.
+  const [typeFilter, setTypeFilter] = useQueryParam('receiptType');
+  const [monthFilter, setMonthFilter] = useQueryParam('month');
   const [yearFilter, setYearFilter] = useState(String(now.getFullYear()));
   const [page, setPage] = useState(1);
   const [showGenerate, setShowGenerate] = useState(false);

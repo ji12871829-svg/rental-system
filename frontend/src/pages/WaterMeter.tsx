@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Button, EmptyState, Field, Modal, PageHeader, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { api, qs } from '../lib/api';
 import { MONTHS, formatDate, money } from '../lib/format';
 import { useReportingYear } from '../lib/useReportingYear';
+import { useQueryToggle } from '../lib/useQueryParam';
 
 interface Reading {
   id: number;
@@ -27,11 +28,15 @@ interface UnitOption {
   unit_number: string;
   unit_type: string;
   tenant_name: string | null;
+  last_reading_date: string | null;
 }
 
 export default function WaterMeter() {
   const { toast } = useToast();
-  const [showForm, setShowForm] = useState(false);
+  // Auto-open the reading form when deep-linked with ?new=1 (e.g. from the
+  // Dashboard's quick actions); the URL toggle mirrors the form state, so
+  // closing the modal cleans the param away.
+  const [showForm, setShowForm] = useQueryToggle('new');
   const [refreshKey, setRefreshKey] = useState(0);
   const [unitFilter, setUnitFilter] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
@@ -45,6 +50,25 @@ export default function WaterMeter() {
   );
 
   const waterUnits = useMemo(() => units?.data ?? [], [units]);
+
+  // Quick-action preselection: the water unit longest without a reading —
+  // any never-read unit first (the API lists them in unit-number order),
+  // else the unit whose last reading is oldest.
+  const unitLongestWithoutReading = useMemo(() => {
+    const neverRead = waterUnits.filter((u) => !u.last_reading_date);
+    if (neverRead.length > 0) return neverRead[0];
+    const read = waterUnits
+      .filter((u) => u.last_reading_date)
+      .sort((a, b) => (a.last_reading_date! < b.last_reading_date! ? -1 : 1));
+    return read[0] ?? null;
+  }, [waterUnits]);
+  const [prefillUnitId, setPrefillUnitId] = useState<number | null>(null);
+
+  // When the form opens, capture the suggested unit (re-captures if the unit
+  // list lands after the form opened).
+  useEffect(() => {
+    if (showForm && unitLongestWithoutReading) setPrefillUnitId(unitLongestWithoutReading.id);
+  }, [showForm, unitLongestWithoutReading]);
 
   return (
     <div>
@@ -105,6 +129,7 @@ export default function WaterMeter() {
       <ReadingForm
         open={showForm}
         units={waterUnits}
+        prefillUnitId={prefillUnitId}
         onClose={() => setShowForm(false)}
         onSaved={(msg) => { setShowForm(false); setRefreshKey((k) => k + 1); toast('success', msg); }}
       />
@@ -112,16 +137,23 @@ export default function WaterMeter() {
   );
 }
 
-function ReadingForm({ open, units, onClose, onSaved }: { open: boolean; units: UnitOption[]; onClose: () => void; onSaved: (msg: string) => void }) {
+function ReadingForm({ open, units, prefillUnitId, onClose, onSaved }: { open: boolean; units: UnitOption[]; prefillUnitId: number | null; onClose: () => void; onSaved: (msg: string) => void }) {
   const { toast } = useToast();
   const now = new Date();
-  const [unitId, setUnitId] = useState<number | ''>('');
+  const [unitId, setUnitId] = useState<number | ''>(prefillUnitId ?? '');
   const [readingDate, setReadingDate] = useState(now.toISOString().slice(0, 10));
   const [billingMonth, setBillingMonth] = useState(now.getMonth() + 1);
   const [billingYear, setBillingYear] = useState(now.getFullYear());
   const [currentReading, setCurrentReading] = useState('');
   const [previousReading, setPreviousReading] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Apply the suggested unit whenever the form opens with nothing selected —
+  // covers deep-link opens (selection empty) and late-arriving unit data,
+  // without clobbering a choice the user already made.
+  useEffect(() => {
+    if (open && unitId === '' && prefillUnitId !== null) setUnitId(prefillUnitId);
+  }, [open, prefillUnitId, unitId]);
 
   async function save() {
     if (unitId === '' || currentReading === '' || Number(currentReading) < 0) {

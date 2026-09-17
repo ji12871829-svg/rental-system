@@ -6,6 +6,7 @@ import { branding } from '../lib/branding';
 import { useBranding } from '../lib/BrandingContext';
 import { Button, TextInput } from '../components/ui';
 import { BrandMark } from '../components/BrandMark';
+import { Toon } from '../components/Toon';
 
 
 export default function Login() {
@@ -76,12 +77,15 @@ export default function Login() {
             />
             <span className="text-lg font-semibold text-white">{branding.appName}</span>
           </div>
-          <div>
+          <div className="flex items-end gap-4">
+            <Toon size={110} pose="wave" animated title="Olbano Plaza property manager mascot waving hello" />
+            <div>
             <h1 className="max-w-xs text-3xl font-semibold leading-tight text-white">{branding.appNameLong}</h1>
             {loginIdentityLine && <p className="mt-2 text-sm text-slate-300">{loginIdentityLine}</p>}
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-slate-400">
               Every unit, rent payment and water bill, tracked in one place.
             </p>
+            </div>
           </div>
         </div>
       </div>

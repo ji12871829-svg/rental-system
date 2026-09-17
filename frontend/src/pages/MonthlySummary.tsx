@@ -5,7 +5,8 @@ import {
 } from '../components/charts';
 import { KpiCard, PageHeader, Select, SkeletonTable, useFetch, useToast } from '../components/ui';
 import { api, authenticatedFetch } from '../lib/api';
-import { money, number } from '../lib/format';
+import { MONTHS, money, number } from '../lib/format';
+import { useQueryParam } from '../lib/useQueryParam';
 
 interface MonthRow {
   month: number;
@@ -52,6 +53,10 @@ export default function MonthlySummary() {
   const now = new Date();
   const [year, setYear] = useState<string>(String(now.getFullYear()));
   const [view, setView] = useState<'COMBINED' | 'RENT' | 'WATER'>('COMBINED');
+  // ?month=9 (e.g. from the Dashboard's "due this month" stat) narrows the
+  // table to one month; charts and year totals stay year-wide. The shared
+  // hook syncs the filter both ways with the URL.
+  const [monthFilter, setMonthFilter] = useQueryParam('month');
 
   const { data: combined } = useFetch<MonthRow[]>(
     () => api.get<{ data: MonthRow[] }>(`/api/reports/monthly?year=${year}`).then((r) => r.data),
@@ -70,11 +75,11 @@ export default function MonthlySummary() {
     [year, view]
   );
 
-  const rows = view === 'RENT'
+  const rows = (view === 'RENT'
     ? (rentRows ?? []) as unknown as MonthRow[]
     : view === 'WATER'
       ? (waterRows ?? []) as unknown as MonthRow[]
-      : combined ?? [];
+      : combined ?? []).filter((r: any) => !monthFilter || String(r.month) === monthFilter);
 
   const totals = rows.reduce(
     (acc, r: any) => ({
@@ -146,6 +151,10 @@ export default function MonthlySummary() {
           <option value="RENT">Rent only</option>
           <option value="WATER">Water only</option>
         </Select>
+        <Select value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)} className="w-40">
+          <option value="">All months</option>
+          {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+        </Select>
         <Select value={year} onChange={(e) => setYear(e.target.value)} className="w-28">
           {[now.getFullYear(), now.getFullYear() - 1, now.getFullYear() + 1].map((y) => (
             <option key={y} value={y}>{y}</option>
@@ -172,9 +181,11 @@ export default function MonthlySummary() {
       </div>
 
       <div className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3">
-        <KpiCard label={`Total due ${year}`} value={money(totals.due)} />
-        <KpiCard label={`Total collected ${year}`} value={money(totals.collected)} tone="good" />
-        <KpiCard label={`Total outstanding ${year}`} value={money(totals.outstanding)} tone={totals.outstanding > 0 ? 'bad' : 'good'} />
+        {/* KPIs follow the month filter (the table's scope) — the label says so.
+            Charts above stay year-wide for context. */}
+        <KpiCard label={`Total due ${monthFilter ? `${MONTHS[Number(monthFilter) - 1]} ` : ''}${year}`} value={money(totals.due)} />
+        <KpiCard label={`Total collected ${monthFilter ? `${MONTHS[Number(monthFilter) - 1]} ` : ''}${year}`} value={money(totals.collected)} tone="good" />
+        <KpiCard label={`Total outstanding ${monthFilter ? `${MONTHS[Number(monthFilter) - 1]} ` : ''}${year}`} value={money(totals.outstanding)} tone={totals.outstanding > 0 ? 'bad' : 'good'} />
       </div>
 
       {/* Charts */}
@@ -182,7 +193,7 @@ export default function MonthlySummary() {
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <h2 className="mb-3 text-sm font-semibold text-gray-700">Due vs collected by month</h2>
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={combined ?? []}>
+            <BarChart data={combined ?? []} onBarClick={(d) => setMonthFilter(String(d.month))}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey={(d: any) => shortMonth(d.month)} />
               <YAxis />

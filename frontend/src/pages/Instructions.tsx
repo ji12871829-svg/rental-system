@@ -1,5 +1,6 @@
 import { CalendarDays, Calculator, Droplets, Lock, ReceiptText, Route, type LucideIcon } from 'lucide-react';
 import { PageHeader } from '../components/ui';
+import { Toon } from '../components/Toon';
 
 const SECTIONS: { title: string; icon: LucideIcon; body: string[] }[] = [
   {
@@ -68,6 +69,19 @@ export default function Instructions() {
   return (
     <div>
       <PageHeader title="Instructions / Help" subtitle="A short guide to the daily use of the system — this page is the full reference" />
+
+      {/* Onboarding welcome hosted by the mascot from the launch video. */}
+      <div className="mb-4 flex items-center gap-5 rounded-xl border border-brand-100 bg-brand-50/60 p-5">
+        <Toon size={88} pose="point" className="shrink-0" />
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Karibu! New here? Start with the daily workflow.</h2>
+          <p className="mt-1 text-sm text-gray-600">
+            The numbered steps below take you from adding a tenant to the monthly net income. Everything else on this
+            page is reference — come back any time.
+          </p>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {SECTIONS.map((s) => (
           <div key={s.title} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow duration-200 hover:shadow-md">
