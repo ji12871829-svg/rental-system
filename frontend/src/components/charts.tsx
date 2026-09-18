@@ -303,7 +303,7 @@ export function ResponsiveContainer(props: {
       {w > 0 && visible && isValidElement(children)
         ? cloneElement(children as ReactElement<any>, { containerWidth: w })
         : !visible
-          ? <div className="h-full w-full animate-pulse rounded-lg bg-gray-100/70" aria-hidden />
+          ? <div className="h-full w-full animate-pulse rounded-lg bg-gray-200" aria-hidden />
           : null}
     </div>
   );
