@@ -43,20 +43,33 @@ p {
 }
 
 /* Sticky first column: row identity (unit #, receipt #, tenant) stays visible
-   while the rest of a wide table scrolls sideways on a phone. */
+   while the rest of a wide table scrolls sideways on a phone. The background
+   must be opaque (content scrolls UNDER it) — hardcoded white here is what
+   broke dark mode, so it's a CSS variable that flips with the theme, and the
+   row-hover states match so the sticky cell follows its row. */
+.table-scroll {
+  --sticky-bg: #ffffff;
+  --sticky-bg-hover: #f9fafb;
+  --sticky-hairline: #e5e7eb;
+}
 .table-scroll thead th:first-child,
 .table-scroll tbody td:first-child {
   position: sticky;
   left: 0;
-  background: #ffffff;
-  box-shadow: 1px 0 0 0 #e5e7eb; /* hairline so the frozen column reads as one */
+  background: var(--sticky-bg);
+  box-shadow: 1px 0 0 0 var(--sticky-hairline); /* hairline so the frozen column reads as one */
 }
 .table-scroll thead th:first-child {
   z-index: 2;
-  background: #f9fafb;
+  background: var(--sticky-bg-hover);
 }
 .table-scroll tbody tr:hover td:first-child {
-  background: #f9fafb;
+  background: var(--sticky-bg-hover);
+}
+html.dark .table-scroll {
+  --sticky-bg: #0d0f14;      /* card tone — the sticky cell must match its row */
+  --sticky-bg-hover: #161921; /* raised hover tone */
+  --sticky-hairline: #1d2027; /* dark border tone */
 }
 
 /* Scrollable but chrome-free — for the mobile nav rail. */
