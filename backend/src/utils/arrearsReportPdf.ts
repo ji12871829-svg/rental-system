@@ -5,6 +5,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import type { BusinessIdentity } from '../services/brandingService';
 import { formatMoney, n } from './money';
+import { drawLogo, embedLogo } from './pdfLogo';
 import { fmtDate } from './receiptDocument';
 
 // A4 landscape in points.
@@ -62,7 +63,7 @@ const OWED = new Set(['UNPAID', 'PARTIAL', 'OVERDUE']);
 
 export async function arrearsReportPdfBytes(
   data: ArrearsReportData,
-  identity: BusinessIdentity = { name: null, regNo: null, phone: null, email: null }
+  identity: BusinessIdentity = { name: null, regNo: null, phone: null, email: null, logo: null }
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   let page = doc.addPage([PAGE_W, PAGE_H]);
@@ -123,7 +124,15 @@ export async function arrearsReportPdfBytes(
   // --- Header ---------------------------------------------------------------
   let y = PAGE_H - 52;
   const name = identity.name?.trim() || 'Property Management';
-  draw(page, name, { y, size: 16, font: bold });
+  const logo = await embedLogo(doc, identity);
+  const nameX = drawLogo(page, logo, {
+    x: MARGIN,
+    topY: y + 10,
+    height: 30,
+    pageWidth: PAGE_W,
+    rightLimit: MARGIN + W - bold.widthOfTextAtSize(safe(name, bold), 16) - 10,
+  });
+  draw(page, name, { x: nameX, y, size: 16, font: bold });
   y -= 16;
   draw(page, `Arrears Report — ${data.year}`, { y, size: 10, color: MUTED });
   y -= 8;

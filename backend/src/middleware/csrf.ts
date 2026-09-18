@@ -50,6 +50,8 @@ function isPublicCallback(path: string): boolean {
   // which authenticate by their own signature/params.
   return path === '/api/auth/login'
     || path === '/api/portal/login'
+    || path === '/api/auth/refresh'
+    || path === '/api/portal/refresh'
     || path === '/api/auth/logout'
     || path === '/api/portal/logout'
     || path.startsWith('/api/mpesa/')

@@ -17,3 +17,14 @@ export function applyBrandFavicon(initials: string | null): void {
   const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
   if (link) link.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
+
+/**
+ * Uses the uploaded business logo as the favicon (the URL is versioned by
+ * upload time, so a new upload replaces it immediately). When no logo is
+ * configured the monogram generator above stays in charge.
+ */
+export function applyLogoFavicon(url: string | null): void {
+  if (!url) return;
+  const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+  if (link) link.href = url;
+}

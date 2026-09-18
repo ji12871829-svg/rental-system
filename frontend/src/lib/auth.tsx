@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api } from './api';
+import { installStaffKeepalive } from './sessionKeepalive';
 
 type Role = 'ADMIN' | 'PROPERTY_MANAGER' | 'STAFF';
 
@@ -31,7 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     api.get<{ data: User }>('/api/auth/me')
-      .then((res) => { setUser(res.data); setTokenState(true); })
+      .then((res) => { setUser(res.data); setTokenState(true); installStaffKeepalive(); })
       .catch(() => { setUser(null); setTokenState(false); })
       .finally(() => setReady(true));
   }, []);
@@ -42,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setTokenState(true);
     setReady(true);
     setUser(user);
+    installStaffKeepalive();
     return user;
   }, []);
 

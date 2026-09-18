@@ -451,6 +451,12 @@ CREATE TABLE IF NOT EXISTS business_branding (
   paybill_name        VARCHAR(200),
   paybill_enabled     BOOLEAN NOT NULL DEFAULT FALSE,
   paybill_instructions TEXT,
+  -- Business logo (optional). Stored as base64 (≈ the bytes × 1.37) so the
+  -- singleton row needs no external files: PDFs embed it directly, the app
+  -- and tenant portal render it from /api/branding/logo. Blank = no logo.
+  logo_data           TEXT,
+  logo_mime_type      VARCHAR(50),
+  logo_updated_at     TIMESTAMPTZ,
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

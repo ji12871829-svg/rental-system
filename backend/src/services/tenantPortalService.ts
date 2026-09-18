@@ -49,7 +49,7 @@ export async function issuePortalAccess(
   userId: number,
   email?: string,
   password?: string
-): Promise<PortalAccessRow & { generatedPassword?: string }> {
+): Promise<PortalAccessRow & { tenantName: string; generatedPassword?: string }> {
   const tenant = await queryOne<
     { id: number; status: string; full_name: string; email: string | null }
   >(
@@ -89,7 +89,7 @@ export async function issuePortalAccess(
       [tenantId, finalEmail, passwordHash]
     );
     await logAudit({ userId, action: 'TENANT_PORTAL_ISSUED', entity: 'tenant_portal_access', entityId: row!.id });
-    return { ...row!, generatedPassword: password ? undefined : finalPassword };
+    return { ...row!, tenantName: tenant.full_name, generatedPassword: password ? undefined : finalPassword };
   }
 
   const row = await queryOne<PortalAccessRow>(
@@ -100,7 +100,7 @@ export async function issuePortalAccess(
   );
   if (!row) throw new Error('Portal access creation failed.');
   await logAudit({ userId, action: 'TENANT_PORTAL_ISSUED', entity: 'tenant_portal_access', entityId: row.id });
-  return { ...row, generatedPassword: password ? undefined : finalPassword };
+  return { ...row, tenantName: tenant.full_name, generatedPassword: password ? undefined : finalPassword };
 }
 
 export async function disablePortalAccess(tenantId: number, userId: number): Promise<void> {

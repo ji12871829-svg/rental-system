@@ -1,13 +1,27 @@
-// Receipt email service — mirrors smsService.ts: rows are prepared when a
-// send is requested, sending flips the row to SENT/FAILED, history is
-// listable. The rendered HTML is stored with the row so the record is a
-// faithful copy of what was sent.
+// Outbound Email module — the deep interface for every email the system sends.
+//
+// Shape:
+//   * queueEmail — the ONE persist point: validates the recipient, folds the
+//     attachments into the row's two attachment slots, INSERTs PENDING.
+//     Every kind funnels through it, so validation and persistence have
+//     exactly one implementation.
+//   * prepareFor* — thin kind adapters: resolve data, compose the body via
+//     the pure templates in utils/emailTemplates.ts (receipts via
+//     utils/receiptDocument.ts), then call queueEmail. Adding a kind touches
+//     one small adapter, never the lifecycle.
+//   * sendEmailNotification — the send transition: PENDING → provider →
+//     SENT (message id) / FAILED (reason). Test-mode rows resolve instantly
+//     so flows stay exercisable in tests.
+//
+// The email_notification record is a faithful copy of what was sent
+// (accountability principle) — see CONTEXT.md, "Outbound Email module" and
+// "Email notification record". SMS mirrors this lifecycle in smsService.ts.
 import { pool, query, queryOne } from '../config/db';
 import { paginate } from './paginate';
 import type { Pagination } from '../types';
 import { getBusinessIdentity } from './brandingService';
 import { env, isTest } from '../config/env';
-import { isValidEmail, sendEmail } from './emailProvider';
+import { getEmailConfig, isValidEmail, sendEmail, type EmailPayload } from './emailProvider';
 import { logAudit } from './auditService';
 import { monthlyReportPdf, tenantStatementPdf } from './financeService';
 import { badRequest, notFound } from '../utils/httpError';
@@ -17,6 +31,14 @@ import {
   receiptText,
   type ReceiptDocument,
 } from '../utils/receiptDocument';
+import {
+  composeCampaignEmail,
+  composeDataLetterEmail,
+  composeMonthlyReportEmail,
+  composePortalCredentialsEmail,
+  composeStatementEmail,
+  composeTestEmail,
+} from '../utils/emailTemplates';
 import { receiptPdfBytes } from '../utils/receiptPdf';
 
 export interface EmailRow {
@@ -64,51 +86,77 @@ async function getReceiptForEmail(receiptId: number): Promise<ReceiptWithEmail> 
   return row;
 }
 
-// Creates a PENDING email_notifications row for a receipt. The recipient is
-// the tenant's stored email unless an explicit address is passed (either way
-// it must be a valid address — never guessed).
-export async function prepareForReceipt(
-  receiptId: number,
-  opts: { toEmail?: string; userId?: number | null } = {}
-): Promise<EmailRow> {
-  const receipt = await getReceiptForEmail(receiptId);
-  const toEmail = (opts.toEmail ?? receipt.tenant_email ?? '').trim();
-  if (!toEmail) {
+// --- Queue core ---------------------------------------------------------------
+//
+// One file attachment in the row's storage shape. Content is base64 already
+// (the row stores a faithful copy of the bytes that go out).
+export interface EmailAttachment {
+  filename: string;
+  content: string;
+  contentType: string;
+}
+
+export interface QueueEmailInput {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  tenantId?: number | null;
+  receiptId?: number | null;
+  attachments?: EmailAttachment[];
+}
+
+// The schema stores two attachment slots per row; callers hand us 0..2
+// attachments and this folds them into (attachment, attachment2).
+function normalizeAttachments(attachments: EmailAttachment[] | undefined): [EmailAttachment | null, EmailAttachment | null] {
+  return [attachments?.[0] ?? null, attachments?.[1] ?? null];
+}
+
+// Validates the recipient and creates the PENDING row. The single place where
+// an email enters the queue — kind adapters never write email_notifications
+// themselves.
+export async function queueEmail(input: QueueEmailInput): Promise<EmailRow> {
+  const to = input.to.trim();
+  if (!to) {
     throw badRequest('This tenant has no email address on file. Provide one with the request.');
   }
-  if (!isValidEmail(toEmail)) {
-    throw badRequest(`"${toEmail}" is not a valid email address.`);
+  if (!isValidEmail(to)) {
+    throw badRequest(`"${to}" is not a valid email address.`);
   }
 
-  const subject = receiptSubject(receipt);
-  // Identity from business_branding (DB with env fallbacks) so Settings
-  // edits apply to newly prepared emails immediately.
-  const identity = await getBusinessIdentity();
-  const html = receiptEmailHtml(receipt, identity);
-  const text = receiptText(receipt, identity);
-
-  // The real, printable receipt PDF — the same renderer as the in-app
-  // download — stored (base64) as the email's attachment, so the tenant
-  // receives the actual document rather than an HTML copy.
-  const pdf = await receiptPdfBytes(receipt, identity);
-  const attachmentContent = Buffer.from(pdf).toString('base64');
-
+  const [a1, a2] = normalizeAttachments(input.attachments);
   const { rows } = await pool.query<EmailRow>(
     `INSERT INTO email_notifications
        (receipt_id, tenant_id, email_address, subject, body_html, body_text, status,
-        attachment_name, attachment_content, attachment_content_type)
-     VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', $7, $8, 'application/pdf')
+        attachment_name, attachment_content, attachment_content_type,
+        attachment2_name, attachment2_content, attachment2_content_type)
+     VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', $7, $8, $9, $10, $11, $12)
      RETURNING *`,
-    [receipt.id, receipt.tenant_id, toEmail, subject, html, text, `${receipt.receipt_number}.pdf`, attachmentContent]
+    [
+      input.receiptId ?? null,
+      input.tenantId ?? null,
+      to,
+      input.subject,
+      input.html,
+      input.text,
+      a1?.filename ?? null,
+      a1?.content ?? null,
+      a1?.contentType ?? null,
+      a2?.filename ?? null,
+      a2?.content ?? null,
+      a2?.contentType ?? null,
+    ]
   );
   return rows[0];
 }
 
+// --- Send transition ------------------------------------------------------------
+//
 // Sends a PENDING email via the configured provider (env EMAIL_PROVIDER —
 // mock by default, SMTP when configured) and records the outcome:
 // SENT + provider_message_id + sent_at, or FAILED + failure_reason.
-// The receipt rides along as its real PDF attachment (rendered at prepare
-// time); data-request letters carry their JSON data file.
+// Attachments decode from the row's stored slots; rows predating attachments
+// fall back to the .html copy.
 export async function sendEmailNotification(id: number): Promise<EmailRow> {
   const row = await queryOne<EmailRow & {
     receipt_number: string | null;
@@ -130,10 +178,6 @@ export async function sendEmailNotification(id: number): Promise<EmailRow> {
     throw badRequest(`This email was already ${row.status.toLowerCase()} — only pending emails can be sent.`);
   }
 
-  // Attachments in order: the row's primary stored file (the receipt PDF,
-  // base64-decoded via its content type; the letter PDF on data-request
-  // emails) then the second attachment (the JSON data file). Rows predating
-  // attachments fall back to the .html copy.
   const attachments: { filename: string; content: string; contentType: string }[] = [];
   if (row.attachment_name && row.attachment_content) {
     attachments.push({
@@ -190,9 +234,193 @@ export function dispatchAutoEmail(receiptId: number | null | undefined): void {
   }, 0);
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character] ?? character));
+// --- Kind adapters ---------------------------------------------------------------
+//
+// Each resolves its own data, composes via the pure templates, and delegates
+// persistence + validation to queueEmail.
+
+// Creates a PENDING email for a receipt, carrying the real printable PDF (the
+// same renderer as the in-app download) as the attachment. The recipient is
+// the tenant's stored email unless an explicit address is passed (either way
+// it must be a valid address — never guessed).
+export async function prepareForReceipt(
+  receiptId: number,
+  opts: { toEmail?: string; userId?: number | null } = {}
+): Promise<EmailRow> {
+  const receipt = await getReceiptForEmail(receiptId);
+  const identity = await getBusinessIdentity();
+  const pdf = await receiptPdfBytes(receipt, identity);
+
+  return queueEmail({
+    to: (opts.toEmail ?? receipt.tenant_email ?? '').trim(),
+    subject: receiptSubject(receipt),
+    html: receiptEmailHtml(receipt, identity),
+    text: receiptText(receipt, identity),
+    tenantId: receipt.tenant_id,
+    receiptId: receipt.id,
+    attachments: [
+      { filename: `${receipt.receipt_number}.pdf`, content: Buffer.from(pdf).toString('base64'), contentType: 'application/pdf' },
+    ],
+  });
 }
+
+export interface PreparedPortalCredentialsEmail {
+  id: number;
+  email_address: string;
+  status: EmailRow['status'];
+}
+
+// Creates a PENDING email carrying a tenant's portal login credentials (the
+// one-time password generated by the issue/rotate action). The recipient is
+// the portal login email itself — where the credentials actually work — not
+// the tenant's general contact address. The stored body is a faithful copy
+// of what was sent, so the password exists in the email record; rotation is
+// the remedy if it ever needs to die.
+export async function prepareForPortalCredentials(opts: {
+  tenantId: number;
+  tenantName: string;
+  loginEmail: string;
+  password: string;
+}): Promise<PreparedPortalCredentialsEmail> {
+  const identity = await getBusinessIdentity();
+  const composed = composePortalCredentialsEmail({
+    tenantName: opts.tenantName,
+    loginEmail: opts.loginEmail.trim(),
+    password: opts.password,
+    portalUrl: env.portalUrl,
+    identity,
+  });
+  const row = await queueEmail({
+    to: opts.loginEmail,
+    subject: composed.subject,
+    html: composed.html,
+    text: composed.text,
+    tenantId: opts.tenantId,
+  });
+  return { id: row.id, email_address: row.email_address, status: row.status };
+}
+
+export interface PreparedDataLetterEmail {
+  id: number;
+  email_address: string;
+  subject: string;
+  status: 'PENDING' | 'SENT' | 'FAILED';
+}
+
+// Creates a PENDING email carrying the formal data-request response letter
+// with TWO attachments: the letter as a printable PDF and the tenant's
+// complete JSON data export. The stored body + attachments are a faithful
+// copy of what the tenant received, satisfying the accountability principle.
+export async function prepareForDataRequestLetter(opts: {
+  tenantId: number;
+  tenantName: string;
+  tenantEmail: string;
+  registerRef: string;
+  generatedAt: string;
+  responseDays: string | null;
+  letterHtml: string;
+  enclosureName: string;
+  enclosureJson: string;
+  letterPdf: { name: string; base64: string };
+}): Promise<PreparedDataLetterEmail> {
+  const composed = composeDataLetterEmail({
+    tenantName: opts.tenantName,
+    registerRef: opts.registerRef,
+    responseDays: opts.responseDays,
+    letterHtml: opts.letterHtml,
+  });
+  const row = await queueEmail({
+    to: opts.tenantEmail,
+    subject: composed.subject,
+    html: composed.html,
+    text: composed.text,
+    tenantId: opts.tenantId,
+    attachments: [
+      { filename: opts.letterPdf.name, content: opts.letterPdf.base64, contentType: 'application/pdf' },
+      { filename: opts.enclosureName, content: opts.enclosureJson, contentType: 'application/json' },
+    ],
+  });
+  return { id: row.id, email_address: row.email_address, subject: row.subject, status: row.status };
+}
+
+export interface PreparedReportEmail {
+  id: number;
+  email_address: string;
+  subject: string;
+  status: 'PENDING' | 'SENT' | 'FAILED';
+}
+
+// Creates a PENDING email carrying the one-page monthly financial report PDF
+// to the operator. Recipient must be explicit — the business branding general
+// email or an override; never guessed from tenant data. No tenant_id: the
+// row is operational, not tenant correspondence.
+export async function prepareForMonthlyReport(opts: {
+  year: number;
+  toEmail: string;
+  userId?: number | null;
+}): Promise<PreparedReportEmail> {
+  const identity = await getBusinessIdentity();
+  const { bytes } = await monthlyReportPdf(opts.year);
+  const composed = composeMonthlyReportEmail({ year: opts.year, identity });
+
+  const row = await queueEmail({
+    to: opts.toEmail,
+    subject: composed.subject,
+    html: composed.html,
+    text: composed.text,
+    attachments: [
+      { filename: `financial-report-${opts.year}.pdf`, content: Buffer.from(bytes).toString('base64'), contentType: 'application/pdf' },
+    ],
+  });
+
+  await logAudit({
+    userId: opts.userId ?? null,
+    action: 'MONTHLY_REPORT_EMAILED',
+    entity: 'report',
+    entityId: null,
+    newValue: { year: opts.year, to: row.email_address },
+  });
+
+  return { id: row.id, email_address: row.email_address, subject: row.subject, status: row.status };
+}
+
+// Creates a PENDING email carrying a tenant's yearly statement PDF. The
+// recipient is the tenant's stored email unless an explicit address is passed
+// (either way it must be valid — never guessed). Queued with the statement's
+// tenant_id so it shows in their email history.
+export async function prepareForStatementEmail(opts: {
+  tenantId: number;
+  year: number;
+  toEmail?: string;
+  userId?: number | null;
+}): Promise<PreparedReportEmail> {
+  const { bytes, tenantName, tenantEmail } = await tenantStatementPdf(opts.tenantId, opts.year);
+  const identity = await getBusinessIdentity();
+  const composed = composeStatementEmail({ tenantName, year: opts.year, identity });
+
+  const row = await queueEmail({
+    to: (opts.toEmail ?? tenantEmail ?? '').trim(),
+    subject: composed.subject,
+    html: composed.html,
+    text: composed.text,
+    tenantId: opts.tenantId,
+    attachments: [
+      { filename: `tenant-statement-${opts.tenantId}-${opts.year}.pdf`, content: Buffer.from(bytes).toString('base64'), contentType: 'application/pdf' },
+    ],
+  });
+
+  await logAudit({
+    userId: opts.userId ?? null,
+    action: 'STATEMENT_EMAILED',
+    entity: 'tenant',
+    entityId: opts.tenantId,
+    newValue: { year: opts.year, to: row.email_address },
+  });
+
+  return { id: row.id, email_address: row.email_address, subject: row.subject, status: row.status };
+}
+
+// --- Tenant campaign (one composition, many recipients) --------------------------
 
 export async function sendTenantCampaign(opts: {
   tenantIds?: number[];
@@ -221,18 +449,21 @@ export async function sendTenantCampaign(opts: {
       skipped += 1;
       continue;
     }
-    const messageText = opts.message
-      .replaceAll('{{name}}', tenant.full_name)
-      .replaceAll('{{unit}}', tenant.unit_number ?? 'unassigned');
-    const subject = opts.subject.replaceAll('{{name}}', tenant.full_name).replaceAll('{{unit}}', tenant.unit_number ?? 'unassigned');
-    const html = `<div style="font-family:Arial,Helvetica,sans-serif;color:#111827;line-height:1.5"><p>Dear ${escapeHtml(tenant.full_name)},</p><p>${escapeHtml(messageText).replaceAll('\n', '<br>')}</p><p style="color:#6b7280;font-size:13px">Olbano Plaza</p></div>`;
-    const inserted = await query<EmailRow>(
-      `INSERT INTO email_notifications (tenant_id, email_address, subject, body_html, body_text, status)
-       VALUES ($1, $2, $3, $4, $5, 'PENDING') RETURNING *`,
-      [tenant.id, tenant.email, subject, html, messageText]
-    );
+    const composed = composeCampaignEmail({
+      tenantName: tenant.full_name,
+      unitNumber: tenant.unit_number,
+      subject: opts.subject,
+      message: opts.message,
+    });
+    const inserted = await queueEmail({
+      to: tenant.email,
+      subject: composed.subject,
+      html: composed.html,
+      text: composed.text,
+      tenantId: tenant.id,
+    });
     queued += 1;
-    const result = await sendEmailNotification(inserted[0].id);
+    const result = await sendEmailNotification(inserted.id);
     if (result.status === 'SENT') sent += 1;
     else failed += 1;
   }
@@ -245,61 +476,71 @@ export async function sendTenantCampaign(opts: {
   return { total: tenants.length, queued, sent, failed, skipped };
 }
 
-// --- Data-request response letter (with the data file attached) --------------
+// --- Provider self-test (never touches history) ----------------------------------
 
-export interface PreparedDataLetterEmail {
-  id: number;
-  email_address: string;
-  subject: string;
-  status: 'PENDING' | 'SENT' | 'FAILED';
+export interface TestEmailResult {
+  ok: boolean;
+  provider: string;
+  live: boolean;
+  from: string;
+  to: string;
+  providerMessageId?: string;
+  failureReason?: string;
+  latencyMs: number;
 }
 
-// Creates a PENDING email carrying the formal data-request response letter
-// (server-rendered) with TWO attachments: the letter as a professional,
-// printable PDF and the tenant's complete JSON data export as the data file.
-// The stored body + attachments are a faithful copy of what the tenant
-// received, satisfying the accountability principle.
-export async function prepareForDataRequestLetter(opts: {
-  tenantId: number;
-  tenantName: string;
-  tenantEmail: string;
-  registerRef: string;
-  generatedAt: string;
-  responseDays: string | null;
-  letterHtml: string;
-  enclosureName: string;
-  enclosureJson: string;
-  letterPdf: { name: string; base64: string };
-}): Promise<PreparedDataLetterEmail> {
-  const toEmail = opts.tenantEmail.trim();
-  if (!isValidEmail(toEmail)) {
-    throw badRequest(`"${toEmail}" is not a valid email address.`);
+export async function sendTestEmail(opts: { to?: string; userId: number }): Promise<TestEmailResult> {
+  const cfg = getEmailConfig();
+
+  // Recipient: explicit address, or the requesting staff user's own email —
+  // "verify it lands in MY inbox" is the natural test.
+  let to = opts.to?.trim() ?? '';
+  if (!to) {
+    const row = await queryOne<{ email: string | null }>('SELECT email FROM users WHERE id = $1', [opts.userId]);
+    to = row?.email?.trim() ?? '';
   }
-  const subject = `Response to your personal-data request — ref ${opts.registerRef}`;
-  const text = [
-    `Dear ${opts.tenantName},`,
-    '',
-    'We refer to your request for access to the personal data we hold about you.',
-    'Our formal response letter is attached to this email as a printable PDF,',
-    'together with a machine-readable (JSON) copy of the data we hold.',
-    '',
-    `Our reference: ${opts.registerRef}`,`Response deadline: ${opts.responseDays ?? '30'} days`,
-    '',
-    'This response is provided under the Data Protection Act, 2019 (Kenya) and,',
-    'where applicable, the General Data Protection Regulation (EU) 2016/679.',
-  ].join('\n');
+  if (!to) {
+    throw badRequest('Enter a recipient address — your user account has no email on file.');
+  }
+  if (!isValidEmail(to)) {
+    throw badRequest(`"${to}" is not a valid email address.`);
+  }
 
-  const { rows } = await pool.query(
-    `INSERT INTO email_notifications
-       (tenant_id, email_address, subject, body_html, body_text, status,
-        attachment_name, attachment_content, attachment_content_type,
-        attachment2_name, attachment2_content, attachment2_content_type)
-     VALUES ($1, $2, $3, $4, $5, 'PENDING', $6, $7, 'application/pdf', $8, $9, 'application/json')
-     RETURNING id, email_address, subject, status`,
-    [opts.tenantId, toEmail, subject, opts.letterHtml, text, opts.letterPdf.name, opts.letterPdf.base64, opts.enclosureName, opts.enclosureJson]
-  );
-  return rows[0];
+  const identity = await getBusinessIdentity();
+  const composed = composeTestEmail({ provider: cfg.provider, live: cfg.live, identity });
+  const payload: EmailPayload = {
+    to,
+    subject: composed.subject,
+    text: composed.text,
+    html: composed.html,
+    attachments: [],
+  };
+
+  const started = Date.now();
+  const result = await sendEmail(payload);
+  const latencyMs = Date.now() - started;
+
+  await logAudit({
+    userId: opts.userId,
+    action: 'EMAIL_TEST',
+    entity: 'email',
+    entityId: null,
+    newValue: { to, ok: result.ok, provider: cfg.provider, latencyMs },
+  });
+
+  return {
+    ok: result.ok,
+    provider: cfg.provider,
+    live: cfg.live,
+    from: cfg.from ?? '',
+    to,
+    providerMessageId: result.providerMessageId,
+    failureReason: result.failureReason,
+    latencyMs,
+  };
 }
+
+// --- History -----------------------------------------------------------------------
 
 export interface EmailFilters {
   page: number;
@@ -360,130 +601,4 @@ async function backfillEmails(): Promise<number> {
     created += 1;
   }
   return created;
-}
-
-// --- Operational report emails (no tenant counterpart) ---------------------
-
-export interface PreparedReportEmail {
-  id: number;
-  email_address: string;
-  subject: string;
-  status: 'PENDING' | 'SENT' | 'FAILED';
-}
-
-// Subject line for the monthly financial report email.
-function monthlyReportEmailSubject(year: number): string {
-  return `Monthly Financial Report ${year}`;
-}
-
-// Creates a PENDING email carrying the one-page monthly financial report PDF
-// to the operator. Recipient must be explicit — the business branding general
-// email or an override; never guessed from tenant data.
-export async function prepareForMonthlyReport(opts: {
-  year: number;
-  toEmail: string;
-  userId?: number | null;
-}): Promise<PreparedReportEmail> {
-  const toEmail = opts.toEmail.trim();
-  if (!isValidEmail(toEmail)) {
-    throw badRequest(`"${toEmail}" is not a valid email address.`);
-  }
-
-  const identity = await getBusinessIdentity();
-  const { bytes } = await monthlyReportPdf(opts.year);
-  const subject = monthlyReportEmailSubject(opts.year);
-  const name = identity.name?.trim() || 'your property manager';
-  const text = [
-    `Dear ${name},`,
-    '',
-    `The Monthly Financial Report for ${opts.year} is attached as a printable PDF.`,
-    'It shows expected rent, water billing, collections and outstanding balances',
-    'for every month of the year, with year totals.',
-    '',
-    'Generated by RPMS — Rental Property Management System.',
-  ].join('\n');
-  const html = `<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#111827;line-height:1.5">
-<p>Dear ${name},</p>
-<p>The <strong>Monthly Financial Report for ${opts.year}</strong> is attached as a printable PDF.
-It shows expected rent, water billing, collections and outstanding balances for every
-month of the year, with year totals.</p>
-<p style="color:#6b7280;font-size:13px">Generated by RPMS — Rental Property Management System.</p>
-</body></html>`;
-
-  const { rows } = await pool.query(
-    `INSERT INTO email_notifications
-       (tenant_id, email_address, subject, body_html, body_text, status,
-        attachment_name, attachment_content, attachment_content_type)
-     VALUES (NULL, $1, $2, $3, $4, 'PENDING', $5, $6, 'application/pdf')
-     RETURNING id, email_address, subject, status`,
-    [toEmail, subject, html, text, `financial-report-${opts.year}.pdf`, Buffer.from(bytes).toString('base64')]
-  );
-
-  await logAudit({
-    userId: opts.userId ?? null,
-    action: 'MONTHLY_REPORT_EMAILED',
-    entity: 'report',
-    entityId: null,
-    newValue: { year: opts.year, to: toEmail },
-  });
-
-  return rows[0] as PreparedReportEmail;
-}
-
-// Creates a PENDING email carrying a tenant's yearly statement PDF. The
-// recipient is the tenant's stored email unless an explicit address is passed
-// (either way it must be valid — never guessed). Sent as tenant_id = the
-// statement's tenant so it shows in their email history.
-export async function prepareForStatementEmail(opts: {
-  tenantId: number;
-  year: number;
-  toEmail?: string;
-  userId?: number | null;
-}): Promise<PreparedReportEmail> {
-  const { bytes, tenantName, tenantEmail } = await tenantStatementPdf(opts.tenantId, opts.year);
-  const toEmail = (opts.toEmail ?? tenantEmail ?? '').trim();
-  if (!toEmail) {
-    throw badRequest('This tenant has no email address on file. Provide one with the request.');
-  }
-  if (!isValidEmail(toEmail)) {
-    throw badRequest(`"${toEmail}" is not a valid email address.`);
-  }
-
-  const identity = await getBusinessIdentity();
-  const name = identity.name?.trim() || 'Property Management';
-  const subject = `Tenant Statement ${opts.year} — ${tenantName}`;
-  const text = [
-    `Dear ${tenantName},`,
-    '',
-    `Your rental statement for ${opts.year} is attached as a printable PDF.`,
-    'It lists every billing month with expected rent, water charges, payments',
-    'and balances, and closes with your year balance.',
-    '',
-    `${name}${identity.regNo?.trim() ? ` · Reg. No. ${identity.regNo.trim()}` : ''}`,
-  ].join('\n');
-  const html = `<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#111827;line-height:1.5">
-<p>Dear ${tenantName},</p>
-<p>Your <strong>rental statement for ${opts.year}</strong> is attached as a printable PDF.
-It lists every billing month with expected rent, water charges, payments and balances,
-and closes with your year balance.</p>
-<p style="color:#6b7280;font-size:13px">${name}${identity.regNo?.trim() ? ` · Reg. No. ${identity.regNo.trim()}` : ''}</p>
-</body></html>`;
-
-  const { rows } = await pool.query(
-    `INSERT INTO email_notifications
-       (tenant_id, email_address, subject, body_html, body_text, status,
-        attachment_name, attachment_content, attachment_content_type)
-     VALUES ($1, $2, $3, $4, $5, 'PENDING', $6, $7, 'application/pdf')
-     RETURNING id, email_address, subject, status`,
-    [opts.tenantId, toEmail, subject, html, text, `tenant-statement-${opts.tenantId}-${opts.year}.pdf`, Buffer.from(bytes).toString('base64')]
-  );
-
-  await logAudit({
-    userId: opts.userId ?? null,
-    action: 'STATEMENT_EMAILED',
-    entity: 'tenant',
-    entityId: opts.tenantId,
-    newValue: { year: opts.year, to: toEmail },
-  });
-  return rows[0] as PreparedReportEmail;
 }

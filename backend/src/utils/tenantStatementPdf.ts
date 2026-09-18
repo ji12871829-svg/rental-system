@@ -6,6 +6,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib';
 import type { BusinessIdentity } from '../services/brandingService';
 import { formatMoney } from './money';
+import { drawLogo, embedLogo } from './pdfLogo';
 import { fmtDate } from './receiptDocument';
 
 // A4 portrait in points.
@@ -100,7 +101,7 @@ export interface StatementPdfData {
 
 export async function tenantStatementPdfBytes(
   data: StatementPdfData,
-  identity: BusinessIdentity = { name: null, regNo: null, phone: null, email: null }
+  identity: BusinessIdentity = { name: null, regNo: null, phone: null, email: null, logo: null }
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const page = doc.addPage([PAGE_W, PAGE_H]);
@@ -154,7 +155,15 @@ export async function tenantStatementPdfBytes(
 
   // --- Header -----------------------------------------------------------------
   const name = identity.name?.trim() || 'Property Management';
-  draw(name, { y, size: 16, font: bold });
+  const logo = await embedLogo(doc, identity);
+  const nameX = drawLogo(page, logo, {
+    x: MARGIN,
+    topY: y + 10,
+    height: 30,
+    pageWidth: PAGE_W,
+    rightLimit: MARGIN + W - bold.widthOfTextAtSize(safe(name, bold), 16) - 10,
+  });
+  draw(name, { x: nameX, y, size: 16, font: bold });
   y -= 15;
   draw(`Tenant Statement — ${data.tenantName} — ${data.year}`, { y, size: 10, color: MUTED });
   y -= 7;

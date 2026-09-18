@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth } from '../middleware/auth';
-import { validateParams } from '../middleware/validate';
+import { managerOrAdmin, requireAuth } from '../middleware/auth';
+import { validateBody, validateParams } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
-import { applyDeliveryReport, getSmsBalance, listSms, sendSmsNotification } from '../services/smsService';
+import { applyDeliveryReport, getSmsBalance, listSms, sendSmsNotification, sendTestSms } from '../services/smsService';
 import { getSmsConfig } from '../services/smsProvider';
 
 const router = Router();
@@ -48,6 +48,19 @@ router.get('/config', asyncHandler(async (_req, res) => {
 // failures degrade to 'unavailable' with the reason.
 router.get('/balance', asyncHandler(async (_req, res) => {
   res.json({ data: await getSmsBalance() });
+}));
+
+// Provider config verification: sends a real test SMS through the configured
+// provider and returns its verdict (message id / failure reason, reported
+// cost, latency). Not written to the SMS history — this is a diagnostic,
+// not correspondence.
+const testSmsSchema = z.object({
+  to: z.string().max(30).optional(),
+});
+
+router.post('/test', managerOrAdmin, validateBody(testSmsSchema), asyncHandler(async (req, res) => {
+  const result = await sendTestSms({ to: req.body?.to, userId: req.user!.userId });
+  res.json({ data: result });
 }));
 
 // History doubles as the list endpoint (spec §42: GET /api/sms/history).

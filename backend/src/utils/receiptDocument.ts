@@ -91,12 +91,19 @@ function identityFooterHtml(identity: BusinessIdentity): string {
 }
 
 // HTML email — mirrors the printed receipt document used by the frontend
-// preview/print (same structure, inline styles only for mail clients).
-export function receiptEmailHtml(r: ReceiptDocument, identity: BusinessIdentity = { name: null, regNo: null, phone: null, email: null }): string {
+// preview/print (same structure, inline styles only for mail clients). When
+// a business logo is configured it is inlined as a base64 data URI (most
+// clients, incl. Gmail, render data-URI images; none require remote fetch
+// authorization, so the logo survives strict privacy settings).
+export function receiptEmailHtml(r: ReceiptDocument, identity: BusinessIdentity = { name: null, regNo: null, phone: null, email: null, logo: null }): string {
   const typeLabel = receiptTypeLabel(r.receipt_type);
+  const logoSrc = identity.logo ? `data:${identity.logo.mimeType};base64,${identity.logo.bytes.toString('base64')}` : null;
+  const logoHtml = logoSrc
+    ? `<img src="${logoSrc}" alt="${escapeHtml(identity.name?.trim() || 'Business logo')}" height="48" style="height:48px;width:auto;max-width:180px;object-fit:contain;vertical-align:middle;margin-bottom:10px">`
+    : '';
   return `<!doctype html><html><body style="margin:0;padding:24px;background:#f3f4f6;font-family:ui-sans-serif,system-ui,sans-serif;color:#111827">
   <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:32px">
-    <h1 style="font-size:20px;margin:0 0 4px">${escapeHtml(identity.name?.trim() || 'Property Management')}</h1>
+    ${logoHtml}<h1 style="font-size:20px;margin:0 0 4px">${escapeHtml(identity.name?.trim() || 'Property Management')}</h1>
     <div style="color:#6b7280;font-size:13px">${typeLabel}</div>
     <div style="font-size:26px;font-weight:800;margin:8px 0 16px">${escapeHtml(r.receipt_number)}</div>
     <table style="width:100%;border-collapse:collapse;margin-top:16px">

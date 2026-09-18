@@ -3,13 +3,15 @@ import { paginate } from './paginate';
 import { env, isTest } from '../config/env';
 import { MONTH_NAMES, type Pagination } from '../types';
 import { combinedReceiptMessage, rentReceiptMessage, waterReceiptMessage } from '../utils/businessRules';
-import { notFound } from '../utils/httpError';
+import { badRequest, notFound } from '../utils/httpError';
+import { logAudit } from './auditService';
 import { n } from '../utils/money';
 import { getBusinessIdentity, type BusinessIdentity } from './brandingService';
 import {
   africasTalkingBalance,
   evaluateBalance,
   getSmsConfig,
+  normalizePhoneNumber,
   parseAtDeliveryOutcome,
   sendSms,
   type AtDeliveryReport,
@@ -358,4 +360,72 @@ export async function getSmsBalance(): Promise<BalanceStatus> {
   } catch (err) {
     return { state: 'unavailable', reason: (err as Error).message };
   }
+}
+
+// --- Test SMS (provider config verification) ----------------------------------
+
+export interface TestSmsResult {
+  ok: boolean;
+  provider: string;
+  live: boolean;
+  to: string;
+  senderId?: string;
+  providerMessageId?: string;
+  failureReason?: string;
+  /** Provider-reported cost of the test send, when returned. */
+  cost?: { amount: number; currency: string };
+  latencyMs: number;
+}
+
+// Sends a one-off test SMS through the REAL configured provider and returns
+// the provider's own verdict (message id / failure reason, reported cost,
+// latency), so the Settings page can prove the config end-to-end. The
+// recipient defaults to the requesting staff user's own phone — "verify it
+// lands in MY pocket" is the natural test. Deliberately NOT recorded in
+// sms_notifications — that history is tenant correspondence; the attempt is
+// audit-logged instead. Mock mode still 'sends' so the wiring itself (route,
+// normalisation, UI) can be verified without spending money.
+export async function sendTestSms(opts: { to?: string; userId: number }): Promise<TestSmsResult> {
+  const cfg = getSmsConfig();
+
+  let to = opts.to?.trim() ?? '';
+  if (!to) {
+    const row = await queryOne<{ phone: string | null }>('SELECT phone FROM users WHERE id = $1', [opts.userId]);
+    to = row?.phone?.trim() ?? '';
+  }
+  if (!to) {
+    throw badRequest('Enter a recipient phone number — your user account has no phone on file.');
+  }
+  const normalized = normalizePhoneNumber(to);
+  if (!normalized) {
+    throw badRequest(`"${to}" is not a valid phone number.`);
+  }
+
+  const identity = await getBusinessIdentity();
+  const name = identity.name?.trim() || 'Property Management';
+  const message = `Test SMS from ${name}. If you received this, SMS sending is configured correctly. You can ignore this message.`;
+
+  const started = Date.now();
+  const result = await sendSms({ phoneNumber: normalized, message });
+  const latencyMs = Date.now() - started;
+
+  await logAudit({
+    userId: opts.userId,
+    action: 'SMS_TEST',
+    entity: 'sms',
+    entityId: null,
+    newValue: { to: normalized, ok: result.ok, provider: cfg.provider, latencyMs },
+  });
+
+  return {
+    ok: result.ok,
+    provider: cfg.provider,
+    live: cfg.live,
+    to: normalized,
+    senderId: cfg.senderId,
+    providerMessageId: result.providerMessageId,
+    failureReason: result.failureReason,
+    cost: result.cost,
+    latencyMs,
+  };
 }

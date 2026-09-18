@@ -280,18 +280,32 @@ function PortalAccessModal({ tenant, onClose, onDone }: {
 }) {
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
-  const [credentials, setCredentials] = useState<{ email: string; password: string } | null>(null);
+  const [deliverEmail, setDeliverEmail] = useState(true);
+  const [credentials, setCredentials] = useState<{ email: string; password: string; emailed: string } | null>(null);
 
   async function issue() {
     if (!tenant) return;
     setBusy(true);
     try {
-      const res = await api.post<{ email: string; temporaryPassword: string }>(
+      // The API wraps payloads in { data }: read res.data, not res itself.
+      // deliverEmail=true sends the generated password straight to the
+      // tenant; false keeps the old show-once-only flow.
+      const res = await api.post<{ data: { email: string; temporaryPassword?: string; credentialsEmailed?: string } }>(
         `/api/tenants/${tenant.id}/portal-access`,
-        {},
+        { deliverEmail },
       );
-      setCredentials({ email: res.email, password: res.temporaryPassword });
-      onDone('Portal access issued. Share the password securely — it is shown only once.');
+      const d = res.data;
+      if (d.temporaryPassword) {
+        // Keep the modal OPEN so the one-time password is actually seen —
+        // rotation has already happened server-side. The emailed flag drives
+        // the status note under the credentials.
+        setCredentials({ email: d.email, password: d.temporaryPassword, emailed: d.credentialsEmailed ?? 'skipped' });
+      } else {
+        // Custom password (or none generated): nothing to display.
+        onDone(deliverEmail
+          ? 'Portal access issued. Custom passwords are not emailed — share it yourself.'
+          : 'Portal access issued.');
+      }
     } catch (err) {
       toast('error', (err as Error).message);
     } finally {
@@ -300,10 +314,11 @@ function PortalAccessModal({ tenant, onClose, onDone }: {
   }
 
   async function revoke() {
-    if (!tenant || !window.confirm(`Disable portal access for ${tenant.full_name}?`)) return;
+    if (!tenant || !window.confirm(`Disable portal access for ${tenant.full_name}? The tenant is signed out on their next request.`)) return;
     setBusy(true);
     try {
       await api.del(`/api/tenants/${tenant.id}/portal-access`);
+      // No credentials to show here — closing is correct for revoke.
       onDone('Portal access revoked.');
     } catch (err) {
       toast('error', (err as Error).message);
@@ -312,8 +327,22 @@ function PortalAccessModal({ tenant, onClose, onDone }: {
     }
   }
 
+  // Closing after an issue confirms success (toast + refresh); closing
+  // without issuing is a plain dismiss.
+  function handleClose() {
+    const c = credentials;
+    setCredentials(null);
+    if (c) {
+      onDone(c.emailed === 'sent'
+        ? 'Portal access issued. Credentials were emailed to the tenant.'
+        : 'Portal access issued. Share the password securely — it is shown only once.');
+    } else {
+      onClose();
+    }
+  }
+
   return (
-    <Modal open={tenant !== null} title={`Tenant Portal — ${tenant?.full_name ?? ''}`} onClose={() => { setCredentials(null); onClose(); }}>
+    <Modal open={tenant !== null} title={`Tenant Portal — ${tenant?.full_name ?? ''}`} onClose={handleClose}>
       {tenant && (
         <div className="space-y-4 text-sm">
           <p className="text-gray-600">
@@ -326,10 +355,28 @@ function PortalAccessModal({ tenant, onClose, onDone }: {
               <div className="font-medium text-brand-800">Share these credentials now — shown only once:</div>
               <div className="mt-2 font-mono text-xs text-gray-800">Email: {credentials.email}</div>
               <div className="font-mono text-xs text-gray-800">Password: {credentials.password}</div>
+              {credentials.emailed === 'sent' && (
+                <div className="mt-2 text-xs font-medium text-emerald-700">✓ A copy of these credentials was emailed to the tenant.</div>
+              )}
+              {credentials.emailed === 'pending' && (
+                <div className="mt-2 text-xs font-medium text-amber-700">The email is queued but not yet confirmed sent — if it does not arrive, share the password manually.</div>
+              )}
+              {credentials.emailed === 'failed' && (
+                <div className="mt-2 text-xs font-medium text-amber-700">Email delivery failed — share the password manually, or check the email provider settings and regenerate.</div>
+              )}
+              {credentials.emailed === 'skipped' && (
+                <div className="mt-2 text-xs text-brand-700">Closing this dialog dismisses the password for good. "Regenerate password" issues a new one at any time.</div>
+              )}
             </div>
           )}
+          {!credentials && (
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={deliverEmail} onChange={(e) => setDeliverEmail(e.target.checked)} disabled={busy} />
+              Email the password to the tenant automatically
+            </label>
+          )}
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => { setCredentials(null); onClose(); }}>Close</Button>
+            <Button variant="secondary" onClick={handleClose}>Close</Button>
             <Button variant="secondary" onClick={revoke} disabled={busy}><KeyRound size={14} className="mr-1" /> Revoke</Button>
             <Button onClick={issue} disabled={busy}>{busy ? 'Working…' : credentials ? 'Regenerate password' : 'Issue access'}</Button>
           </div>

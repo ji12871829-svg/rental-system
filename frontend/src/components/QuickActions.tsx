@@ -43,23 +43,23 @@ export function QuickActions({ variant, onNavigate }: { variant: 'header' | 'dra
     );
   }
 
-  // Drawer variant: full-width rows on the dark sidebar, matching the nav
-  // items' geometry (insets, min-height, icon size) so the drawer reads as
-  // one menu.
+  // Drawer variant: compact full-width rows on the dark sidebar, matching
+  // the nav tabs' geometry (insets, min-height, icon size) so the drawer
+  // reads as one menu.
   return (
     <div className="px-3 pt-1">
-      <div className="flex min-h-8 items-center px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+      <div className="flex min-h-6 items-center px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
         Quick actions
       </div>
-      <div className="space-y-1 pl-1">
+      <div className="space-y-0.5 pl-1">
         {items.map((a) => (
           <button
             key={a.to}
             type="button"
             onClick={() => go(a.to)}
-            className="flex min-h-[40px] w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-300 transition-colors duration-150 hover:bg-slate-700/60 hover:text-white"
+            className="flex min-h-[26px] w-full items-center gap-2 rounded-md px-2.5 py-1 text-[13px] leading-tight font-medium text-slate-300 transition-colors duration-150 hover:bg-slate-700/60 hover:text-white"
           >
-            <a.icon size={18} strokeWidth={1.75} aria-hidden className="shrink-0" />
+            <a.icon size={15} strokeWidth={1.75} aria-hidden className="shrink-0" />
             {a.label}
           </button>
         ))}

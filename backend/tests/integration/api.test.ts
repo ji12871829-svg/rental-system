@@ -79,13 +79,32 @@ describe('Security', () => {
     const cookies = setCookies.map((cookie) => cookie.split(';')[0]).join('; ');
     const csrf = setCookies.find((cookie) => cookie.startsWith('rpms_csrf='))?.split(';')[0].split('=')[1];
 
-    const rejected = await request(app).post('/api/auth/logout').set('Cookie', cookies);
+    // Logout is deliberately CSRF-exempt: a session must always be able to
+    // end itself (self-heal / forced-logout paths rely on it).
+    const logoutNoToken = await request(app).post('/api/auth/logout').set('Cookie', cookies);
+    expect(logoutNoToken.status).toBe(200);
+
+    // Every other state-changing route stays protected — PUT /api/branding
+    // with an ADMIN session (STAFF is role-blocked there, which would make
+    // the assertion meaningless).
+    const adminLoginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'admin@rpms.local', password: 'Admin@2026!' });
+    const adminSetCookies = adminLoginRes.headers['set-cookie'] as unknown as string[];
+    const adminCookies = adminSetCookies.map((cookie) => cookie.split(';')[0]).join('; ');
+    const adminCsrf = adminSetCookies.find((cookie) => cookie.startsWith('rpms_csrf='))?.split(';')[0].split('=')[1];
+
+    const rejected = await request(app)
+      .put('/api/branding')
+      .set('Cookie', adminCookies)
+      .send({ legalName: 'Nope' });
     expect(rejected.status).toBe(403);
 
     const accepted = await request(app)
-      .post('/api/auth/logout')
-      .set('Cookie', cookies)
-      .set('X-CSRF-Token', csrf!);
+      .put('/api/branding')
+      .set('Cookie', adminCookies)
+      .set('X-CSRF-Token', adminCsrf!)
+      .send({ legalName: 'Olbano Property Management' });
     expect(accepted.status).toBe(200);
   });
 

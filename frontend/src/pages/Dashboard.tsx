@@ -6,6 +6,7 @@ import {
 import { StatGroupCard, PageHeader, useFetch, SkeletonDashboard } from '../components/ui';
 import { QuickActions } from '../components/QuickActions';
 import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { MONTHS, money, methodLabel } from '../lib/format';
 
@@ -37,6 +38,15 @@ interface DashboardData {
       | { state: 'empty'; balance: { amount: number; currency: string }; threshold: number | null };
     sentThisMonth: number;
     failedThisMonth: number;
+    // Most recent FAILED send this month, so the strip can show why without
+    // a trip to Settings. Optional: older API payloads predate it.
+    lastFailure?: { at: string; reason: string } | null;
+  };
+  email?: {
+    sentThisMonth: number;
+    failedThisMonth: number;
+    pendingCount: number;
+    lastFailure: { at: string; reason: string } | null;
   };
   charts: {
     monthlyRentCollected: { month: number; collected: number }[];
@@ -53,6 +63,20 @@ interface DashboardData {
 
 const PIE_COLORS = ['#1d6fd6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#14b8a6'];
 
+// Charts mount one tick after the KPI strip paints: first paint shows the
+// skeleton grid, then a short timer flips to the real charts. A timeout (not
+// requestAnimationFrame/requestIdleCallback) because those never fire in a
+// hidden/backgrounded tab — and a dashboard that sits in a background tab
+// must still render correctly when it comes forward.
+function useDeferredRender(delayMs = 120): boolean {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => setReady(true), delayMs);
+    return () => window.clearTimeout(t);
+  }, [delayMs]);
+  return ready;
+}
+
 export default function Dashboard() {
   const { data, loading, error } = useFetch<DashboardData>(() =>
     api.get<{ data: DashboardData }>('/api/reports/dashboard').then((r) => r.data)
@@ -60,6 +84,7 @@ export default function Dashboard() {
   // Hooks must sit above the early returns below — they power the chart
   // deep-link handlers rendered further down.
   const navigate = useNavigate();
+  const chartsReady = useDeferredRender();
 
   // Quick actions are shared with the mobile drawer (QuickActions component):
   // each lands with ?new=1 to open or focus the target page's form.
@@ -151,34 +176,26 @@ export default function Dashboard() {
         ]}
       />
 
-      {/* SMS health — compact: wallet badge + this month's counts. The whole
-          strip links to the SMS page. Renders nothing if the API is older. */}
-      {data.sms && (
+      {/* Provider status — SMS wallet + delivery failures for both channels,
+          surfacing provider reasons inline so Settings is only needed to fix
+          config, not to discover a problem. Renders nothing if API is older. */}
+      {(data.sms || data.email) && (
         <div className="mt-8">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">SMS</h2>
-          <Link
-            to="/sms"
-            className="block rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-colors duration-150 hover:bg-gray-50"
-          >
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-              <SmsWalletBadge balance={data.sms.balance} />
-              <span className="text-sm text-gray-600">
-                <span className="font-semibold text-gray-900">{data.sms.sentThisMonth}</span> sent this month
-              </span>
-              <span className="text-sm text-gray-600">
-                <span className={`font-semibold ${data.sms.failedThisMonth > 0 ? 'text-red-600' : 'text-gray-900'}`}>
-                  {data.sms.failedThisMonth}
-                </span>{' '}
-                failed
-              </span>
-              <span className="ml-auto text-xs font-medium text-brand-700">Manage SMS →</span>
-            </div>
-          </Link>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Messaging</h2>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {data.sms && <SmsHealthCard sms={data.sms} />}
+            {data.email && <EmailHealthCard email={data.email} />}
+          </div>
         </div>
       )}
 
-      {/* Charts */}
+      {/* Charts — deferred past first paint. The KPI strip above is the
+          information the dashboard exists for; ten hand-rolled SVG charts
+          are below the fold and don't need to block it. Renders skeletons
+          until the browser is idle (or 600ms passes on older browsers),
+          then mounts all charts in one commit. */}
       <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-gray-500">Charts</h2>
+      {chartsReady ? (
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ChartCard title="Monthly Rent Collected" to="/rent">
           <ResponsiveContainer width="100%" height={260}>
@@ -300,6 +317,13 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </ChartCard>
       </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" aria-hidden>
+          {Array.from({ length: 10 }, (_, i) => (
+            <div key={i} className="h-[318px] animate-pulse rounded-xl border border-gray-200 bg-gray-50" />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -368,5 +392,106 @@ function SmsWalletBadge({ balance }: { balance: BalanceUnion }) {
     <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
       <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden /> SMS wallet {amount}
     </span>
+  );
+}
+
+interface LastFailure {
+  at: string;
+  reason: string;
+}
+
+// Shared shell for the two provider cards. Tone drives the left border: red
+// when something needs attention (failures / empty wallet), amber for a low
+// wallet, neutral otherwise. The header carries the page deep link.
+function HealthCard({
+  title,
+  tone,
+  to,
+  linkLabel,
+  children,
+}: {
+  title: string;
+  tone: 'neutral' | 'warn' | 'bad';
+  to: string;
+  linkLabel: string;
+  children: React.ReactNode;
+}) {
+  const border = tone === 'bad' ? 'border-l-4 border-l-red-500' : tone === 'warn' ? 'border-l-4 border-l-amber-400' : '';
+  return (
+    <Link
+      to={to}
+      className={`block rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-colors duration-150 hover:bg-gray-50 ${border}`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm font-semibold text-gray-900">{title}</span>
+        <span className="text-xs font-medium text-brand-700">{linkLabel} →</span>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">{children}</div>
+    </Link>
+  );
+}
+
+// The most recent failed send this month, with a short relative time and the
+// provider's own reason. Truncates on one line; the full text is in the title
+// tooltip and on the linked history page.
+function LastFailureLine({ failure }: { failure: LastFailure }) {
+  const ago = timeAgo(failure.at);
+  return (
+    <span
+      className="max-w-full truncate rounded-lg bg-red-50 px-2.5 py-1.5 text-xs text-red-700"
+      title={`Last failure ${ago}: ${failure.reason}`}
+    >
+      <span className="font-semibold">Last failure {ago}:</span> {failure.reason}
+    </span>
+  );
+}
+
+function timeAgo(iso: string): string {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return d === 1 ? 'yesterday' : `${d}d ago`;
+}
+
+function SmsHealthCard({ sms }: { sms: DashboardData['sms'] }) {
+  const walletTone = sms.balance.state === 'empty' || sms.failedThisMonth > 0 ? 'bad' : sms.balance.state === 'low' ? 'warn' : 'neutral';
+  return (
+    <HealthCard title="SMS" tone={walletTone} to="/sms" linkLabel="Manage SMS">
+      <SmsWalletBadge balance={sms.balance} />
+      <span className="text-sm text-gray-600">
+        <span className="font-semibold text-gray-900">{sms.sentThisMonth}</span> sent this month
+      </span>
+      <span className="text-sm text-gray-600">
+        <span className={`font-semibold ${sms.failedThisMonth > 0 ? 'text-red-600' : 'text-gray-900'}`}>{sms.failedThisMonth}</span> failed
+      </span>
+      {sms.lastFailure && <LastFailureLine failure={sms.lastFailure} />}
+    </HealthCard>
+  );
+}
+
+function EmailHealthCard({ email }: { email: NonNullable<DashboardData['email']> }) {
+  const emailTone = email.failedThisMonth > 0 ? 'bad' : email.pendingCount > 0 ? 'warn' : 'neutral';
+  return (
+    <HealthCard title="Email" tone={emailTone} to="/email-campaign" linkLabel="Tenant Email">
+      <span className="text-sm text-gray-600">
+        <span className="font-semibold text-gray-900">{email.sentThisMonth}</span> sent this month
+      </span>
+      <span className="text-sm text-gray-600">
+        <span className={`font-semibold ${email.failedThisMonth > 0 ? 'text-red-600' : 'text-gray-900'}`}>{email.failedThisMonth}</span> failed
+      </span>
+      {email.pendingCount > 0 && (
+        <span
+          className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700"
+          title="Composed emails still queued — the provider has not confirmed a send yet. Check Settings for the provider status."
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden /> {email.pendingCount} pending
+        </span>
+      )}
+      {email.lastFailure && <LastFailureLine failure={email.lastFailure} />}
+    </HealthCard>
   );
 }

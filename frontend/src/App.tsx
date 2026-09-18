@@ -6,36 +6,38 @@ import CookieBanner from './components/CookieBanner';
 import { useAuth } from './lib/auth';
 import { useBranding } from './lib/BrandingContext';
 import { PortalAuthProvider, usePortalAuth } from './lib/portalAuth';
+import { routeChunks } from './lib/routeChunks';
 
 // Route-level code splitting: every page is its own chunk, fetched on first
 // visit. The initial bundle stays small; heavy pages (charts) don't slow down
-// the first paint. The four legal pages share one small chunk.
-const Login = lazy(() => import('./pages/Login'));
+// the first paint. Loaders live in routeChunks.ts so the sidebar can prefetch
+// the exact same chunks on hover/focus — see lib/routeChunks.ts.
+const Login = lazy(routeChunks.login);
 const NotFound = lazy(() => import('./pages/NotFound'));
-const Privacy = lazy(() => import('./pages/Legal').then((m) => ({ default: m.Privacy })));
-const Terms = lazy(() => import('./pages/Legal').then((m) => ({ default: m.Terms })));
-const Cookies = lazy(() => import('./pages/Legal').then((m) => ({ default: m.Cookies })));
-const Refund = lazy(() => import('./pages/Legal').then((m) => ({ default: m.Refund })));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const Instructions = lazy(() => import('./pages/Instructions'));
-const Settings = lazy(() => import('./pages/Settings'));
-const Units = lazy(() => import('./pages/Units'));
-const Tenants = lazy(() => import('./pages/Tenants'));
-const RentCollection = lazy(() => import('./pages/RentCollection'));
-const WaterMeter = lazy(() => import('./pages/WaterMeter'));
-const WaterPayments = lazy(() => import('./pages/WaterPayments'));
-const WaterSupply = lazy(() => import('./pages/WaterSupply'));
-const TenantLedger = lazy(() => import('./pages/TenantLedger'));
-const MonthlySummary = lazy(() => import('./pages/MonthlySummary'));
-const Expenses = lazy(() => import('./pages/Expenses'));
-const Arrears = lazy(() => import('./pages/Arrears'));
-const Receipts = lazy(() => import('./pages/Receipts'));
-const SmsNotifications = lazy(() => import('./pages/SmsNotifications'));
-const EmailCampaign = lazy(() => import('./pages/EmailCampaign'));
-const Users = lazy(() => import('./pages/Users'));
-const AuditLogs = lazy(() => import('./pages/AuditLogs'));
-const PrivacyRegister = lazy(() => import('./pages/PrivacyRegister'));
-const MpesaReview = lazy(() => import('./pages/MpesaReview'));
+const Privacy = lazy(() => routeChunks.legal().then((m) => ({ default: m.Privacy })));
+const Terms = lazy(() => routeChunks.legal().then((m) => ({ default: m.Terms })));
+const Cookies = lazy(() => routeChunks.legal().then((m) => ({ default: m.Cookies })));
+const Refund = lazy(() => routeChunks.legal().then((m) => ({ default: m.Refund })));
+const Dashboard = lazy(routeChunks.dashboard);
+const Instructions = lazy(routeChunks.instructions);
+const Settings = lazy(routeChunks.settings);
+const Units = lazy(routeChunks.units);
+const Tenants = lazy(routeChunks.tenants);
+const RentCollection = lazy(routeChunks.rent);
+const WaterMeter = lazy(routeChunks.waterMeter);
+const WaterPayments = lazy(routeChunks.waterPayments);
+const WaterSupply = lazy(routeChunks.waterSupply);
+const TenantLedger = lazy(routeChunks.ledger);
+const MonthlySummary = lazy(routeChunks.monthly);
+const Expenses = lazy(routeChunks.expenses);
+const Arrears = lazy(routeChunks.arrears);
+const Receipts = lazy(routeChunks.receipts);
+const SmsNotifications = lazy(routeChunks.sms);
+const EmailCampaign = lazy(routeChunks.emailCampaign);
+const Users = lazy(routeChunks.users);
+const AuditLogs = lazy(routeChunks.audit);
+const PrivacyRegister = lazy(routeChunks.privacyRegister);
+const MpesaReview = lazy(routeChunks.mpesaReview);
 
 // Tenant portal — a separate, public-facing app shell with its own auth
 // context; entirely outside the staff RequireAuth tree.

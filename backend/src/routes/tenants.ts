@@ -13,7 +13,7 @@ import {
   exportTenantPersonalDataCsv,
   listPrivacyRequests,
 } from '../services/privacyService';
-import { prepareForDataRequestLetter, sendEmailNotification } from '../services/emailService';
+import { prepareForDataRequestLetter, prepareForPortalCredentials, sendEmailNotification } from '../services/emailService';
 import { renderDataLetterEmail, renderDataLetterPdf, dataEnclosureName, dataLetterPdfName } from '../utils/dataRequestLetter';
 
 const router = Router();
@@ -102,6 +102,10 @@ const portalAccessSchema = z.object({
   // Minimum length only — complexity rules just push tenants toward
   // predictable patterns; the portal is rate-limited and staff-issued.
   password: z.string().min(8, 'Password must be at least 8 characters.').optional(),
+  // Default true: the generated one-time password is emailed to the tenant
+  // automatically. Only skipped when staff choose "share it myself" — or
+  // when a custom password is supplied (staff already knows it).
+  deliverEmail: z.boolean().optional(),
 });
 
 router.post('/:id/portal-access', managerOrAdmin, validateParams(paramsSchema), validateBody(portalAccessSchema), asyncHandler(async (req, res) => {
@@ -112,6 +116,36 @@ router.post('/:id/portal-access', managerOrAdmin, validateParams(paramsSchema), 
     body.email,
     body.password
   );
+
+  // Credential delivery: the generated one-time password goes straight to
+  // the tenant's login email so it never needs manual sharing. A custom
+  // password (staff-chosen) is deliberately not emailed — the issuer already
+  // has it. Delivery is recorded in email_notifications with the same
+  // PENDING/SENT/FAILED lifecycle as every other email; a failure never
+  // undoes the access grant, but IS reported back so staff can fall back to
+  // showing the password or resending from the email history.
+  let credentialsEmailed: 'sent' | 'pending' | 'failed' | 'skipped' = 'skipped';
+  const shouldDeliver = (body.deliverEmail ?? true) && row.generatedPassword !== undefined;
+  if (shouldDeliver) {
+    try {
+      const pending = await prepareForPortalCredentials({
+        tenantId: row.tenant_id,
+        tenantName: row.tenantName,
+        loginEmail: row.email,
+        password: row.generatedPassword!,
+      });
+      try {
+        const sent = await sendEmailNotification(pending.id);
+        credentialsEmailed = sent.status === 'SENT' ? 'sent' : 'failed';
+      } catch {
+        credentialsEmailed = 'pending'; // row stays PENDING — resend from history
+      }
+    } catch (err) {
+      credentialsEmailed = 'failed';
+      console.error(`[portal] credential email failed for tenant ${row.tenant_id}: ${(err as Error).message}`);
+    }
+  }
+
   res.status(201).json({
     data: {
       id: row.id,
@@ -122,6 +156,7 @@ router.post('/:id/portal-access', managerOrAdmin, validateParams(paramsSchema), 
       // Present only when the server generated the password. Never stored in
       // plaintext — shown once to the issuing staff user and gone.
       temporaryPassword: row.generatedPassword,
+      credentialsEmailed,
     },
   });
 }));

@@ -119,12 +119,18 @@ export function Button({
 }
 
 // -------------------------------------------------------------------- Inputs
-export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+// error (when shown) replaces hint — one line of guidance at a time, red for
+// validation problems.
+export function Field({ label, children, hint, error }: { label: string; children: ReactNode; hint?: string; error?: string | null }) {
   return (
     <label className="block">
       <span className="mb-1 block text-sm font-medium text-gray-700">{label}</span>
       {children}
-      {hint && <span className="mt-1 block text-xs text-gray-500">{hint}</span>}
+      {error ? (
+        <span role="alert" className="mt-1 block text-xs font-medium text-red-700">{error}</span>
+      ) : hint ? (
+        <span className="mt-1 block text-xs text-gray-500">{hint}</span>
+      ) : null}
     </label>
   );
 }

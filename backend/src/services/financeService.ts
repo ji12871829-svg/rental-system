@@ -8,12 +8,22 @@ import { n, round2 } from '../utils/money';
 import { tenantStatementPdfBytes } from '../utils/tenantStatementPdf';
 import { getSmsBalance } from './smsService';
 
-// Shape of the Dashboard's compact SMS health strip.
+// Shape of the Dashboard's compact messaging-health strip (SMS + email).
 type BalanceStatusLike = ReturnType<typeof getSmsBalance> extends Promise<infer T> ? T : never;
 interface SmsHealth {
   balance: BalanceStatusLike;
   sentThisMonth: number;
   failedThisMonth: number;
+  // Most recent FAILED send this month, so the strip can say why (provider
+  // rejection, bad number, ...) without leaving the dashboard.
+  lastFailure: { at: string; reason: string } | null;
+}
+
+interface EmailHealth {
+  sentThisMonth: number;
+  failedThisMonth: number;
+  pendingCount: number;
+  lastFailure: { at: string; reason: string } | null;
 }
 import { getBusinessIdentity } from './brandingService';
 import { monthlyRentSummary } from './rentService';
@@ -112,7 +122,7 @@ export async function dashboard(year?: number): Promise<unknown> {
   const outstandingWater = (await outstandingWaterByUnit(targetYear)) as any[];
   // Compact SMS health for the Dashboard's SMS strip (balance + this month's
   // counts). Composed here so the page needs one request.
-  const sms = await dashboardSmsHealth();
+  const [sms, email] = await Promise.all([dashboardSmsHealth(), dashboardEmailHealth()]);
 
   return {
     reportingYear: targetYear,
@@ -121,6 +131,13 @@ export async function dashboard(year?: number): Promise<unknown> {
       balance: sms.balance,
       sentThisMonth: sms.sentThisMonth,
       failedThisMonth: sms.failedThisMonth,
+      lastFailure: sms.lastFailure,
+    },
+    email: {
+      sentThisMonth: email.sentThisMonth,
+      failedThisMonth: email.failedThisMonth,
+      pendingCount: email.pendingCount,
+      lastFailure: email.lastFailure,
     },
     property: {
       totalUnits,
@@ -441,8 +458,7 @@ export async function tenantStatementPdf(
 async function dashboardSmsHealth(): Promise<SmsHealth> {
   const [balance, counts] = await Promise.all([
     getSmsBalance().catch(() => ({ state: 'unknown' as const, reason: 'Balance check failed.' })),
-    queryOne<{ sent: string; failed: string }>(
-      `SELECT
+    queryOne<{ sent: string; failed: string }>(      `SELECT
          COUNT(*) FILTER (WHERE status = 'SENT')::text AS sent,
          COUNT(*) FILTER (WHERE status = 'FAILED')::text AS failed
        FROM sms_notifications
@@ -454,6 +470,58 @@ async function dashboardSmsHealth(): Promise<SmsHealth> {
     balance,
     sentThisMonth: Number(counts?.sent ?? 0),
     failedThisMonth: Number(counts?.failed ?? 0),
+    lastFailure: await lastSmsFailure(),
+  };
+}
+
+// Most recent failed SMS this month — at + truncated reason. null = none.
+async function lastSmsFailure(): Promise<{ at: string; reason: string } | null> {
+  const row = await queryOne<{ sent_at: Date | null; created_at: Date; failure_reason: string | null }>(
+    `SELECT sent_at, created_at, failure_reason
+     FROM sms_notifications
+     WHERE status = 'FAILED' AND created_at >= date_trunc('month', NOW())
+     ORDER BY COALESCE(sent_at, created_at) DESC
+     LIMIT 1`
+  );
+  if (!row) return null;
+  return {
+    at: (row.sent_at ?? row.created_at).toISOString(),
+    reason: (row.failure_reason ?? 'Unknown failure').slice(0, 300),
+  };
+}
+
+// Dashboard email health: this month's sent/failed counts, rows still queued
+// (PENDING), and the most recent failure with its provider reason. Never
+// throws; the strip must not break the dashboard render.
+async function dashboardEmailHealth(): Promise<EmailHealth> {
+  const [counts, lastFailure] = await Promise.all([
+    queryOne<{ sent: string; failed: string; pending: string }>(
+      `SELECT
+         COUNT(*) FILTER (WHERE status = 'SENT')::text AS sent,
+         COUNT(*) FILTER (WHERE status = 'FAILED')::text AS failed,
+         COUNT(*) FILTER (WHERE status = 'PENDING')::text AS pending
+       FROM email_notifications
+       WHERE created_at >= date_trunc('month', NOW())`,
+      []
+    ),
+    queryOne<{ sent_at: Date | null; created_at: Date; failure_reason: string | null }>(
+      `SELECT sent_at, created_at, failure_reason
+       FROM email_notifications
+       WHERE status = 'FAILED' AND created_at >= date_trunc('month', NOW())
+       ORDER BY COALESCE(sent_at, created_at) DESC
+       LIMIT 1`
+    ),
+  ]);
+  return {
+    sentThisMonth: Number(counts?.sent ?? 0),
+    failedThisMonth: Number(counts?.failed ?? 0),
+    pendingCount: Number(counts?.pending ?? 0),
+    lastFailure: lastFailure
+      ? {
+          at: (lastFailure.sent_at ?? lastFailure.created_at).toISOString(),
+          reason: (lastFailure.failure_reason ?? 'Unknown failure').slice(0, 300),
+        }
+      : null,
   };
 }
 

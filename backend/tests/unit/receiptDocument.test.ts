@@ -60,7 +60,7 @@ describe('receiptDocument', () => {
   });
 
   it('renders the DB-backed identity footer when one is provided', () => {
-    const identity = { name: 'Acme Properties Ltd', regNo: 'C.123456', phone: '+254 700 000 000', email: 'info@acme.test' };
+    const identity = { name: 'Acme Properties Ltd', regNo: 'C.123456', phone: '+254 700 000 000', email: 'info@acme.test', logo: null };
     const html = receiptEmailHtml(receipt, identity);
     expect(html).toContain('Acme Properties Ltd');
     expect(html).toContain('Reg. No. C.123456');

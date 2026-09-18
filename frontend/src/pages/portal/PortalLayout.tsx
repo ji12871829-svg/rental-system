@@ -4,8 +4,10 @@
 
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Building2, CreditCard, Droplets, FileText, Home, LogOut, Menu, X } from 'lucide-react';
+import { CreditCard, Droplets, FileText, Home, LogOut, Menu, X } from 'lucide-react';
 import { usePortalAuth } from '../../lib/portalAuth';
+import { BrandLogo } from '../../components/BrandLogo';
+import { ThemeToggle } from '../../components/ThemeToggle';
 
 const navItems = [
   { to: '/portal', label: 'Home', icon: Home, end: true },
@@ -57,9 +59,7 @@ export default function PortalLayout() {
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col bg-gray-900 md:flex">
         <div className="flex items-center gap-2 px-4 py-5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white">
-            <Building2 className="h-4 w-4" />
-          </span>
+          <BrandLogo className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white" iconSize={16} />
           <div>
             <p className="text-sm font-semibold text-white">Tenant Portal</p>
             <p className="text-xs text-gray-400">RMS</p>
@@ -79,9 +79,7 @@ export default function PortalLayout() {
           <aside className="absolute inset-y-0 left-0 flex w-64 flex-col bg-gray-900 shadow-xl">
             <div className="flex items-center justify-between px-4 py-5">
               <div className="flex items-center gap-2">
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white">
-                  <Building2 className="h-4 w-4" />
-                </span>
+                <BrandLogo className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white" iconSize={16} />
                 <p className="text-sm font-semibold text-white">Tenant Portal</p>
               </div>
               <button
@@ -108,7 +106,7 @@ export default function PortalLayout() {
             <Menu className="h-5 w-5" />
           </button>
           <p className="text-sm font-semibold text-gray-900">Tenant Portal</p>
-          <span className="w-9" />
+          <ThemeToggle />
         </header>
 
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 md:px-8">

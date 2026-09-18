@@ -5,7 +5,7 @@ import { useAuth } from '../lib/auth';
 import { branding } from '../lib/branding';
 import { useBranding } from '../lib/BrandingContext';
 import { Button, TextInput } from '../components/ui';
-import { BrandMark } from '../components/BrandMark';
+import { BrandLogo } from '../components/BrandLogo';
 import { Toon } from '../components/Toon';
 
 
@@ -70,7 +70,7 @@ export default function Login() {
         <div className="absolute inset-0 bg-gradient-to-t from-[#0b1f3a] via-[#0b1f3a]/75 to-[#0b1f3a]/25" aria-hidden />
         <div className="relative flex h-full flex-col justify-between p-10">
           <div className="flex items-center gap-3">
-            <BrandMark
+            <BrandLogo
               className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-white ring-1 ring-white/15"
               iconSize={22}
               textClassName="text-lg font-bold"
@@ -94,7 +94,7 @@ export default function Login() {
       <div className="flex w-full flex-1 flex-col overflow-y-auto bg-white px-6 py-8 sm:px-10">
         {/* Compact brand header shown only where the facade panel is hidden. */}
         <div className="mb-8 flex items-center gap-3 lg:hidden">
-          <BrandMark
+          <BrandLogo
             className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500 text-white shadow-sm shadow-brand-500/30"
             iconSize={20}
             textClassName="text-base font-bold"

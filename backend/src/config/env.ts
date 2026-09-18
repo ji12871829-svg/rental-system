@@ -47,6 +47,9 @@ export const env = {
     .split(',')
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean),
+  // Absolute URL of the tenant portal login page, used in credential
+  // delivery emails. Must be reachable from the tenant's device.
+  portalUrl: process.env.PORTAL_URL || 'http://localhost:5173/portal/login',
   // Business identity appended to tenant receipt SMS (optional — see .env.example).
   businessName: process.env.BUSINESS_NAME || '',
   businessRegNo: process.env.BUSINESS_REG_NO || '',

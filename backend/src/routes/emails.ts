@@ -4,7 +4,7 @@ import { managerOrAdmin, requireAuth } from '../middleware/auth';
 import { validateBody, validateParams } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
 import { getEmailConfig } from '../services/emailProvider';
-import { listEmails, sendEmailNotification, sendTenantCampaign } from '../services/emailService';
+import { listEmails, sendEmailNotification, sendTestEmail, sendTenantCampaign } from '../services/emailService';
 
 const router = Router();
 router.use(requireAuth);
@@ -44,6 +44,19 @@ const campaignSchema = z.object({
 router.post('/campaign', managerOrAdmin, validateBody(campaignSchema), asyncHandler(async (req, res) => {
   const result = await sendTenantCampaign({ ...req.body, userId: req.user!.userId });
   res.status(201).json({ data: result });
+}));
+
+// Provider config verification: sends a real test email through the
+// configured provider and returns its verdict (message id / failure reason
+// + latency). Not written to the delivery history — this is a diagnostic,
+// not correspondence.
+const testEmailSchema = z.object({
+  to: z.string().email().max(255).optional(),
+});
+
+router.post('/test', managerOrAdmin, validateBody(testEmailSchema), asyncHandler(async (req, res) => {
+  const result = await sendTestEmail({ to: req.body?.to, userId: req.user!.userId });
+  res.json({ data: result });
 }));
 
 const paramsSchema = z.object({ id: z.coerce.number().int().positive() });

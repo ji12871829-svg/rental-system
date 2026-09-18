@@ -20,6 +20,10 @@ function getCsrfToken(): string | null {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  return requestWithRetry<T>(path, options, false);
+}
+
+async function requestWithRetry<T>(path: string, options: RequestInit, retried: boolean): Promise<T> {
   const method = options.method?.toUpperCase() ?? 'GET';
   const csrfToken = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) ? getCsrfToken() : null;
   const res = await fetch(`${API_URL}${path}`, {
@@ -51,6 +55,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     res.status === 401 ||
     (res.status === 403 && !path.startsWith('/api/portal/login'))
   ) {
+    if (!retried && !path.startsWith('/api/portal/login') && !path.startsWith('/api/portal/me')) {
+      const refreshed = await fetch(`${API_URL}/api/portal/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+      }).then((response) => response.ok).catch(() => false);
+      if (refreshed) return requestWithRetry<T>(path, options, true);
+    }
     if (!path.startsWith('/api/portal/login') && !path.startsWith('/api/portal/me')) {
       window.location.href = '/portal/login';
       throw new Error('Portal session expired. Please sign in again.');

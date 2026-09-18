@@ -20,6 +20,7 @@ export async function mergePdfBytes(pdfs: Uint8Array[]): Promise<Uint8Array> {
 import type { BusinessIdentity } from '../services/brandingService';
 import { MONTH_NAMES } from '../types';
 import { formatMoney, n } from './money';
+import { drawLogo, embedLogo } from './pdfLogo';
 import { fmtDate, receiptTypeLabel, type ReceiptDocument } from './receiptDocument';
 
 // A4 in points.
@@ -33,7 +34,7 @@ const RULE = rgb(0.85, 0.87, 0.9);
 
 export async function receiptPdfBytes(
   r: ReceiptDocument,
-  identity: BusinessIdentity = { name: null, regNo: null, phone: null, email: null }
+  identity: BusinessIdentity = { name: null, regNo: null, phone: null, email: null, logo: null }
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const page = doc.addPage([PAGE_W, PAGE_H]);
@@ -87,7 +88,16 @@ export async function receiptPdfBytes(
   let y = PAGE_H - 56;
 
   // --- Header ------------------------------------------------------------
-  draw(identity.name?.trim() || 'Property Management', { y, size: 18, font: bold });
+  // Logo sits left of the business name, top-aligned with it.
+  const logo = await embedLogo(doc, identity);
+  const nameX = drawLogo(page, logo, {
+    x: MARGIN,
+    topY: y + 12, // matches the 18pt text's visual top
+    height: 34,
+    pageWidth: PAGE_W,
+    rightLimit: MARGIN + W - bold.widthOfTextAtSize(safe(identity.name?.trim() || 'Property Management', bold), 18) - 10,
+  });
+  draw(identity.name?.trim() || 'Property Management', { x: nameX, y, size: 18, font: bold });
   y -= 18;
   draw(receiptTypeLabel(r.receipt_type), { y, size: 9, color: MUTED });
   y -= 24;

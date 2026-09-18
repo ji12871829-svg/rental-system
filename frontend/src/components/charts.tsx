@@ -437,7 +437,7 @@ export function BarChart(props: {
     <div className={className} style={{ position: 'relative', width, height: height + (hasLegend ? 24 : 0) }}>
       <svg width={width} height={height} role="img" style={{ display: 'block' }}>
         {/* grid */}
-        <g stroke="#e5e7eb" strokeDasharray="3 3">
+        <g stroke="var(--chart-grid)" strokeDasharray="3 3">
           {layout === 'horizontal'
             ? (yTicks ?? []).map((t) => (
                 <line key={t} x1={marginLeft} x2={marginLeft + plotW} y1={val2px(t)} y2={val2px(t)} />
@@ -506,35 +506,35 @@ export function BarChart(props: {
         {/* axis lines + ticks */}
         {layout === 'horizontal' ? (
           <g>
-            <line x1={marginLeft} x2={marginLeft + plotW} y1={marginTop + plotH} y2={marginTop + plotH} stroke="#d1d5db" />
-            <line x1={marginLeft} x2={marginLeft} y1={marginTop} y2={marginTop + plotH} stroke="#d1d5db" />
+            <line x1={marginLeft} x2={marginLeft + plotW} y1={marginTop + plotH} y2={marginTop + plotH} stroke="var(--chart-axis)" />
+            <line x1={marginLeft} x2={marginLeft} y1={marginTop} y2={marginTop + plotH} stroke="var(--chart-axis)" />
             {data.map((d, i) =>
               i % catSkip === 0 ? (
                 <g key={i}>
-                  <line x1={bandCenter(i)} x2={bandCenter(i)} y1={marginTop + plotH} y2={marginTop + plotH + 5} stroke="#d1d5db" />
-                  <text x={bandCenter(i)} y={marginTop + plotH + 17} textAnchor="middle" fontSize={11} fill="#6b7280">
+                  <line x1={bandCenter(i)} x2={bandCenter(i)} y1={marginTop + plotH} y2={marginTop + plotH + 5} stroke="var(--chart-axis)" />
+                  <text x={bandCenter(i)} y={marginTop + plotH + 17} textAnchor="middle" fontSize={11} fill="var(--chart-tick)">
                     {catLabel(d)}
                   </text>
                 </g>
               ) : null,
             )}
             {(yTicks ?? []).map((t) => (
-              <text key={t} x={marginLeft - 6} y={val2px(t) + 3.5} textAnchor="end" fontSize={11} fill="#6b7280">
+              <text key={t} x={marginLeft - 6} y={val2px(t) + 3.5} textAnchor="end" fontSize={11} fill="var(--chart-tick)">
                 {fmtTick(t)}
               </text>
             ))}
           </g>
         ) : (
           <g>
-            <line x1={marginLeft} x2={marginLeft} y1={marginTop} y2={marginTop + plotH} stroke="#d1d5db" />
-            <line x1={marginLeft} x2={marginLeft + plotW} y1={marginTop + plotH} y2={marginTop + plotH} stroke="#d1d5db" />
+            <line x1={marginLeft} x2={marginLeft} y1={marginTop} y2={marginTop + plotH} stroke="var(--chart-axis)" />
+            <line x1={marginLeft} x2={marginLeft + plotW} y1={marginTop + plotH} y2={marginTop + plotH} stroke="var(--chart-axis)" />
             {data.map((d, i) => (
-              <text key={i} x={marginLeft - 8} y={bandCenter(i) + 3.5} textAnchor="end" fontSize={11} fill="#6b7280">
+              <text key={i} x={marginLeft - 8} y={bandCenter(i) + 3.5} textAnchor="end" fontSize={11} fill="var(--chart-tick)">
                 {catFmt ? catFmt(getVal(d, catKey), i) : String(getVal(d, catKey) ?? '')}
               </text>
             ))}
             {(xTicks ?? []).map((t) => (
-              <text key={t} x={val2px(t)} y={marginTop + plotH + 17} textAnchor="middle" fontSize={11} fill="#6b7280">
+              <text key={t} x={val2px(t)} y={marginTop + plotH + 17} textAnchor="middle" fontSize={11} fill="var(--chart-tick)">
                 {fmtTick(t)}
               </text>
             ))}
@@ -643,14 +643,14 @@ export function LineChart(props: {
   return (
     <div className={className} style={{ position: 'relative', width, height: height + (hasLegend ? 24 : 0) }}>
       <svg width={width} height={height} role="img" style={{ display: 'block' }}>
-        <g stroke="#e5e7eb" strokeDasharray="3 3">
+        <g stroke="var(--chart-grid)" strokeDasharray="3 3">
           {ticks.map((t) => (
             <line key={t} x1={marginLeft} x2={marginLeft + plotW} y1={py(t)} y2={py(t)} />
           ))}
         </g>
 
-        <line x1={marginLeft} x2={marginLeft + plotW} y1={marginTop + plotH} y2={marginTop + plotH} stroke="#d1d5db" />
-        <line x1={marginLeft} x2={marginLeft} y1={marginTop} y2={marginTop + plotH} stroke="#d1d5db" />
+        <line x1={marginLeft} x2={marginLeft + plotW} y1={marginTop + plotH} y2={marginTop + plotH} stroke="var(--chart-axis)" />
+        <line x1={marginLeft} x2={marginLeft} y1={marginTop} y2={marginTop + plotH} stroke="var(--chart-axis)" />
 
         {series.map((s, si) => {
           const pts = data.map((d, i) => ({ x: px(i), y: py(Number(getVal(d, s.key)) || 0) }));
@@ -658,7 +658,7 @@ export function LineChart(props: {
             <g key={si}>
               <path d={s.monotone ? monotonePath(pts) : `M${pts.map((p) => `${p.x},${p.y}`).join('L')}`} fill="none" stroke={s.color} strokeWidth={2} />
               {pts.map((p, i) => (
-                <circle key={i} cx={p.x} cy={p.y} r={hover?.i === i ? 4.5 : 3} fill="#fff" stroke={s.color} strokeWidth={2} />
+                <circle key={i} cx={p.x} cy={p.y} r={hover?.i === i ? 4.5 : 3} fill="var(--chart-surface)" stroke={s.color} strokeWidth={2} />
               ))}
             </g>
           );
@@ -666,13 +666,13 @@ export function LineChart(props: {
 
         {data.map((d, i) =>
           i % catSkip === 0 ? (
-            <text key={i} x={px(i)} y={marginTop + plotH + 17} textAnchor="middle" fontSize={11} fill="#6b7280">
+            <text key={i} x={px(i)} y={marginTop + plotH + 17} textAnchor="middle" fontSize={11} fill="var(--chart-tick)">
               {catLabel(d)}
             </text>
           ) : null,
         )}
         {ticks.map((t) => (
-          <text key={t} x={marginLeft - 6} y={py(t) + 3.5} textAnchor="end" fontSize={11} fill="#6b7280">
+          <text key={t} x={marginLeft - 6} y={py(t) + 3.5} textAnchor="end" fontSize={11} fill="var(--chart-tick)">
             {fmtTick(t)}
           </text>
         ))}
@@ -787,7 +787,7 @@ export function PieChart(props: {
               <path
                 d={sectorPath(s)}
                 fill={s.color}
-                stroke="#fff"
+                stroke="var(--chart-surface)"
                 strokeWidth={1.5}
                 opacity={hover && hover.name !== s.name ? 0.55 : 1}
                 onPointerMove={(e) => {
@@ -804,8 +804,8 @@ export function PieChart(props: {
                   y={lp.y + 3.5}
                   textAnchor={Math.sin(mid) >= 0 ? 'start' : 'end'}
                   fontSize={12}
-                  fill="#374151"
-                  stroke="#fff"
+                  fill="var(--chart-text)"
+                  stroke="var(--chart-surface)"
                   strokeWidth={3}
                   paintOrder="stroke"
                 >

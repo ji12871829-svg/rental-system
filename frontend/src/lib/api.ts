@@ -15,6 +15,10 @@ export function getCsrfToken(): string | null {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  return requestWithRetry<T>(path, options, false);
+}
+
+async function requestWithRetry<T>(path: string, options: RequestInit, retried: boolean): Promise<T> {
   const method = options.method?.toUpperCase() ?? 'GET';
   const csrfToken = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) ? getCsrfToken() : null;
   const res = await fetch(`${API_URL}${path}`, {
@@ -28,6 +32,24 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   });
 
   if (res.status === 401) {
+    // The login call itself must surface its real error (wrong password,
+    // inactive account) instead of the generic session message.
+    if (path.startsWith('/api/auth/login')) {
+      let body: ApiError | undefined;
+      try {
+        body = (await res.json()) as ApiError;
+      } catch {
+        // non-JSON error body
+      }
+      throw new Error(body?.message ?? 'Sign in failed. Please try again.');
+    }
+    if (!retried && !path.startsWith('/api/auth/')) {
+      const refreshed = await fetch(`${API_URL}/api/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+      }).then((response) => response.ok).catch(() => false);
+      if (refreshed) return requestWithRetry<T>(path, options, true);
+    }
     if (!path.startsWith('/api/auth/')) {
       window.location.href = '/login';
     }

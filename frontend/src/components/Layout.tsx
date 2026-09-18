@@ -1,15 +1,14 @@
-import { useEffect, useState } from 'react';
-import { BrandMark } from './BrandMark';
-import { QuickActions } from './QuickActions';
+import { useState } from 'react';
+import { BrandLogo } from './BrandLogo';
 import { Suspense } from 'react';
-import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, BookUser, Building2, CalendarDays,
-  ChevronDown, Droplets, FileBarChart, FileText, Gauge, LayoutDashboard, Loader2, LogOut, Mail, Menu, ReceiptText, Settings,
+  AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, BookUser, Building2, CalendarDays, ChevronDown, Droplets, FileBarChart, FileText, Gauge, LayoutDashboard, Loader2, LogOut, Mail, Menu, ReceiptText, Settings,
   Smartphone, Ticket, Users as UsersIcon, Wallet, X, ClipboardCheck,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { branding } from '../lib/branding';
+import { routeChunks, prefetchRoute } from '../lib/routeChunks';
 import { useBranding } from '../lib/BrandingContext';
 import BrandingBanner from './BrandingBanner';
 import { ThemeToggle } from './ThemeToggle';
@@ -25,6 +24,35 @@ interface NavItem {
   managerOnly?: boolean;
 }
 
+// Every nav destination maps to its route chunk (lib/routeChunks.ts).
+// Hovering/focusing a tab header prefetches all chunks its dropdown hides,
+// so opening it finds links already warm; clicking a link is then instant.
+const PREFETCH_BY_PATH: Record<string, keyof typeof routeChunks> = {
+  '/': 'dashboard',
+  '/units': 'units',
+  '/tenants': 'tenants',
+  '/rent': 'rent',
+  '/water-meter': 'waterMeter',
+  '/water-payments': 'waterPayments',
+  '/water-supply': 'waterSupply',
+  '/ledger': 'ledger',
+  '/receipts': 'receipts',
+  '/monthly': 'monthly',
+  '/expenses': 'expenses',
+  '/arrears': 'arrears',
+  '/sms': 'sms',
+  '/email-campaign': 'emailCampaign',
+  '/mpesa-review': 'mpesaReview',
+  '/settings': 'settings',
+  '/users': 'users',
+  '/audit': 'audit',
+  '/privacy-register': 'privacyRegister',
+  '/instructions': 'instructions',
+};
+
+// Titled sections render as collapsible tabs: closed by default, opened only
+// by clicking their header. The untitled section has no header to click and
+// always renders open.
 interface NavSection {
   title?: string;
   items: NavItem[];
@@ -32,25 +60,45 @@ interface NavSection {
 
 const NAV_SECTIONS: NavSection[] = [
   {
-    title: 'Overview',
+    // No title — the Dashboard renders flat at the top of the sidebar.
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard },
     ],
   },
   {
-    title: 'Operations',
+    title: 'Property',
     items: [
       { to: '/units', label: 'Units', icon: Building2 },
       { to: '/tenants', label: 'Tenants', icon: ArrowLeftRight },
+    ],
+  },
+  {
+    title: 'Billing',
+    items: [
       { to: '/rent', label: 'Rent Collection', icon: Wallet },
       { to: '/water-meter', label: 'Water Meter', icon: Gauge },
       { to: '/water-payments', label: 'Water Payments', icon: Droplets },
       { to: '/water-supply', label: 'Water Supply Costs', icon: FileBarChart },
+    ],
+  },
+  {
+    title: 'Records',
+    items: [
       { to: '/ledger', label: 'Tenant Ledger', icon: BookUser },
+      { to: '/receipts', label: 'Receipts', icon: Ticket },
+    ],
+  },
+  {
+    title: 'Reports',
+    items: [
       { to: '/monthly', label: 'Monthly Summary', icon: CalendarDays },
       { to: '/expenses', label: 'Expenses', icon: ReceiptText },
       { to: '/arrears', label: 'Arrears', icon: AlertTriangle },
-      { to: '/receipts', label: 'Receipts', icon: Ticket },
+    ],
+  },
+  {
+    title: 'Messaging',
+    items: [
       { to: '/sms', label: 'SMS Notifications', icon: Smartphone },
       { to: '/email-campaign', label: 'Tenant Email', icon: Mail, managerOnly: true },
       { to: '/mpesa-review', label: 'M-Pesa Review', icon: ClipboardCheck, managerOnly: true },
@@ -71,14 +119,26 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/instructions', label: 'Instructions / Help', icon: BookOpen },
     ],
   },
+  {
+    // The drawer's old standalone quick-action block, promoted to a tab like
+    // the rest — each action deep-links with ?new=1 to pre-open its form.
+    title: 'Quick Actions',
+    items: [
+      { to: '/rent?new=1', label: 'Record Payment', icon: Wallet },
+      { to: '/water-meter?new=1', label: 'Log Reading', icon: Droplets },
+      { to: '/expenses?new=1', label: 'Add Expense', icon: ReceiptText, managerOnly: true },
+    ],
+  },
 ];
 
 export default function Layout() {
   const { legalNameDisplay, lastUpdatedDisplay } = useBranding();
   const { user, logout } = useAuth();
-  const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Every titled section (Property, Billing, … Management, Help) is a
+  // collapsible tab: closed by default, toggled only by clicking its header.
+  // Only the untitled Dashboard section always renders open.
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
   const visibleSections = NAV_SECTIONS.map((section) => ({
@@ -90,63 +150,77 @@ export default function Layout() {
     }),
   })).filter((section) => section.items.length > 0);
 
-  useEffect(() => {
-    const activeSection = visibleSections.find((section) => section.items.some((item) => (
-      item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to)
-    )));
-    if (activeSection?.title) {
-      setOpenSections((current) => ({ ...current, [activeSection.title as string]: true }));
-    }
-  }, [location.pathname, user?.role]);
-
   function handleLogout() {
     logout();
     navigate('/login');
   }
 
   const nav = (
-    <nav className="no-scrollbar flex-1 space-y-4 overflow-y-auto px-3 py-4">
-      {visibleSections.map((section) => (
+    <nav className="no-scrollbar flex-1 space-y-2 overflow-y-auto px-3 py-3">
+      {visibleSections.map((section, sectionIndex) => (
         <div
-          key={section.title ?? 'section'}
-          className="space-y-1.5"
+          key={section.title ?? `flat-${sectionIndex}`}
+          className="space-y-1"
+          // Hover-intent prefetch: hovering a tab header warms every chunk its
+          // dropdown hides (pure network warm-up — it does NOT open it, which
+          // stays click-only by design). Links prefetch their own chunk.
           onMouseEnter={() => {
-            if (section.title) setOpenSections((current) => ({ ...current, [section.title as string]: true }));
+            for (const item of section.items) {
+              const key = PREFETCH_BY_PATH[item.to.split('?')[0]];
+              if (key) prefetchRoute(key);
+            }
+          }}
+          onFocus={() => {
+            // Keyboard path: tabbing to the header (or any link inside) warms
+            // the section's chunks the same way a mouse hover does.
+            for (const item of section.items) {
+              const key = PREFETCH_BY_PATH[item.to.split('?')[0]];
+              if (key) prefetchRoute(key);
+            }
           }}
         >
-          {section.title && (
+          {section.title && (() => {
+            const id = `sidebar-${section.title.toLowerCase().replace(/\s+/g, '-')}`;
+            return (
             <button
               type="button"
-              id={`sidebar-${section.title.toLowerCase()}`}
-              aria-controls={`sidebar-${section.title.toLowerCase()}-menu`}
-              aria-expanded={openSections[section.title] ?? true}
-              onClick={() => setOpenSections((current) => ({ ...current, [section.title as string]: !(current[section.title as string] ?? true) }))}
-              className="group flex min-h-8 w-full items-center justify-between px-2 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 transition-colors hover:text-slate-200"
+              id={id}
+              aria-controls={`${id}-menu`}
+              aria-expanded={openSections[section.title] ?? false}
+              onClick={() => setOpenSections((current) => ({ ...current, [section.title as string]: !(current[section.title as string] ?? false) }))}
+              className="group flex min-h-6 w-full items-center justify-between rounded-md px-2 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-300 transition-colors hover:bg-slate-700/60 hover:text-white"
             >
               {section.title}
-              <ChevronDown size={14} strokeWidth={2} className={`text-slate-600 transition-transform duration-150 group-hover:text-slate-300 ${openSections[section.title] ?? true ? '' : '-rotate-90'}`} aria-hidden />
+              {/* Item count — tells you what the dropdown hides before clicking.
+                  Derived from the role-filtered list, so it matches what will
+                  actually render when the tab opens. */}
+              <span className="ml-1 font-normal text-slate-500 group-hover:text-slate-400">({section.items.length})</span>
+              <ChevronDown size={14} strokeWidth={2} className={`ml-auto text-slate-500 transition-transform duration-150 group-hover:text-slate-300 ${openSections[section.title] ?? false ? '' : '-rotate-90'}`} aria-hidden />
             </button>
-          )}
-          {(openSections[section.title ?? 'section'] ?? true) && <div id={`sidebar-${section.title?.toLowerCase() ?? 'section'}-menu`} className="space-y-1 pl-1">
+            );
+          })()}
+          {(section.title ? (openSections[section.title] ?? false) : true) && (
+          <div id={`sidebar-${section.title?.toLowerCase().replace(/\s+/g, '-') ?? 'section'}-menu`} className="space-y-0.5 pl-1">
             {section.items.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/'}
-              onClick={() => setMobileOpen(false)}
-              className={({ isActive }) =>
-                `group flex min-h-[40px] items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150 ${
-                  isActive
-                    ? 'bg-brand-600 text-white shadow-sm'
-                    : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
-                }`
-              }
-            >
-              <item.icon size={18} strokeWidth={1.75} aria-hidden className="shrink-0" />
-              {item.label}
-            </NavLink>
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === '/'}
+                  onClick={() => setMobileOpen(false)}
+                  className={({ isActive }) =>
+                    `group flex min-h-[24px] items-center gap-1.5 rounded-md px-2.5 py-0.5 text-xs leading-tight font-medium transition-colors duration-150 ${
+                      isActive
+                        ? 'bg-brand-600 text-white shadow-sm'
+                        : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
+                    }`
+                  }
+                >
+                <item.icon size={14} strokeWidth={1.75} aria-hidden className="shrink-0" />
+                {item.label}
+              </NavLink>
             ))}
-          </div>}
+          </div>
+          )}
         </div>
       ))}
     </nav>
@@ -180,7 +254,7 @@ export default function Layout() {
       <aside className="hidden w-60 shrink-0 flex-col bg-slate-800 md:flex">
         {/* Logo links home. */}
         <Link to="/" className="flex items-center gap-2.5 px-4 py-4 transition-opacity duration-150 hover:opacity-90" aria-label={`${branding.appName} — go to dashboard`}>
-          <BrandMark className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500 text-white" iconSize={18} />
+          <BrandLogo className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500 text-white" iconSize={18} />
           <div>
             <div className="text-sm font-bold text-white">Olbano Plaza</div>
             <div className="text-[11px] text-slate-400">Property Manager</div>
@@ -206,9 +280,6 @@ export default function Layout() {
               </button>
             </div>
             {nav}
-            {/* One-tap task shortcuts (same as the Dashboard header) — closed
-                by the same onNavigate as nav items. */}
-            <QuickActions variant="drawer" onNavigate={() => setMobileOpen(false)} />
             {userCard}
           </aside>
         </div>
@@ -228,7 +299,7 @@ export default function Layout() {
             </button>
             <div className="flex items-center gap-2 md:hidden">
               <Link to="/" className="flex items-center gap-2" aria-label={`${branding.appName} — go to dashboard`}>
-                <BrandMark className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-600 text-white" iconSize={16} />
+                <BrandLogo className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-600 text-white" iconSize={16} />
                 <span className="text-sm font-bold text-gray-900">Olbano Plaza</span>
               </Link>
             </div>
@@ -271,12 +342,14 @@ export default function Layout() {
                 <span className="mx-1.5 text-gray-300">|</span>
                 <span title="When the business identity and policy details were last updated">Last updated: {lastUpdatedDisplay}</span>
               </span>
-              <nav className="flex flex-wrap gap-4" aria-label="Legal">
-                <Link to="/privacy" className="transition-colors duration-150 hover:text-gray-700">Privacy Policy</Link>
-                <Link to="/terms" className="transition-colors duration-150 hover:text-gray-700">Terms &amp; Conditions</Link>
-                <Link to="/cookies" className="transition-colors duration-150 hover:text-gray-700">Cookies &amp; Storage</Link>
-                <Link to="/refunds" className="transition-colors duration-150 hover:text-gray-700">Refund Policy</Link>
-              </nav>
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                <nav className="flex flex-wrap gap-4" aria-label="Legal">
+                  <Link to="/privacy" className="transition-colors duration-150 hover:text-gray-700">Privacy Policy</Link>
+                  <Link to="/terms" className="transition-colors duration-150 hover:text-gray-700">Terms &amp; Conditions</Link>
+                  <Link to="/cookies" className="transition-colors duration-150 hover:text-gray-700">Cookies &amp; Storage</Link>
+                  <Link to="/refunds" className="transition-colors duration-150 hover:text-gray-700">Refund Policy</Link>
+                </nav>
+              </div>
             </footer>
           </div>
         </main>

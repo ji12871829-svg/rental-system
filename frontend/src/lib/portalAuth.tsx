@@ -4,6 +4,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { portalApi } from './portalApi';
+import { installPortalKeepalive } from './sessionKeepalive';
 
 export interface PortalTenant {
   tenantId: number;
@@ -29,7 +30,9 @@ export function PortalAuthProvider({ children }: { children: ReactNode }) {
     portalApi
       .get<{ data: PortalTenant }>('/api/portal/me')
       .then((res) => {
-        if (!cancelled) setTenant(res.data);
+        if (cancelled) return;
+        setTenant(res.data);
+        installPortalKeepalive();
       })
       .catch(() => {
         // Not signed in — the login page will handle it.
@@ -48,6 +51,7 @@ export function PortalAuthProvider({ children }: { children: ReactNode }) {
       password,
     });
     setTenant(res.data);
+    installPortalKeepalive();
   }, []);
 
   const logout = useCallback(async () => {

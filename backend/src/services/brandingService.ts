@@ -8,6 +8,7 @@
 // rendering placeholders.
 import { pool, queryOne } from '../config/db';
 import { env } from '../config/env';
+import { badRequest } from '../utils/httpError';
 import { logAudit } from './auditService';
 
 export interface BrandingRow {
@@ -27,6 +28,9 @@ export interface BrandingRow {
   paybill_name: string | null;
   paybill_enabled: boolean;
   paybill_instructions: string | null;
+  logo_data: string | null;
+  logo_mime_type: string | null;
+  logo_updated_at: string | null;
   updated_at: string;
 }
 
@@ -54,6 +58,9 @@ async function getBranding(): Promise<BrandingRow> {
     paybill_name: row?.paybill_name ?? null,
     paybill_enabled: row?.paybill_enabled ?? false,
     paybill_instructions: row?.paybill_instructions ?? null,
+    logo_data: row?.logo_data ?? null,
+    logo_mime_type: row?.logo_mime_type ?? null,
+    logo_updated_at: row?.logo_updated_at ?? null,
     updated_at: row?.updated_at ?? new Date().toISOString(),
   };
 }
@@ -122,13 +129,16 @@ export async function updateBranding(input: BrandingInput, userId: number): Prom
 
   const after = await getBranding();
 
+  // Audit stores the field values, never the logo bytes (the logo has its
+  // own audit actions with size/mime instead).
+  const redact = (row: BrandingRow): BrandingRow => ({ ...row, logo_data: null });
   await logAudit({
     userId,
     action: 'BRANDING_UPDATED',
     entity: TABLE,
     entityId: 1,
-    oldValue: before,
-    newValue: after,
+    oldValue: redact(before),
+    newValue: redact(after),
   });
 
   return after;
@@ -153,7 +163,7 @@ function deriveInitials(legalName: string | null): string | null {
   return initials || null;
 }
 
-export interface BrandingView extends BrandingRow {
+export interface BrandingView extends Omit<BrandingRow, 'logo_data'> {
   // camelCase mirrors for frontend convenience.
   legalName: string | null;
   registrationNumber: string | null;
@@ -169,6 +179,8 @@ export interface BrandingView extends BrandingRow {
   paybillName: string | null;
   paybillEnabled: boolean;
   paybillInstructions: string | null;
+  logoMimeType: string | null;
+  logoUpdatedAt: string | null;
   // Derived.
   brandInitials: string | null;
   // Printed-receipt identity footer, placeholder-smart. Values are HTML-
@@ -184,6 +196,9 @@ function escapeHtml(value: string): string {
 }
 
 export function toView(row: BrandingRow): BrandingView {
+  // The raw base64 never travels in the JSON view — /api/branding/logo
+  // serves the bytes with proper caching, and identity fields stay small.
+  const { logo_data: _stripped, ...rest } = row;
   const text = (v: string | null): string | null => (v ? escapeHtml(v) : null);
   const linkPhone = (v: string | null): string | null =>
     v ? `<a href="tel:${v.replace(/[^\d+]/g, '')}">${escapeHtml(v)}</a>` : null;
@@ -221,7 +236,9 @@ export function toView(row: BrandingRow): BrandingView {
   }));
 
   return {
-    ...row,
+    ...rest,
+    logoMimeType: row.logo_mime_type,
+    logoUpdatedAt: row.logo_updated_at,
     legalName: row.legal_name,
     registrationNumber: row.registration_number,
     contactEmail: row.contact_email,
@@ -264,13 +281,74 @@ export async function getPaybillInstructions(): Promise<PaybillInstructions> {
   };
 }
 
+// --- Business logo -----------------------------------------------------------
+
+// One empty-payload guard used by both logo handlers. Max is modest on
+// purpose: a logo renders at ~32–64 px in the UI and ~60 pt in PDFs, so huge
+// files are never useful — and base64 rows live inside the branding row.
+const LOGO_MAX_BYTES = 512 * 1024;
+
+function parseLogoPayload(dataUrl: string): { bytes: Buffer; mimeType: string } {
+  const match = /^data:(image\/(?:png|jpeg|gif|webp|svg\+xml));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl.trim());
+  if (!match) {
+    throw badRequest('Logo must be a base64 data URL (png, jpeg, gif, webp or svg).');
+  }
+  const [, mimeType, base64] = match;
+  const bytes = Buffer.from(base64, 'base64');
+  if (bytes.length === 0) throw badRequest('Logo file is empty.');
+  if (bytes.length > LOGO_MAX_BYTES) {
+    throw badRequest(`Logo is too large (${Math.round(bytes.length / 1024)} KB). Maximum is ${LOGO_MAX_BYTES / 1024} KB.`);
+  }
+  return { bytes, mimeType };
+}
+
+export interface LogoUploadResult {
+  logoMimeType: string;
+  logoUpdatedAt: string;
+  logoBytes: number;
+}
+
+export async function uploadLogo(dataUrl: string, userId: number): Promise<LogoUploadResult> {
+  const { bytes, mimeType } = parseLogoPayload(dataUrl);
+  await ensureRow();
+  await pool.query(
+    `UPDATE ${TABLE} SET logo_data = $1, logo_mime_type = $2, logo_updated_at = NOW() WHERE id = 1`,
+    [bytes.toString('base64'), mimeType]
+  );
+  await logAudit({
+    userId,
+    action: 'BRANDING_LOGO_UPDATED',
+    entity: TABLE,
+    entityId: 1,
+    newValue: { mimeType, bytes: bytes.length },
+  });
+  return { logoMimeType: mimeType, logoUpdatedAt: new Date().toISOString(), logoBytes: bytes.length };
+}
+
+export async function removeLogo(userId: number): Promise<void> {
+  await ensureRow();
+  await pool.query(`UPDATE ${TABLE} SET logo_data = NULL, logo_mime_type = NULL, logo_updated_at = NOW() WHERE id = 1`);
+  await logAudit({ userId, action: 'BRANDING_LOGO_REMOVED', entity: TABLE, entityId: 1 });
+}
+
+export async function getLogo(): Promise<{ data: string; mimeType: string; updatedAt: string } | null> {
+  const row = await queryOne<Pick<BrandingRow, 'logo_data' | 'logo_mime_type' | 'logo_updated_at'>>(
+    `SELECT logo_data, logo_mime_type, logo_updated_at FROM ${TABLE} WHERE id = 1`
+  );
+  if (!row?.logo_data || !row.logo_mime_type) return null;
+  return { data: row.logo_data, mimeType: row.logo_mime_type, updatedAt: row.logo_updated_at ?? new Date(0).toISOString() };
+}
+
 // The identity block used by SMS receipts, email receipts and PDF footers —
 // one shape, DB values with env fallbacks already applied by getBranding().
+// logo carries the raw image bytes (or null) so document builders can embed
+// it without a second query.
 export interface BusinessIdentity {
   name: string | null;
   regNo: string | null;
   phone: string | null;
   email: string | null;
+  logo: { bytes: Buffer; mimeType: string } | null;
 }
 
 function identityOf(row: BrandingRow): BusinessIdentity {
@@ -279,6 +357,9 @@ function identityOf(row: BrandingRow): BusinessIdentity {
     regNo: row.registration_number,
     phone: row.contact_phone,
     email: row.contact_email,
+    logo: row.logo_data && row.logo_mime_type
+      ? { bytes: Buffer.from(row.logo_data, 'base64'), mimeType: row.logo_mime_type }
+      : null,
   };
 }
 

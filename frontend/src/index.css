@@ -98,3 +98,90 @@ p {
     padding-right: 0.75rem;
   }
 }
+/* ==========================================================================
+   Dark mode
+   The app is built with light-first utility classes (bg-white, text-gray-500,
+   border-gray-200, …). Rather than adding dark: variants to ~400 call sites,
+   these overrides remap the handful of utility classes the app actually uses
+   whenever <html class="dark"> is set (theme.tsx toggles it). Specificity:
+   each selector chains the base utility, so the dark declaration wins without
+   !important wars. One-off colored surfaces (red-50 alerts, emerald-100
+   badges…) are darkened in place with dark: variants where they appear.
+   ========================================================================== */
+html.dark {
+  color-scheme: dark;
+}
+
+/* Surfaces */
+html.dark .bg-white { background-color: #1a2332; }
+html.dark .bg-gray-50 { background-color: #141c2b; }
+html.dark .bg-gray-100 { background-color: #232e42; }
+html.dark .bg-gray-900\/60 { background-color: rgb(2 6 23 / 0.7); }
+
+/* Text */
+html.dark .text-gray-900 { color: #f1f5f9; }
+html.dark .text-gray-800 { color: #e2e8f0; }
+html.dark .text-gray-700 { color: #cbd5e1; }
+html.dark .text-gray-600 { color: #94a3b8; }
+html.dark .text-gray-500 { color: #8290a5; }
+html.dark .text-gray-400 { color: #64748b; }
+html.dark .text-gray-300 { color: #475569; }
+
+/* Borders + hairlines */
+html.dark .border-gray-200 { border-color: #2c3850; }
+html.dark .border-gray-300 { border-color: #3a4a68; }
+html.dark .border-gray-100 { border-color: #232e42; }
+html.dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) { border-color: #2c3850; }
+
+/* Inputs: dark surface, visible focus ring */
+html.dark .bg-white.border-gray-300,
+html.dark input.bg-white,
+html.dark select.bg-white,
+html.dark textarea.bg-white { background-color: #141c2b; }
+
+/* Status tones get desaturated dark variants where pages hardcode them. */
+html.dark .bg-red-50 { background-color: rgb(127 29 29 / 0.25); }
+html.dark .bg-green-50 { background-color: rgb(6 78 59 / 0.3); }
+html.dark .bg-amber-50 { background-color: rgb(120 53 15 / 0.3); }
+html.dark .bg-blue-50 { background-color: rgb(30 58 138 / 0.3); }
+html.dark .bg-brand-50 { background-color: rgb(21 89 179 / 0.2); }
+html.dark .bg-emerald-100 { background-color: rgb(6 78 59 / 0.5); }
+html.dark .bg-red-100 { background-color: rgb(127 29 29 / 0.5); }
+html.dark .bg-amber-100 { background-color: rgb(120 53 15 / 0.5); }
+html.dark .bg-green-100 { background-color: rgb(6 78 59 / 0.5); }
+html.dark .bg-gray-900\/95 { background-color: rgb(15 23 42 / 0.95); }
+
+/* Chart placeholders + pulse skeletons live on the dark surface. */
+html.dark .animate-pulse { filter: brightness(0.75); }
+
+/* ==========================================================================
+   Chart theme variables — the SVG kit reads CSS vars so axes, grids, labels
+   and tooltips follow the theme without re-render (charts.tsx).
+   ========================================================================== */
+:root {
+  --chart-grid: #e5e7eb;
+  --chart-axis: #d1d5db;
+  --chart-tick: #6b7280;
+  --chart-surface: #ffffff;
+  --chart-text: #374151;
+}
+html.dark {
+  --chart-grid: #26314a;
+  --chart-axis: #3a4a68;
+  --chart-tick: #8290a5;
+  --chart-surface: #1a2332;
+  --chart-text: #e2e8f0;
+}
+
+/* Dark-mode status TEXT: the darkened colored surfaces above pair with
+   lighter text so alerts/badges keep AA contrast instead of turning
+   dark-on-dark. */
+html.dark .text-red-700,
+html.dark .text-red-600 { color: #fca5a5; }
+html.dark .text-emerald-700 { color: #6ee7b7; }
+html.dark .text-green-700 { color: #86efac; }
+html.dark .text-amber-800,
+html.dark .text-amber-700 { color: #fcd34d; }
+html.dark .text-blue-800 { color: #93c5fd; }
+html.dark .text-brand-700 { color: #7db4e8; }
+html.dark .text-brand-600 { color: #6aa9e6; }

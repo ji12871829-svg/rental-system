@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { branding } from './branding';
-import { applyBrandFavicon } from './brandFavicon';
+import { applyBrandFavicon, applyLogoFavicon } from './brandFavicon';
 import { lastUpdated } from 'virtual:last-updated';
 
 // Live business identity from the backend (business_branding table, editable
@@ -40,6 +40,9 @@ export interface BrandingView {
   paybillName: string | null;
   paybillEnabled: boolean;
   paybillInstructions: string | null;
+  // Logo metadata — the bytes themselves are served from /api/branding/logo.
+  logo_mime_type: string | null;
+  logo_updated_at: string | null;
   brandInitials: string | null;
   receiptFooterLines: string[];
   fieldStatus: { label: string; value: string; filled: boolean }[];
@@ -49,6 +52,9 @@ export interface BrandingView {
 interface BrandingContextValue {
   identity: BrandingView | null;
   refreshBranding: () => Promise<void>;
+  /** The business logo, versioned by upload timestamp so caches bust on
+   *  re-upload. null = no logo — consumers fall back to the monogram tile. */
+  logoUrl: string | null;
   tabTitleBrand: string;
   legalNameDisplay: string | null;
   supportContacts: { label: string; email: string }[];
@@ -87,10 +93,22 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
     refreshBranding();
   }, [refreshBranding]);
 
-  // Favicon follows the initials whenever they arrive or change.
+  // Versioned logo URL — cache-busts on every upload without any manual
+  // invalidation. Keyed on mime presence (not just updated_at, which remove
+  // also stamps) so removing the logo drops back to the monogram instantly.
+  const logoUrl = identity?.logo_mime_type && identity?.logo_updated_at
+    ? `/api/branding/logo?v=${encodeURIComponent(new Date(identity.logo_updated_at).getTime())}`
+    : null;
+
+  // Favicon: the uploaded logo when one exists (versioned URL, so a new
+  // upload replaces it), otherwise the monogram generated from the initials.
   useEffect(() => {
-    applyBrandFavicon(identity?.brandInitials ?? null);
-  }, [identity?.brandInitials]);
+    if (logoUrl) {
+      applyLogoFavicon(logoUrl);
+    } else {
+      applyBrandFavicon(identity?.brandInitials ?? null);
+    }
+  }, [logoUrl, identity?.brandInitials]);
 
   const legalNameDisplay = identity?.legalName ?? null;
   const tabTitleBrand = legalNameDisplay ? `${branding.appName} — ${legalNameDisplay}` : branding.appName;
@@ -115,7 +133,7 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
 
   return (
     <BrandingContext.Provider
-      value={{ identity, refreshBranding, tabTitleBrand, legalNameDisplay, supportContacts, loginIdentityLine, missingLabels, lastUpdatedDisplay }}
+      value={{ identity, refreshBranding, tabTitleBrand, legalNameDisplay, supportContacts, loginIdentityLine, missingLabels, lastUpdatedDisplay, logoUrl }}
     >
       {children}
     </BrandingContext.Provider>

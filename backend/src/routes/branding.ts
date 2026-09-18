@@ -3,7 +3,14 @@ import { z } from 'zod';
 import { managerOrAdmin, requireAuth } from '../middleware/auth';
 import { validateBody } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
-import { getBrandingView, toView, updateBranding } from '../services/brandingService';
+import {
+  getBrandingView,
+  getLogo,
+  removeLogo,
+  toView,
+  updateBranding,
+  uploadLogo,
+} from '../services/brandingService';
 
 const router = Router();
 
@@ -43,6 +50,43 @@ const updateSchema = z.object({
 router.put('/', requireAuth, managerOrAdmin, validateBody(updateSchema), asyncHandler(async (req, res) => {
   const row = await updateBranding(req.body as any, req.user!.userId);
   res.json({ data: toView(row) });
+}));
+
+// --- Business logo ---------------------------------------------------------
+
+// Public read: like the identity itself, the logo is printed on tenant
+// receipts — it is not secret. Long-lived immutable caching keyed by
+// logo_updated_at, so a new upload (new timestamp) busts every cache.
+router.get('/logo', asyncHandler(async (_req, res) => {
+  const logo = await getLogo();
+  if (!logo) {
+    res.status(404).json({ error: 'NOT_FOUND', message: 'No logo uploaded.', details: {} });
+    return;
+  }
+  const etag = `"${new Date(logo.updatedAt).getTime()}"`;
+  res.setHeader('Content-Type', logo.mimeType);
+  res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+  res.setHeader('ETag', etag);
+  if (_req.headers['if-none-match'] === etag) {
+    res.status(304).end();
+    return;
+  }
+  res.send(Buffer.from(logo.data, 'base64'));
+}));
+
+// Body: { logo: 'data:image/png;base64,…' } — one upload, one replace.
+const logoSchema = z.object({
+  logo: z.string().regex(/^data:image\//, 'Logo must be a base64 data URL (data:image/…;base64,…).'),
+});
+
+router.put('/logo', requireAuth, managerOrAdmin, validateBody(logoSchema), asyncHandler(async (req, res) => {
+  const result = await uploadLogo((req.body as { logo: string }).logo, req.user!.userId);
+  res.json({ data: result });
+}));
+
+router.delete('/logo', requireAuth, managerOrAdmin, asyncHandler(async (req, res) => {
+  await removeLogo(req.user!.userId);
+  res.status(204).end();
 }));
 
 export default router;
