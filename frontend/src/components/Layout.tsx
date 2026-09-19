@@ -4,7 +4,7 @@ import { Suspense } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, BookUser, Building2, CalendarDays, ChevronDown, Droplets, FileBarChart, FileText, Gauge, LayoutDashboard, Loader2, LogOut, Mail, Menu, ReceiptText, Settings,
-  Smartphone, Ticket, Users as UsersIcon, Wallet, X, ClipboardCheck,
+  Smartphone, Ticket, Users as UsersIcon, Wallet, X, ClipboardCheck, Zap,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { branding } from '../lib/branding';
@@ -52,9 +52,11 @@ const PREFETCH_BY_PATH: Record<string, keyof typeof routeChunks> = {
 
 // Titled sections render as collapsible tabs: closed by default, opened only
 // by clicking their header. The untitled section has no header to click and
-// always renders open.
+// always renders open. The optional header icon makes the collapsed sidebar
+// scannable — the icons echo the section's job, not any single page.
 interface NavSection {
   title?: string;
+  icon?: LucideIcon;
   items: NavItem[];
 }
 
@@ -67,6 +69,7 @@ const NAV_SECTIONS: NavSection[] = [
   },
   {
     title: 'Property',
+    icon: Building2,
     items: [
       { to: '/units', label: 'Units', icon: Building2 },
       { to: '/tenants', label: 'Tenants', icon: ArrowLeftRight },
@@ -74,6 +77,7 @@ const NAV_SECTIONS: NavSection[] = [
   },
   {
     title: 'Billing',
+    icon: Wallet,
     items: [
       { to: '/rent', label: 'Rent Collection', icon: Wallet },
       { to: '/water-meter', label: 'Water Meter', icon: Gauge },
@@ -83,6 +87,7 @@ const NAV_SECTIONS: NavSection[] = [
   },
   {
     title: 'Records',
+    icon: BookUser,
     items: [
       { to: '/ledger', label: 'Tenant Ledger', icon: BookUser },
       { to: '/receipts', label: 'Receipts', icon: Ticket },
@@ -90,6 +95,7 @@ const NAV_SECTIONS: NavSection[] = [
   },
   {
     title: 'Reports',
+    icon: BarChart3,
     items: [
       { to: '/monthly', label: 'Monthly Summary', icon: CalendarDays },
       { to: '/expenses', label: 'Expenses', icon: ReceiptText },
@@ -98,6 +104,7 @@ const NAV_SECTIONS: NavSection[] = [
   },
   {
     title: 'Messaging',
+    icon: Smartphone,
     items: [
       { to: '/sms', label: 'SMS Notifications', icon: Smartphone },
       { to: '/email-campaign', label: 'Tenant Email', icon: Mail, managerOnly: true },
@@ -106,6 +113,7 @@ const NAV_SECTIONS: NavSection[] = [
   },
   {
     title: 'Management',
+    icon: Settings,
     items: [
       { to: '/settings', label: 'Settings', icon: Settings },
       { to: '/users', label: 'Users', icon: UsersIcon, adminOnly: true },
@@ -115,6 +123,7 @@ const NAV_SECTIONS: NavSection[] = [
   },
   {
     title: 'Help',
+    icon: BookOpen,
     items: [
       { to: '/instructions', label: 'Instructions / Help', icon: BookOpen },
     ],
@@ -123,6 +132,7 @@ const NAV_SECTIONS: NavSection[] = [
     // The drawer's old standalone quick-action block, promoted to a tab like
     // the rest — each action deep-links with ?new=1 to pre-open its form.
     title: 'Quick Actions',
+    icon: Zap,
     items: [
       { to: '/rent?new=1', label: 'Record Payment', icon: Wallet },
       { to: '/water-meter?new=1', label: 'Log Reading', icon: Droplets },
@@ -190,7 +200,10 @@ export default function Layout() {
               onClick={() => setOpenSections((current) => ({ ...current, [section.title as string]: !(current[section.title as string] ?? false) }))}
               className="group flex min-h-6 w-full items-center justify-between rounded-md px-2 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-300 transition-colors hover:bg-slate-700/60 hover:text-white"
             >
-              {section.title}
+              <span className="flex min-w-0 items-center gap-1.5">
+                {section.icon && <section.icon size={13} strokeWidth={1.75} aria-hidden className="shrink-0 text-slate-400 group-hover:text-slate-300" />}
+                <span className="truncate">{section.title}</span>
+              </span>
               {/* Item count — tells you what the dropdown hides before clicking.
                   Derived from the role-filtered list, so it matches what will
                   actually render when the tab opens. */}
