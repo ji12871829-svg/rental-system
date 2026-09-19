@@ -289,9 +289,13 @@ export async function getPaybillInstructions(): Promise<PaybillInstructions> {
 const LOGO_MAX_BYTES = 512 * 1024;
 
 function parseLogoPayload(dataUrl: string): { bytes: Buffer; mimeType: string } {
-  const match = /^data:(image\/(?:png|jpeg|gif|webp|svg\+xml));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl.trim());
+  // SVG is deliberately NOT accepted: it is served back from this origin
+  // (Content-Type image/svg+xml), and SVG can carry <script> — a stored XSS
+  // vector executed on anyone who opens the URL directly. Raster formats
+  // (png/jpeg/gif/webp) cannot execute script.
+  const match = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl.trim());
   if (!match) {
-    throw badRequest('Logo must be a base64 data URL (png, jpeg, gif, webp or svg).');
+    throw badRequest('Logo must be a base64 data URL (png, jpeg, gif or webp — SVG is not accepted).');
   }
   const [, mimeType, base64] = match;
   const bytes = Buffer.from(base64, 'base64');
@@ -299,7 +303,22 @@ function parseLogoPayload(dataUrl: string): { bytes: Buffer; mimeType: string } 
   if (bytes.length > LOGO_MAX_BYTES) {
     throw badRequest(`Logo is too large (${Math.round(bytes.length / 1024)} KB). Maximum is ${LOGO_MAX_BYTES / 1024} KB.`);
   }
+  // Magic-byte check: the declared content type must match the real bytes,
+  // so a mislabeled payload (e.g. HTML or SVG renamed to png) can never be
+  // stored and served back from this origin.
+  if (!hasKnownImageMagic(bytes)) {
+    throw badRequest('Logo file does not look like a valid png, jpeg, gif or webp image.');
+  }
   return { bytes, mimeType };
+}
+
+// Signature bytes per accepted raster format. WebP: 'RIFF' + 4 bytes + 'WEBP'.
+function hasKnownImageMagic(bytes: Buffer): boolean {
+  if (bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return true; // PNG
+  if (bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) return true; // JPEG
+  if (bytes.subarray(0, 4).toString('ascii') === 'GIF8') return true; // GIF87a/GIF89a
+  if (bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP') return true;
+  return false;
 }
 
 export interface LogoUploadResult {

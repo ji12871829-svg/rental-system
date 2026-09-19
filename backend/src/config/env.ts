@@ -16,6 +16,17 @@ export const env = {
     process.env.DATABASE_URL ||
     'postgres://rms_user:rms_password@localhost:5432/rpms',
   jwtSecret: process.env.JWT_SECRET || 'dev-only-secret-change-me',
+  // Per-token-population signing secrets. The staff app and the tenant portal
+  // both mint JWTs; historically they shared JWT_SECRET and the two auth
+  // domains were separated only by the audience claim. Each population now
+  // has its own key so a leaked or mis-verified token from one side cannot be
+  // replayed against the other even if an audience check is ever lost.
+  // Backward compatibility: when the specific key is unset it falls back to
+  // JWT_SECRET, so existing deployments keep working unchanged (same key as
+  // today, audience still enforced). Set both in production to harden —
+  // see the startup warning below.
+  jwtStaffSecret: process.env.JWT_STAFF_SECRET || process.env.JWT_SECRET || 'dev-only-secret-change-me',
+  jwtPortalSecret: process.env.JWT_PORTAL_SECRET || process.env.JWT_SECRET || 'dev-only-secret-change-me',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
   bcryptSaltRounds: Number(process.env.BCRYPT_SALT_ROUNDS) || 12,
   // Comma-separated allowlist. On same-origin deploys (frontend served by
@@ -76,6 +87,12 @@ export const env = {
   mpesaShortcode: process.env.MPESA_SHORTCODE || '',
   mpesaPasskey: process.env.MPESA_PASSKEY || '',
   mpesaCallbackUrl: process.env.MPESA_CALLBACK_URL || '',
+  // Shared secret Daraja can echo back so /api/mpesa/* callbacks are not
+  // open to the internet. Configure the Daraja callback URL as
+  // <host>/api/mpesa/…?token=<value>; the token rides in the query string
+  // (Daraja cannot set custom headers) and routes/mpesa.ts verifies it
+  // timing-safe. Empty in dev/test keeps callbacks open for local mocking.
+  mpesaCallbackToken: process.env.MPESA_CALLBACK_TOKEN || '',
   mpesaBaseUrl: process.env.MPESA_BASE_URL || 'https://sandbox.safaricom.co.ke',
   mpesaTimeoutMs: Number(process.env.MPESA_TIMEOUT_MS) || 15_000,
 };
@@ -87,6 +104,27 @@ if (env.nodeEnv === 'production') {
   if (env.jwtSecret.length < 32) missing.push('JWT_SECRET (must be at least 32 characters)');
   if (missing.length > 0) {
     throw new Error(`Production configuration is invalid: ${missing.join(', ')}`);
+  }
+  // MPESA_CALLBACK_TOKEN is not hard-required: flipping it on is an ops
+  // change (the Daraja callback URL must be updated to carry ?token=…), and
+  // booting the app down until that happens would take rent collection
+  // offline. Warn instead — routes/mpesa.ts enforces the token whenever it
+  // is set, and the security runbook calls out setting it.
+  if (!process.env.MPESA_CALLBACK_TOKEN) {
+    // eslint-disable-next-line no-console
+    console.warn('[config] MPESA_CALLBACK_TOKEN is not set — /api/mpesa/* callbacks accept unauthenticated POSTs. Set the token and append ?token=<value> to the Daraja callback URL to lock this down.');
+  }
+  // Split JWT keys: warn while the two token populations still share one
+  // secret (either explicitly or via fallback). Not hard-required — the
+  // audience claim already separates the domains, and forcing a two-secret
+  // deploy on every install buys nothing for single-operator setups.
+  if (!process.env.JWT_STAFF_SECRET || !process.env.JWT_PORTAL_SECRET) {
+    // eslint-disable-next-line no-console
+    console.warn('[config] JWT_STAFF_SECRET / JWT_PORTAL_SECRET are not both set — staff and portal tokens share one signing key. Set two distinct secrets to fully harden the auth boundary (see docs/RUNBOOK-jwt-secret-split.md).');
+  }
+  if (env.jwtStaffSecret.length < 32 || env.jwtPortalSecret.length < 32) {
+    // eslint-disable-next-line no-console
+    console.warn('[config] JWT_STAFF_SECRET / JWT_PORTAL_SECRET should each be at least 32 characters.');
   }
 }
 

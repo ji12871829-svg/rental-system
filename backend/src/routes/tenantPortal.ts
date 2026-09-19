@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { env } from '../config/env';
 import { queryOne } from '../config/db';
-import { requireTenant } from '../middleware/portalAuth';
+import { PORTAL_JWT_AUDIENCE, requireTenant } from '../middleware/portalAuth';
 import { loginLimiter } from '../middleware/rateLimiter';
 import { validateBody } from '../middleware/validate';
 import { unauthorized } from '../utils/httpError';
@@ -45,8 +45,8 @@ router.post('/login', loginLimiter, validateBody(portalLoginSchema), asyncHandle
   const result = await portalLogin(email, password);
   const token = jwt.sign(
     { sub: result.tenantId, email: result.email, name: result.name },
-    env.jwtSecret,
-    { expiresIn: env.jwtExpiresIn as jwt.SignOptions['expiresIn'], audience: 'tenant_portal' }
+    env.jwtPortalSecret,
+    { expiresIn: env.jwtExpiresIn as jwt.SignOptions['expiresIn'], audience: PORTAL_JWT_AUDIENCE }
   );
   await logAudit({
     userId: null,
@@ -130,8 +130,11 @@ router.post('/refresh', asyncHandler(async (req, res) => {
 
   let payload: { sub: number; email?: string; name?: string; exp?: number; aud?: string };
   try {
-    payload = jwt.verify(token, env.jwtSecret, { ignoreExpiration: true }) as unknown as { sub: number; email?: string; name?: string; exp?: number; aud?: string };
-    if (payload.aud !== 'tenant_portal') throw new Error('wrong audience');
+    // ignoreExpiration is safe only because the portal key AND audience are
+    // both checked here — the grace path must stay unreachable for any
+    // token minted outside the portal population.
+    payload = jwt.verify(token, env.jwtPortalSecret, { ignoreExpiration: true }) as unknown as { sub: number; email?: string; name?: string; exp?: number; aud?: string };
+    if (payload.aud !== PORTAL_JWT_AUDIENCE) throw new Error('wrong audience');
   } catch {
     throw unauthorized('Invalid portal session.');
   }
@@ -158,8 +161,8 @@ router.post('/refresh', asyncHandler(async (req, res) => {
 
   const fresh = jwt.sign(
     { sub: payload.sub, email: payload.email, name: payload.name },
-    env.jwtSecret,
-    { expiresIn: env.jwtExpiresIn as jwt.SignOptions['expiresIn'], audience: 'tenant_portal' }
+    env.jwtPortalSecret,
+    { expiresIn: env.jwtExpiresIn as jwt.SignOptions['expiresIn'], audience: PORTAL_JWT_AUDIENCE }
   );
   setPortalCookies(res, fresh);
   res.json({ data: { ok: true } });

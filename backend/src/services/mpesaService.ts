@@ -167,10 +167,7 @@ export async function processPaybillPayment(input: MpesaPaymentInput): Promise<{
 
   const inserted = await query<StoredMpesaTransaction>(
     `INSERT INTO mpesa_transactions
-       (source, transaction_id, account_reference, amount, transaction_date, phone_number, payment_kind, raw_payload, status)
-     VALUES ('C2B', $1, $2, $3, $4, $5, $6, $7::jsonb, 'RECEIVED')
-     ON CONFLICT (transaction_id) DO NOTHING
-     RETURNING id, transaction_id, checkout_request_id, account_reference, status, tenant_id, rent_payment_id`,
+       (source, transaction_id, account_reference, amount, transaction_date, phone_number, payment_kind, raw_payload, status)     VALUES ('C2B', $1, $2, $3, $4, $5, $6, $7::jsonb, 'RECEIVED')     -- transaction_id is a PARTIAL unique index (WHERE transaction_id IS NOT     -- NULL); Postgres only infers it as a conflict target when the index     -- predicate is restated here. Without this, every C2B confirmation dies     -- with "no unique or exclusion constraint matching the ON CONFLICT     -- specification" and Daraja retries forever.     ON CONFLICT (transaction_id) WHERE transaction_id IS NOT NULL DO NOTHING     RETURNING id, transaction_id, checkout_request_id, account_reference, status, tenant_id, rent_payment_id`,
     [input.transactionId, input.accountReference.trim(), input.amount, input.transactionDate, input.phoneNumber, parsed.kind, JSON.stringify(input.rawPayload ?? {})]
   );
   const stored = inserted[0] ?? await queryOne<StoredMpesaTransaction>(
@@ -245,9 +242,7 @@ export async function initiateTenantStkPush(tenantId: number, amount: number): P
   });
   await query(
     `INSERT INTO mpesa_transactions
-       (source, checkout_request_id, merchant_request_id, account_reference, amount, phone_number, raw_payload, status)
-     VALUES ('STK', $1, $2, $3, $4, $5, $6::jsonb, 'RECEIVED')
-     ON CONFLICT (checkout_request_id) DO NOTHING`,
+       (source, checkout_request_id, merchant_request_id, account_reference, amount, phone_number, raw_payload, status)     VALUES ('STK', $1, $2, $3, $4, $5, $6::jsonb, 'RECEIVED')     -- Partial-index conflict target — see note in processPaybillPayment.     ON CONFLICT (checkout_request_id) WHERE checkout_request_id IS NOT NULL DO NOTHING`,
     [request.checkoutRequestId, request.merchantRequestId ?? null, accountReference, amount, tenant.phone_number, JSON.stringify({ request })]
   );
   return { ...request, accountReference };

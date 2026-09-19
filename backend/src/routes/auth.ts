@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { queryOne } from '../config/db';
 import { env } from '../config/env';
 import { requireAuth } from '../middleware/auth';
+import { STAFF_JWT_AUDIENCE } from '../middleware/portalAuth';
 import { loginLimiter } from '../middleware/rateLimiter';
 import { validateBody } from '../middleware/validate';
 import { unauthorized } from '../utils/httpError';
@@ -40,8 +41,14 @@ router.post(
     }
     const token = jwt.sign(
       { sub: user.id, role: user.role, name: user.name, email: user.email },
-      env.jwtSecret,
-      { expiresIn: env.jwtExpiresIn as jwt.SignOptions['expiresIn'] }
+      env.jwtStaffSecret,
+      {
+        expiresIn: env.jwtExpiresIn as jwt.SignOptions['expiresIn'],
+        // Disjoint audiences: staff tokens and tenant-portal tokens share a
+        // signing secret, so the audience claim is what keeps the two auth
+        // domains apart. requireAuth verifies with this exact audience.
+        audience: STAFF_JWT_AUDIENCE,
+      }
     );
     await logAudit({
       userId: user.id,
@@ -77,7 +84,13 @@ router.post(
 
     let payload: { sub: number; exp?: number };
     try {
-      payload = jwt.verify(token, env.jwtSecret, { ignoreExpiration: true }) as unknown as { sub: number; exp?: number };
+      // Audience pinned even under ignoreExpiration — a portal token (or any
+      // wrong-audience token) must not ride the grace window into a fresh
+      // staff session for whatever users.id its sub collides with.
+      // ignoreExpiration is safe only because the staff key AND audience are
+      // both pinned here — the grace path must stay unreachable for any
+      // token minted outside the staff population.
+      payload = jwt.verify(token, env.jwtStaffSecret, { ignoreExpiration: true, audience: STAFF_JWT_AUDIENCE }) as unknown as { sub: number; exp?: number };
     } catch {
       throw unauthorized('Invalid session.');
     }
@@ -95,8 +108,11 @@ router.post(
 
     const fresh = jwt.sign(
       { sub: user.id, role: user.role, name: user.name, email: user.email },
-      env.jwtSecret,
-      { expiresIn: env.jwtExpiresIn as jwt.SignOptions['expiresIn'] }
+      env.jwtStaffSecret,
+      {
+        expiresIn: env.jwtExpiresIn as jwt.SignOptions['expiresIn'],
+        audience: STAFF_JWT_AUDIENCE,
+      }
     );
     setAuthCookies(res, fresh);
     res.json({ data: { user: { id: user.id, name: user.name, email: user.email, role: user.role } } });

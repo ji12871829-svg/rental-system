@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { queryOne } from '../config/db';
 import { SESSION_COOKIE, readCookies } from '../utils/authCookies';
+import { STAFF_JWT_AUDIENCE } from './portalAuth';
 
 // A DB round-trip per request just to re-check user status is the single
 // biggest fixed cost on a remote database (every API call paid it). A short
@@ -77,6 +78,12 @@ interface TokenPayload {
   email: string;
 }
 
+// Staff session tokens must be verified with the exact audience they are
+// signed with. Anything else — in particular a tenant-portal token carrying
+// aud 'tenant_portal' — is a different token population and must never be
+// accepted here: the two audiences share a signing secret, so the audience
+// claim is the ONLY thing keeping the two auth domains apart.
+
 export async function requireAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   try {
     const header = req.headers.authorization || '';
@@ -90,7 +97,10 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
 
     let payload: TokenPayload;
     try {
-      payload = jwt.verify(token, env.jwtSecret) as unknown as TokenPayload;
+      // Pinned key + pinned audience: both halves of the staff-token trust
+      // boundary live here, so a portal-signed or foreign-audience token can
+      // never satisfy staff auth.
+      payload = jwt.verify(token, env.jwtStaffSecret, { audience: STAFF_JWT_AUDIENCE }) as unknown as TokenPayload;
     } catch {
       return next(unauthorized('Invalid or expired session.'));
     }

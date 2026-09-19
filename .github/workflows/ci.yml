@@ -142,3 +142,52 @@ jobs:
       - name: Full report (informational, non-blocking)
         run: npx knip
         continue-on-error: true
+
+  # Secret scanner: blocks on credentials committed in any reachable commit.
+  # Gitleaks is installed from its official GitHub release pinned by version
+  # AND sha256 — the trust chain is checkout + curl + sha256sum, no
+  # third-party Actions. A finding that is genuinely safe (e.g. a documented
+  # test fixture) gets one line in .gitleaksignore with its fingerprint and a
+  # comment saying who allowed it and why; everything else fails this job.
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history — the scan covers every reachable commit
+      - name: Install gitleaks (pinned version + sha256)
+        run: |
+          GITLEAKS_VERSION=8.18.4
+          GITLEAKS_SHA256=ba6dbb656933921c775ee5a2d1c13a91046e7952e9d919f9bac4cec61d628e7d
+          curl -sSfL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
+          gitleaks version
+      - name: Scan git history for secrets
+        run: gitleaks detect --source . --redact --verbose
+
+  # Dependency audit: blocks on known vulnerabilities in the PRODUCTION
+  # dependency trees. Prod-only scope matches the deploy (Render builds with
+  # NODE_ENV=production, so dev dependencies never ship — see render-build).
+  # Runs against the committed lockfiles, so results are reproducible.
+  # --audit-level=low means ANY advisory fails the build; if one is ever
+  # assessed as not applicable, fix or pin deliberately rather than raising
+  # the threshold — that decision belongs in review, not in a quieter gate.
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26 # matches local dev and Render's pinned NODE_VERSION
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+      - name: Audit backend production dependencies
+        working-directory: backend
+        run: npm audit --omit=dev --audit-level=low
+      - name: Audit frontend production dependencies
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=low

@@ -1,0 +1,14 @@
+# Gitleaks allowlist — one line per deliberately-accepted finding.
+#
+# CI runs `gitleaks detect` on every push/PR and BLOCKS on any finding
+# (.github/workflows/ci.yml → secrets-scan). When a finding is a genuine
+# false positive (e.g. a documented test fixture, an example credential in
+# docs), allow it here with its fingerprint:
+#
+#   <fingerprint-from-the-CI-log>:path-or-file
+#
+# …and add a comment saying who allowed it, when, and why it is safe.
+# Anything without a line in this file fails the build.
+#
+# State at creation (2026-09-19, initial CI rollout): zero entries — the
+# full-history scan of all 45 commits came back clean.

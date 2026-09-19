@@ -2,6 +2,11 @@
 // test database so integration tests never touch dev data.
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-secret-not-for-production';
+// Split signing keys — the tests exercise the real production posture with
+// distinct staff/portal secrets (env.ts falls back to JWT_SECRET when these
+// are unset, so CI variants without them still work).
+process.env.JWT_STAFF_SECRET = 'test-staff-signing-key-0123456789abcdef';
+process.env.JWT_PORTAL_SECRET = 'test-portal-signing-key-fedcba9876543210';
 process.env.DATABASE_URL =
   process.env.TEST_DATABASE_URL || 'postgres://rms_user:rms_password@localhost:5432/rpms_test';
 

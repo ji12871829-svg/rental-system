@@ -5,6 +5,15 @@ import { env } from '../config/env';
 import { PORTAL_COOKIE, readCookies } from '../utils/authCookies';
 import { forbidden, unauthorized } from '../utils/httpError';
 
+// The two token populations (staff sessions and tenant-portal sessions) are
+// signed with the same secret, so the audience claim is the boundary between
+// the two auth domains. Staff side signs/verifies STAFF_JWT_AUDIENCE; the
+// portal side signs/verifies PORTAL_JWT_AUDIENCE. The two values are distinct
+// on purpose — never unify them, and never sign or verify a token without one.
+export const PORTAL_JWT_AUDIENCE = 'tenant_portal' as const;
+// Distinct from PORTAL_JWT_AUDIENCE by design — see note above.
+export const STAFF_JWT_AUDIENCE = 'staff_api' as const;
+
 // Portal requests carry req.tenant (tenantId) — deliberately a different
 // shape from req.user so a tenant token can never be mistaken for staff auth.
 declare global {
@@ -20,7 +29,7 @@ interface PortalTokenPayload {
   sub: number;      // tenant_id
   email: string;
   name: string;
-  aud: string;      // must be 'tenant_portal'
+  aud: string;      // must be PORTAL_JWT_AUDIENCE
 }
 
 // No caching here on purpose: unlike staff users (30s cache trade-off for a
@@ -28,18 +37,17 @@ interface PortalTokenPayload {
 // effect on their very next request.
 export async function requireTenant(req: Request, _res: Response, next: NextFunction): Promise<void> {
   try {
-    const header = req.headers.authorization || '';
-    const [scheme, bearerToken] = header.split(' ');
-    const token = scheme === 'Bearer' && bearerToken
-      ? bearerToken
-      : readCookies(req.headers.cookie)[PORTAL_COOKIE];
+    const token = readCookies(req.headers.cookie)[PORTAL_COOKIE];
     if (!token) {
       return next(unauthorized('Missing or malformed portal session.'));
     }
 
     let payload: PortalTokenPayload;
     try {
-      payload = jwt.verify(token, env.jwtSecret, { audience: 'tenant_portal' }) as unknown as PortalTokenPayload;
+      // Pinned key + pinned audience: both halves of the portal-token trust
+      // boundary live here, so a staff-signed or foreign-audience token can
+      // never satisfy portal auth.
+      payload = jwt.verify(token, env.jwtPortalSecret, { audience: PORTAL_JWT_AUDIENCE }) as unknown as PortalTokenPayload;
     } catch {
       return next(unauthorized('Invalid or expired portal session.'));
     }
