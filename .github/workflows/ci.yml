@@ -1,13 +1,26 @@
-# CI — runs on every push and PR. Backend integration tests need PostgreSQL:
-# the service container uses the exact credentials globalSetup.ts expects
+# CI — runs on every push and PR, plus a weekly security sweep. Backend
+# integration tests need PostgreSQL: the service container uses the exact
+# credentials globalSetup.ts expects
 # (postgres://rms_user:rms_password@localhost:5432/rpms), so no test-code
 # changes are required for CI.
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  # Weekly security sweep (Mondays 06:00 UTC / 09:00 Nairobi): the
+  # secrets-scan and dependency-audit jobs below also run on this schedule,
+  # so newly-published advisories or newly-detected leaks fail CI even when
+  # nothing has been pushed. The push/PR-only jobs skip via their `if`
+  # guards (verify-live follows the needs chain). GitHub may delay scheduled
+  # runs during peak load, and auto-disables scheduled workflows after 60
+  # days of repo inactivity — a no-op commit re-enables them.
+  schedule:
+    - cron: '0 6 * * 1'
 
 jobs:
   backend:
+    if: github.event_name != 'schedule' # weekly sweep runs only the security jobs
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -38,6 +51,7 @@ jobs:
       - run: npm test
 
   frontend:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -59,6 +73,7 @@ jobs:
   # two ever drift — e.g. a lost --include=dev turning `tsc -b` into a TS7016
   # storm. The jobs above keep testing dev mode; this one guards the deploy.
   render-build:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     env:
       NODE_ENV: production
@@ -92,6 +107,9 @@ jobs:
   # To repoint at a recreated service (e.g. the Frankfurt one), set the
   # RENDER_URL repository variable — same variable the keep-warm job uses.
   verify-live:
+    # Explicit guard (would auto-skip via needs anyway): prod verification is
+    # a deploy-time check, not part of the weekly sweep.
+    if: github.event_name != 'schedule'
     needs: [backend, frontend, render-build]
     runs-on: ubuntu-latest
     env:
@@ -123,6 +141,7 @@ jobs:
   # "unused" export). The full report runs non-blocking to surface other
   # categories without gating CI on them.
   knip:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
