@@ -90,13 +90,15 @@ async function getReceiptForEmail(receiptId: number): Promise<ReceiptWithEmail> 
 //
 // One file attachment in the row's storage shape. Content is base64 already
 // (the row stores a faithful copy of the bytes that go out).
-export interface EmailAttachment {
+// Module-internal shape (un-exported: knip flags exports nothing outside
+// this file consumes; extend here, not via import).
+interface EmailAttachment {
   filename: string;
   content: string;
   contentType: string;
 }
 
-export interface QueueEmailInput {
+interface QueueEmailInput {
   to: string;
   subject: string;
   html: string;
@@ -115,7 +117,7 @@ function normalizeAttachments(attachments: EmailAttachment[] | undefined): [Emai
 // Validates the recipient and creates the PENDING row. The single place where
 // an email enters the queue — kind adapters never write email_notifications
 // themselves.
-export async function queueEmail(input: QueueEmailInput): Promise<EmailRow> {
+async function queueEmail(input: QueueEmailInput): Promise<EmailRow> {
   const to = input.to.trim();
   if (!to) {
     throw badRequest('This tenant has no email address on file. Provide one with the request.');

@@ -22,7 +22,7 @@ const THEME_COLOR: Record<ThemeMode, string> = {
   dark: '#000000',
 };
 
-export function storedTheme(): ThemeMode | null {
+function storedTheme(): ThemeMode | null {
   try {
     const v = localStorage.getItem(STORAGE_KEY);
     return v === 'light' || v === 'dark' ? v : null;
@@ -31,7 +31,7 @@ export function storedTheme(): ThemeMode | null {
   }
 }
 
-export function systemTheme(): ThemeMode {
+function systemTheme(): ThemeMode {
   return typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches
     ? 'dark'
     : 'light';

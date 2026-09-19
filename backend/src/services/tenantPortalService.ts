@@ -28,7 +28,7 @@ import { conflict, forbidden, notFound, unauthorized } from '../utils/httpError'
 // for reading aloud over the phone: groups, no visually ambiguous characters
 // (no 0/O, 1/l/I). The plaintext is returned once to the issuing staff user —
 // only the hash is stored.
-export function generatePortalPassword(): string {
+function generatePortalPassword(): string {
   const alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
   const bytes = randomBytes(12);
   const chars = Array.from(bytes, (b) => alphabet[b % alphabet.length]);

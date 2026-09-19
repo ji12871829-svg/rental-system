@@ -9,7 +9,7 @@ interface ApiError {
   details?: Record<string, unknown>;
 }
 
-export function getCsrfToken(): string | null {
+function getCsrfToken(): string | null {
   const cookie = document.cookie.split('; ').find((entry) => entry.startsWith('rpms_csrf='));
   return cookie ? decodeURIComponent(cookie.slice('rpms_csrf='.length)) : null;
 }

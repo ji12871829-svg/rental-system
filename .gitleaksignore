@@ -12,3 +12,10 @@
 #
 # State at creation (2026-09-19, initial CI rollout): zero entries — the
 # full-history scan of all 45 commits came back clean.
+
+# 2026-09-19 (Codebuff session): NOT a secret — this is the test suite's
+# deliberately-fake staff signing key (env.ts requires >= 32 chars, so the
+# fixture must be long enough to exercise real validation). Value is
+# public test data in a committed file, unique to the test DB. Allowlisted
+# because gitleaks' generic-api-key rule cannot know that.
+83e64a0fe148277e75b896788bd9de0f16f0626d:backend/tests/setup-env.ts:generic-api-key:8

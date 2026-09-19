@@ -7,6 +7,13 @@ process.env.JWT_SECRET = 'test-secret-not-for-production';
 // are unset, so CI variants without them still work).
 process.env.JWT_STAFF_SECRET = 'test-staff-signing-key-0123456789abcdef';
 process.env.JWT_PORTAL_SECRET = 'test-portal-signing-key-fedcba9876543210';
+// Tests start from the documented "no callback token" posture: local dev
+// .env (which this process loads) may carry a real MPESA_CALLBACK_TOKEN for
+// gate parity with production, and without clearing it here every
+// integration test hitting /api/mpesa/* would be rejected by the gate
+// instead of exercising its handler. The mpesaCallbackGate suite sets its
+// own token explicitly when testing the gate itself.
+process.env.MPESA_CALLBACK_TOKEN = '';
 process.env.DATABASE_URL =
   process.env.TEST_DATABASE_URL || 'postgres://rms_user:rms_password@localhost:5432/rpms_test';
 
