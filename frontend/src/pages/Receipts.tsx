@@ -370,7 +370,7 @@ function EmailModal({ receipt, provider, live, from, onClose }: {
           </p>
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
-            <Button onClick={send} disabled={busy || (toEmail.trim() !== '' && !valid)}>
+            <Button onClick={send} disabled={busy || (toEmail.trim() !== '' && !valid)} loading={busy}>
               {busy ? 'Sending…' : provider === 'mock' ? 'Simulate send' : 'Send email'}
             </Button>
           </div>
@@ -423,7 +423,7 @@ function GenerateModal({ open, tenants, onClose, onSaved }: { open: boolean; ten
         </p>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={generate} disabled={busy}>{busy ? 'Generating…' : 'Generate Receipt'}</Button>
+          <Button onClick={generate} disabled={busy} loading={busy}>{busy ? 'Generating…' : 'Generate Receipt'}</Button>
         </div>
       </div>
     </Modal>

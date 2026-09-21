@@ -95,25 +95,63 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
   );
 }
 
+// Button feedback icons (stroke = currentColor: correct on every variant and
+// in both themes with zero theme-specific code).
+function SpinnerIcon({ className = '', ...rest }: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} {...rest}>
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+function CheckmarkIcon({ className = '', ...rest }: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} {...rest}>
+      <path className="btn-check-mark" d="M4 12.5l5.2 5.2L20 6.5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // -------------------------------------------------------------------- Button
 export function Button({
   children,
   variant = 'primary',
   className = '',
+  loading = false,
+  success = false,
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'danger' | 'ghost' }) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
+  // loading: spinner replaces content, button disabled. success: drawn
+  // checkmark replaces content. Pass success for a beat AFTER the await
+  // resolves (setBusy->setSuccess) so the mark is visible before any
+  // close/reset; use loading during the await itself.
+  loading?: boolean;
+  success?: boolean;
+}) {
   const variants: Record<string, string> = {
     primary: 'bg-brand-600 text-white shadow-sm hover:bg-brand-700',
     secondary: 'bg-white text-gray-700 border border-gray-200 shadow-sm hover:bg-gray-50',
     danger: 'bg-red-600 text-white shadow-sm hover:bg-red-700',
     ghost: 'text-brand-600 hover:bg-brand-50',
   };
+  // Both icons stroke currentColor — correct on every variant and theme with
+  // zero theme-specific code. Spinner: pure CSS/SVG, no dependency. Success:
+  // animated by index.css (@keyframes btn-check-draw) via the .btn-check class.
+  const icon = success
+    ? <CheckmarkIcon aria-hidden className="h-4 w-4 btn-check" />
+    : <SpinnerIcon aria-hidden className="h-4 w-4 animate-spin" />;
   return (
     <button
       className={`inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-[background-color,box-shadow,color,transform] duration-150 hover:shadow active:scale-[0.96] disabled:pointer-events-none disabled:opacity-50 ${variants[variant]} ${className}`}
       {...props}
+      disabled={loading || success || props.disabled}
     >
-      {children}
+      {/* Icon rides alongside the label text (pages swap the text themselves
+          via busy/saved state), so nothing disappears — clearer than an
+          icon-only swap and readable by screen readers. */}
+      {loading || success ? <>{icon}{children}</> : children}
     </button>
   );
 }

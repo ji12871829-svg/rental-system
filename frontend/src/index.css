@@ -91,6 +91,49 @@ html.dark .table-scroll {
   transform-origin: 135px 152px;
 }
 
+/* Button success feedback: a drawn checkmark (used by ui.tsx's Button when
+   success=true). Path-length 30 keeps the stroke-dasharray math honest. */
+@keyframes btn-check-draw {
+  from { stroke-dashoffset: 30; }
+  to { stroke-dashoffset: 0; }
+}
+.btn-check .btn-check-mark {
+  stroke-dasharray: 30;
+  stroke-dashoffset: 30;
+  animation: btn-check-draw 0.45s ease-out 0.1s forwards;
+}
+
+/* KPI value-change flash: a soft brand-colored pulse when a polled number
+   moves (see useCountUp in Dashboard.tsx). One-shot, never loops. */
+@keyframes value-flash {
+  0% { text-shadow: 0 0 0 rgba(29, 111, 214, 0); }
+  35% { text-shadow: 0 0 14px rgba(29, 111, 214, 0.55); }
+  100% { text-shadow: 0 0 0 rgba(29, 111, 214, 0); }
+}
+.value-flash {
+  animation: value-flash 1s ease-out;
+}
+
+/* Section entrance: gentle rise-and-fade on first mount only — sections
+   then update in place on every poll, so this never replays. */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rise-in {
+  animation: rise-in 0.35s ease-out both;
+}
+
+/* Attention pulse for provider badges (low/empty wallet, pending email):
+   the status dot breathes so it reads as attention-worthy, not decorative. */
+@keyframes alert-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.alert-pulse {
+  animation: alert-pulse 1.6s ease-in-out infinite;
+}
+
 /* Respect users who turn off animations at the OS level. */
 @media (prefers-reduced-motion: reduce) {
   *,

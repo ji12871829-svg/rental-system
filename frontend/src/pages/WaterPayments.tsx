@@ -212,7 +212,7 @@ function WaterPaymentForm({ open, tenants, onClose, onSaved }: { open: boolean; 
         </p>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save Payment'}</Button>
+          <Button onClick={save} disabled={busy} loading={busy}>{busy ? 'Saving…' : 'Save Payment'}</Button>
         </div>
       </div>
     </Modal>

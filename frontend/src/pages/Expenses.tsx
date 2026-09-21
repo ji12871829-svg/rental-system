@@ -239,7 +239,7 @@ function ExpenseForm({ open, expense, onClose, onSaved }: { open: boolean; expen
         </div>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save Expense'}</Button>
+          <Button onClick={save} disabled={busy} loading={busy}>{busy ? 'Saving…' : 'Save Expense'}</Button>
         </div>
       </div>
     </Modal>

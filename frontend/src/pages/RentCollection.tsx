@@ -51,6 +51,9 @@ export default function RentCollection() {
   const [paymentReference, setPaymentReference] = useState('');
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
+  // True for ~1.2s after a successful save: the Record button shows a drawn
+  // checkmark so confirming a payment is visible, not just a text swap.
+  const [saved, setSaved] = useState(false);
   const [stkBusy, setStkBusy] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [monthFilter, setMonthFilter] = useState('');
@@ -152,6 +155,8 @@ export default function RentCollection() {
       setPaymentReference('');
       setNotes('');
       setRefreshKey((k) => k + 1);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 1200);
     } catch (err) {
       toast('error', (err as Error).message);
     } finally {
@@ -227,10 +232,10 @@ export default function RentCollection() {
             </div>
             <Field label="Notes"><TextInput value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Button onClick={recordPayment} disabled={busy || stkBusy}>
-                {busy ? 'Recording…' : 'Record Rent Payment'}
+              <Button onClick={recordPayment} disabled={busy || stkBusy} loading={busy} success={saved}>
+                {saved ? 'Saved' : 'Record Rent Payment'}
               </Button>
-              <Button variant="secondary" onClick={requestStkPush} disabled={busy || stkBusy}>
+              <Button variant="secondary" onClick={requestStkPush} disabled={busy || saved} loading={stkBusy}>
                 {stkBusy ? 'Sending prompt…' : 'Send M-Pesa Prompt'}
               </Button>
             </div>

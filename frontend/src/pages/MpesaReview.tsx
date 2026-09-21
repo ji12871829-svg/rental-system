@@ -84,8 +84,8 @@ export default function MpesaReview() {
                     <select value={selected.kind} onChange={(e) => setSelection((all) => ({ ...all, [row.id]: { ...selected, kind: e.target.value as 'RENT' | 'WATER' } }))} className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm">
                       <option value="RENT">Rent</option><option value="WATER">Water</option>
                     </select>
-                    <Button type="button" disabled={busy === row.id} onClick={() => resolve(row)}>Post</Button>
-                    <Button type="button" variant="secondary" disabled={busy === row.id} onClick={() => ignore(row)}>Ignore</Button>
+                    <Button type="button" disabled={busy === row.id} loading={busy === row.id} onClick={() => resolve(row)}>Post</Button>
+                    <Button type="button" variant="secondary" disabled={busy === row.id} loading={busy === row.id} onClick={() => ignore(row)}>Ignore</Button>
                   </div>
                 </td>
               </tr>;

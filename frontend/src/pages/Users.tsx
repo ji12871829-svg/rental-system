@@ -178,7 +178,7 @@ function UserForm({ open, user, onClose, onSaved }: { open: boolean; user: UserR
         </Field>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save User'}</Button>
+          <Button onClick={save} disabled={busy} loading={busy}>{busy ? 'Saving…' : 'Save User'}</Button>
         </div>
       </div>
     </Modal>
@@ -213,7 +213,7 @@ function ResetPasswordModal({ user, onClose, onSaved }: { user: UserRow | null; 
       </Field>
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button onClick={reset} disabled={busy}>{busy ? 'Resetting…' : 'Reset Password'}</Button>
+        <Button onClick={reset} disabled={busy} loading={busy}>{busy ? 'Resetting…' : 'Reset Password'}</Button>
       </div>
     </Modal>
   );

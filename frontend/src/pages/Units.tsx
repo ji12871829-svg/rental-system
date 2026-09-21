@@ -183,7 +183,7 @@ function UnitForm({ open, unit, onClose, onSaved }: { open: boolean; unit: Unit 
         )}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</Button>
+          <Button onClick={save} disabled={busy} loading={busy}>{busy ? 'Saving…' : 'Save'}</Button>
         </div>
       </div>
     </Modal>

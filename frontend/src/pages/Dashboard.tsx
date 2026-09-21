@@ -6,7 +6,7 @@ import {
 import { StatGroupCard, PageHeader, useFetch, SkeletonDashboard } from '../components/ui';
 import { QuickActions } from '../components/QuickActions';
 import { Link, useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { MONTHS, money, methodLabel } from '../lib/format';
 
@@ -63,6 +63,11 @@ interface DashboardData {
 
 const PIE_COLORS = ['#1d6fd6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#14b8a6'];
 
+// Live-poll cadence for the KPI strip and provider health. Quiet by design:
+// failed polls keep the last good data and retry next tick, hidden tabs skip
+// ticks entirely, and returning to the tab refetches immediately.
+const POLL_MS = 60_000;
+
 // Charts mount one tick after the KPI strip paints: first paint shows the
 // skeleton grid, then a short timer flips to the real charts. A timeout (not
 // requestAnimationFrame/requestIdleCallback) because those never fire in a
@@ -77,14 +82,124 @@ function useDeferredRender(delayMs = 120): boolean {
   return ready;
 }
 
+// --- Count-up ----------------------------------------------------------------
+// Animates a numeric display from its previous value toward a new one so a
+// poll-driven change is *seen* rather than silently swapped. 600ms ease-out,
+// requestAnimationFrame-driven. First paint shows the target immediately (no
+// 0-to-N theater on load), prefers-reduced-motion jumps straight to the
+// target, and a poll landing mid-animation resumes from the painted value.
+function useCountUp(target: number, durationMs = 600): { value: number; flash: boolean } {
+  const [display, setDisplay] = useState(target);
+  const [flash, setFlash] = useState(false);
+  const fromRef = useRef(target);
+  const rafRef = useRef(0);
+  const flashTimer = useRef(0);
+
+  useEffect(() => {
+    const from = fromRef.current;
+    if (from === target) return;
+    // Signal the change so the display can flash (CSS keyframe, index.css).
+    window.clearTimeout(flashTimer.current);
+    setFlash(true);
+    flashTimer.current = window.setTimeout(() => setFlash(false), 1100);
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced || document.visibilityState === 'hidden') {
+      fromRef.current = target;
+      setDisplay(target);
+      return;
+    }
+    const t0 = performance.now();
+    const step = (t: number) => {
+      const k = Math.min(1, (t - t0) / durationMs);
+      const eased = 1 - Math.pow(1 - k, 3);
+      if (k < 1) {
+        setDisplay(from + (target - from) * eased);
+        rafRef.current = requestAnimationFrame(step);
+      } else {
+        fromRef.current = target;
+        setDisplay(target);
+      }
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => {
+      window.clearTimeout(flashTimer.current);
+      cancelAnimationFrame(rafRef.current);
+      // Preserve partial progress as the next animation's start point if a
+      // newer target arrived mid-flight.
+      setDisplay((cur) => {
+        fromRef.current = cur;
+        return cur;
+      });
+    };
+  }, [target, durationMs]);
+
+  return { value: display, flash };
+}
+
+// Formatted count-up displays for the polled KPI strip. Both keep the label
+// readable while animating (real text, no icon-only swap) and hold still
+// when a poll returns unchanged numbers.
+function CountMoney({ value, currency }: { value: number; currency?: string }) {
+  const { value: v, flash } = useCountUp(value);
+  return <span className={flash ? 'value-flash' : undefined}>{money(v, currency)}</span>;
+}
+
+function Count({ value }: { value: number }) {
+  const { value: v, flash } = useCountUp(value);
+  return <span className={flash ? 'value-flash' : undefined}>{Math.round(v).toLocaleString('en-KE')}</span>;
+}
+
 export default function Dashboard() {
-  const { data, loading, error } = useFetch<DashboardData>(() =>
+  // Live dashboard: refetch every 60s while the page is open. Polls stay
+  // calm by design: a failed poll keeps the last good KPIs on screen (the
+  // next tick retries silently) and identical payloads never re-render.
+  const { data: latest, loading, error, refresh } = useFetch<DashboardData>(() =>
     api.get<{ data: DashboardData }>('/api/reports/dashboard').then((r) => r.data)
   );
+  const [data, setData] = useState<DashboardData | null>(null);
+  // Set only when a poll fails BEFORE anything has ever loaded — the one
+  // case where there is no last-good data to keep showing.
+  const [fatalError, setFatalError] = useState<string | null>(null);
+  // A poll returning identical data still yields a fresh object; this ref
+  // detects real change so unchanged payloads skip setData entirely.
+  const lastJsonRef = useRef<string>('');
+  useEffect(() => {
+    if (!latest) return;
+    const json = JSON.stringify(latest);
+    if (json === lastJsonRef.current) return;
+    lastJsonRef.current = json;
+    setData(latest);
+  }, [latest]);
+  useEffect(() => {
+    if (error && !data) setFatalError(error);
+    else if (!error || data) setFatalError(null);
+  }, [error, data]);
+
+  // The 60s tick pauses in hidden tabs (browsers throttle timers there
+  // anyway); returning to the tab refetches immediately so the strip is
+  // current the moment you look at it.
+  useEffect(() => {
+    const tick = window.setInterval(() => {
+      if (document.visibilityState === 'visible') refresh();
+    }, POLL_MS);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(tick);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [refresh]);
+
   // Hooks must sit above the early returns below — they power the chart
   // deep-link handlers rendered further down.
   const navigate = useNavigate();
   const chartsReady = useDeferredRender();
+  // Charts re-mount only when the chart data itself changes: recharts
+  // re-animates bars/pies on mount, so keying the grid on the serialized
+  // charts keeps identical polls from replaying the draw every minute.
+  const chartsKey = useMemo(() => (data ? JSON.stringify(data.charts) : ''), [data]);
 
   // Quick actions are shared with the mobile drawer (QuickActions component):
   // each lands with ?new=1 to open or focus the target page's form.
@@ -96,9 +211,13 @@ export default function Dashboard() {
     navigate(`/receipts?month=${d.month}&receiptType=${type}`);
   const unitArrears = (d: ChartDatum) => navigate(`/arrears?unit=${encodeURIComponent(String(d.unitNumber))}`);
 
-  if (loading) return <SkeletonDashboard />;
-  if (error) return <div className="text-sm text-red-600">Unable to load dashboard: {error}</div>;
-  if (!data) return null;
+  // Skeleton and error pages are for the FIRST load only; once data exists,
+  // polls refresh in place and transient failures keep last-good numbers.
+  if (!data) {
+    if (loading) return <SkeletonDashboard />;
+    if (fatalError) return <div className="text-sm text-red-600">Unable to load dashboard: {fatalError}</div>;
+    return null;
+  }
 
   const { property: p, water: w, combined: c, charts, currency, reportingYear } = data;
   const monthLabel = (m: number) => MONTHS[m - 1].slice(0, 3);
@@ -112,52 +231,52 @@ export default function Dashboard() {
       />
 
       {/* Property summary */}
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Property</h2>
+      <h2 className="rise-in mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Property</h2>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <StatGroupCard
           title="Units"
           stats={[
-            { label: 'Total', value: p.totalUnits, to: '/units' },
-            { label: 'Occupied', value: p.occupiedUnits, tone: 'good', to: '/units' },
-            { label: 'Vacant', value: p.vacantUnits, tone: p.vacantUnits > 0 ? 'warn' : 'good', to: '/units' },
+            { label: 'Total', value: <Count value={p.totalUnits} />, to: '/units' },
+            { label: 'Occupied', value: <Count value={p.occupiedUnits} />, tone: 'good', to: '/units' },
+            { label: 'Vacant', value: <Count value={p.vacantUnits} />, tone: p.vacantUnits > 0 ? 'warn' : 'good', to: '/units' },
           ]}
         />
         <StatGroupCard
           title="Rent"
           stats={[
-            { label: 'Expected (this month)', value: money(p.expectedRent, currency), to: '/rent' },
-            { label: 'Collected', value: money(p.rentCollected, currency), sub: `${p.rentCollectionRate}% of YTD expected`, tone: 'good', to: '/rent' },
-            { label: 'Outstanding', value: money(p.rentOutstanding, currency), tone: p.rentOutstanding > 0 ? 'bad' : 'good', to: '/arrears' },
+            { label: 'Expected (this month)', value: <CountMoney value={p.expectedRent} currency={currency} />, to: '/rent' },
+            { label: 'Collected', value: <CountMoney value={p.rentCollected} currency={currency} />, sub: `${p.rentCollectionRate}% of YTD expected`, tone: 'good', to: '/rent' },
+            { label: 'Outstanding', value: <CountMoney value={p.rentOutstanding} currency={currency} />, tone: p.rentOutstanding > 0 ? 'bad' : 'good', to: '/arrears' },
           ]}
         />
         <StatGroupCard
           title="Financials"
           stats={[
-            { label: 'Total Expenses', value: money(p.totalExpenses, currency), tone: 'warn', to: '/expenses' },
-            { label: 'Net Property Income', value: money(p.netPropertyIncome, currency), tone: p.netPropertyIncome >= 0 ? 'good' : 'bad' },
+            { label: 'Total Expenses', value: <CountMoney value={p.totalExpenses} currency={currency} />, tone: 'warn', to: '/expenses' },
+            { label: 'Net Property Income', value: <CountMoney value={p.netPropertyIncome} currency={currency} />, tone: p.netPropertyIncome >= 0 ? 'good' : 'bad' },
           ]}
         />
       </div>
 
       {/* Water summary */}
-      <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-gray-500">Water</h2>
+      <h2 className="rise-in mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-gray-500">Water</h2>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <StatGroupCard
           title="Water Billing"
           stats={[
-            { label: 'Billed', value: money(w.waterBilled, currency), to: '/water-meter' },
-            { label: 'Collected', value: money(w.waterCollected, currency), sub: `${w.collectionRate}% collection rate`, tone: 'good', to: '/water-payments' },
-            { label: 'Outstanding', value: money(w.waterOutstanding, currency), tone: w.waterOutstanding > 0 ? 'bad' : 'good', to: '/arrears' },
+            { label: 'Billed', value: <CountMoney value={w.waterBilled} currency={currency} />, to: '/water-meter' },
+            { label: 'Collected', value: <CountMoney value={w.waterCollected} currency={currency} />, sub: `${w.collectionRate}% collection rate`, tone: 'good', to: '/water-payments' },
+            { label: 'Outstanding', value: <CountMoney value={w.waterOutstanding} currency={currency} />, tone: w.waterOutstanding > 0 ? 'bad' : 'good', to: '/arrears' },
           ]}
         />
         <StatGroupCard
           title="Water Supply"
           stats={[
-            { label: 'Purchased', value: `${w.waterPurchased} units`, to: '/water-supply' },
-            { label: 'Supply Cost', value: money(w.waterSupplyCost, currency), sub: `avg ${money(w.averagePurchaseCost, currency)}/unit`, to: '/water-supply' },
+            { label: 'Purchased', value: <><Count value={w.waterPurchased} /> units</>, to: '/water-supply' },
+            { label: 'Supply Cost', value: <CountMoney value={w.waterSupplyCost} currency={currency} />, sub: `avg ${money(w.averagePurchaseCost, currency)}/unit`, to: '/water-supply' },
             {
               label: w.surplus ? 'Surplus' : 'Deficit',
-              value: money(Math.abs(w.surplusDeficit), currency),
+              value: <CountMoney value={Math.abs(w.surplusDeficit)} currency={currency} />,
               tone: w.surplus ? 'good' : 'bad',
             },
           ]}
@@ -165,14 +284,14 @@ export default function Dashboard() {
       </div>
 
       {/* Combined summary */}
-      <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-gray-500">Combined</h2>
+      <h2 className="rise-in mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-gray-500">Combined</h2>
       <StatGroupCard
         stats={[
-          { label: 'Rent + Water Due (this month)', value: money(c.totalDueThisMonth, currency), to: `/monthly?month=${new Date().getMonth() + 1}` },
-          { label: 'Total Money Collected', value: money(c.totalCollected, currency), sub: `Rent ${money(c.rentCollected, currency)} + Water ${money(c.waterCollected, currency)}`, tone: 'good', to: '/receipts' },
-          { label: 'Total Outstanding', value: money(c.totalOutstanding, currency), tone: c.totalOutstanding > 0 ? 'bad' : 'good', to: '/arrears' },
-          { label: 'Total Expenses', value: money(c.totalExpenses, currency), to: '/expenses' },
-          { label: 'Net Property Income', value: money(c.netIncome, currency), tone: c.netIncome >= 0 ? 'good' : 'bad' },
+          { label: 'Rent + Water Due (this month)', value: <CountMoney value={c.totalDueThisMonth} currency={currency} />, to: `/monthly?month=${new Date().getMonth() + 1}` },
+          { label: 'Total Money Collected', value: <CountMoney value={c.totalCollected} currency={currency} />, sub: `Rent ${money(c.rentCollected, currency)} + Water ${money(c.waterCollected, currency)}`, tone: 'good', to: '/receipts' },
+          { label: 'Total Outstanding', value: <CountMoney value={c.totalOutstanding} currency={currency} />, tone: c.totalOutstanding > 0 ? 'bad' : 'good', to: '/arrears' },
+          { label: 'Total Expenses', value: <CountMoney value={c.totalExpenses} currency={currency} />, to: '/expenses' },
+          { label: 'Net Property Income', value: <CountMoney value={c.netIncome} currency={currency} />, tone: c.netIncome >= 0 ? 'good' : 'bad' },
         ]}
       />
 
@@ -181,7 +300,7 @@ export default function Dashboard() {
           config, not to discover a problem. Renders nothing if API is older. */}
       {(data.sms || data.email) && (
         <div className="mt-8">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Messaging</h2>
+          <h2 className="rise-in mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Messaging</h2>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {data.sms && <SmsHealthCard sms={data.sms} />}
             {data.email && <EmailHealthCard email={data.email} />}
@@ -194,9 +313,9 @@ export default function Dashboard() {
           are below the fold and don't need to block it. Renders skeletons
           until the browser is idle (or 600ms passes on older browsers),
           then mounts all charts in one commit. */}
-      <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-gray-500">Charts</h2>
+      <h2 className="rise-in mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-gray-500">Charts</h2>
       {chartsReady ? (
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div key={chartsKey} className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ChartCard title="Monthly Rent Collected" to="/rent">
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={charts.monthlyRentCollected} onBarClick={monthReceipts('RENT')}>
@@ -361,8 +480,10 @@ type BalanceUnion =
   | { state: 'empty'; balance: { amount: number; currency: string }; threshold: number | null };
 
 function SmsWalletBadge({ balance }: { balance: BalanceUnion }) {
+  // Wallet amount counts up when a poll changes it; CountMoney carries the
+  // currency prefix itself.
   const amount = 'balance' in balance
-    ? `${balance.balance.currency} ${balance.balance.amount.toLocaleString('en-KE', { maximumFractionDigits: 2 })}`
+    ? <CountMoney value={balance.balance.amount} currency={balance.balance.currency} />
     : '';
   if (balance.state === 'unknown' || balance.state === 'unavailable') {
     return (
@@ -377,14 +498,14 @@ function SmsWalletBadge({ balance }: { balance: BalanceUnion }) {
   if (balance.state === 'empty') {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">
-        <span className="h-1.5 w-1.5 rounded-full bg-red-500" aria-hidden /> SMS wallet empty — {amount}
+        <span className="alert-pulse h-1.5 w-1.5 rounded-full bg-red-500" aria-hidden /> SMS wallet empty — {amount}
       </span>
     );
   }
   if (balance.state === 'low') {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
-        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden /> SMS wallet low — {amount}
+        <span className="alert-pulse h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden /> SMS wallet low — {amount}
       </span>
     );
   }
@@ -463,10 +584,10 @@ function SmsHealthCard({ sms }: { sms: DashboardData['sms'] }) {
     <HealthCard title="SMS" tone={walletTone} to="/sms" linkLabel="Manage SMS">
       <SmsWalletBadge balance={sms.balance} />
       <span className="text-sm text-gray-600">
-        <span className="font-semibold text-gray-900">{sms.sentThisMonth}</span> sent this month
+        <span className="font-semibold text-gray-900"><Count value={sms.sentThisMonth} /></span> sent this month
       </span>
       <span className="text-sm text-gray-600">
-        <span className={`font-semibold ${sms.failedThisMonth > 0 ? 'text-red-600' : 'text-gray-900'}`}>{sms.failedThisMonth}</span> failed
+        <span className={`font-semibold ${sms.failedThisMonth > 0 ? 'text-red-600' : 'text-gray-900'}`}><Count value={sms.failedThisMonth} /></span> failed
       </span>
       {sms.lastFailure && <LastFailureLine failure={sms.lastFailure} />}
     </HealthCard>
@@ -478,17 +599,17 @@ function EmailHealthCard({ email }: { email: NonNullable<DashboardData['email']>
   return (
     <HealthCard title="Email" tone={emailTone} to="/email-campaign" linkLabel="Tenant Email">
       <span className="text-sm text-gray-600">
-        <span className="font-semibold text-gray-900">{email.sentThisMonth}</span> sent this month
+        <span className="font-semibold text-gray-900"><Count value={email.sentThisMonth} /></span> sent this month
       </span>
       <span className="text-sm text-gray-600">
-        <span className={`font-semibold ${email.failedThisMonth > 0 ? 'text-red-600' : 'text-gray-900'}`}>{email.failedThisMonth}</span> failed
+        <span className={`font-semibold ${email.failedThisMonth > 0 ? 'text-red-600' : 'text-gray-900'}`}><Count value={email.failedThisMonth} /></span> failed
       </span>
       {email.pendingCount > 0 && (
         <span
           className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700"
           title="Composed emails still queued — the provider has not confirmed a send yet. Check Settings for the provider status."
         >
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden /> {email.pendingCount} pending
+          <span className="alert-pulse h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden /> <Count value={email.pendingCount} /> pending
         </span>
       )}
       {email.lastFailure && <LastFailureLine failure={email.lastFailure} />}

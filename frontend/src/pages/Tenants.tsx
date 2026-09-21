@@ -378,7 +378,7 @@ function PortalAccessModal({ tenant, onClose, onDone }: {
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={handleClose}>Close</Button>
             <Button variant="secondary" onClick={revoke} disabled={busy}><KeyRound size={14} className="mr-1" /> Revoke</Button>
-            <Button onClick={issue} disabled={busy}>{busy ? 'Working…' : credentials ? 'Regenerate password' : 'Issue access'}</Button>
+            <Button onClick={issue} disabled={busy} loading={busy}>{busy ? 'Working…' : credentials ? 'Regenerate password' : 'Issue access'}</Button>
           </div>
         </div>
       )}
@@ -470,7 +470,7 @@ function PrivacyRequestModal({ request, onClose, onDone, onErased, onLetter }: {
           </Field>
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
-            <Button variant={request.action === 'erase' ? 'danger' : 'primary'} onClick={submit} disabled={busy || !ready}>
+            <Button variant={request.action === 'erase' ? 'danger' : 'primary'} onClick={submit} disabled={busy || !ready} loading={busy}>
               {busy ? 'Working…' : request.action === 'erase' ? 'Erase & log' : request.action === 'letter' ? 'Generate letter' : 'Export & log'}
             </Button>
           </div>
@@ -567,7 +567,7 @@ function TenantForm({ open, tenant, onClose, onSaved }: { open: boolean; tenant:
         </label>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</Button>
+          <Button onClick={save} disabled={busy} loading={busy}>{busy ? 'Saving…' : 'Save'}</Button>
         </div>
       </div>
     </Modal>

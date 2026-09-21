@@ -218,7 +218,7 @@ function PurchaseForm({ open, purchase, onClose, onSaved }: { open: boolean; pur
         </div>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save Purchase'}</Button>
+          <Button onClick={save} disabled={busy} loading={busy}>{busy ? 'Saving…' : 'Save Purchase'}</Button>
         </div>
       </div>
     </Modal>

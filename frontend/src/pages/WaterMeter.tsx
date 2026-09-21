@@ -213,7 +213,7 @@ function ReadingForm({ open, units, prefillUnitId, onClose, onSaved }: { open: b
         </p>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save Reading'}</Button>
+          <Button onClick={save} disabled={busy} loading={busy}>{busy ? 'Saving…' : 'Save Reading'}</Button>
         </div>
       </div>
     </Modal>

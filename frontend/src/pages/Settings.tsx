@@ -126,6 +126,7 @@ export default function Settings() {
   const [waterRate, setWaterRate] = useState(200);
   const [retentionYears, setRetentionYears] = useState(7);
   const [busy, setBusy] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
 
   useEffect(() => {
     if (data) {
@@ -148,6 +149,9 @@ export default function Settings() {
       });
       toast('success', 'Settings saved. All reports now use the new values.');
       refresh();
+      // Inline form stays mounted: show the drawn checkmark for a beat.
+      setSettingsSaved(true);
+      window.setTimeout(() => setSettingsSaved(false), 1200);
     } catch (err) {
       toast('error', (err as Error).message);
     } finally {
@@ -158,6 +162,7 @@ export default function Settings() {
   // --- Business identity (DB-backed, editable here) --------------------------
   const [identityForm, setIdentityForm] = useState<IdentityForm | null>(null);
   const [identityBusy, setIdentityBusy] = useState(false);
+  const [identitySaved, setIdentitySaved] = useState(false);
   // --- Logo upload -----------------------------------------------------------
   const [logoBusy, setLogoBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -180,6 +185,7 @@ export default function Settings() {
   const [paybillInstructions, setPaybillInstructions] = useState('');
   const [paybillEnabled, setPaybillEnabled] = useState(false);
   const [paybillBusy, setPaybillBusy] = useState(false);
+  const [paybillSaved, setPaybillSaved] = useState(false);
 
   // Fill the form the first time identity arrives; after a save the form is
   // re-synced explicitly, so live updates never clobber in-progress edits.
@@ -213,6 +219,8 @@ export default function Settings() {
       await refreshBranding();
       setIdentityForm(null); // re-sync from the fresh identity
       toast('success', 'Business identity saved. Receipts, legal pages, footers and SMS now use it.');
+      setIdentitySaved(true);
+      window.setTimeout(() => setIdentitySaved(false), 1200);
     } catch (err) {
       toast('error', (err as Error).message);
     } finally {
@@ -232,6 +240,8 @@ export default function Settings() {
       });
       await refreshBranding();
       toast('success', 'PayBill instructions saved.');
+      setPaybillSaved(true);
+      window.setTimeout(() => setPaybillSaved(false), 1200);
     } catch (err) {
       toast('error', (err as Error).message);
     } finally {
@@ -371,7 +381,7 @@ export default function Settings() {
           <TextInput type="number" min={0} max={30} value={retentionYears} onChange={(e) => setRetentionYears(Number(e.target.value))} disabled={!canEdit} />
         </Field>
         {canEdit && (
-          <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save Settings'}</Button>
+          <Button type="submit" disabled={busy} loading={busy} success={settingsSaved}>{settingsSaved ? 'Saved' : 'Save Settings'}</Button>
         )}
       </form>
 
@@ -442,7 +452,7 @@ export default function Settings() {
                 </span>
               </Button>
               {identity?.logo_mime_type && (
-                <Button type="button" variant="secondary" disabled={logoBusy} onClick={() => void removeLogo()}>
+                <Button type="button" variant="secondary" disabled={logoBusy} loading={logoBusy} onClick={() => void removeLogo()}>
                   <span className="flex items-center gap-2">
                     <Trash2 size={16} strokeWidth={1.75} aria-hidden />
                     Remove
@@ -481,8 +491,8 @@ export default function Settings() {
             ))}
           </div>
           <div className="mt-4 flex items-center gap-3">
-            <Button type="submit" disabled={identityBusy || !identityDirty || !identityValid}>
-              {identityBusy ? 'Saving…' : 'Save Identity'}
+            <Button type="submit" disabled={identityBusy || !identityDirty || !identityValid} loading={identityBusy} success={identitySaved}>
+              {identityBusy ? 'Saving…' : identitySaved ? 'Saved' : 'Save Identity'}
             </Button>
             {identityDirty && (
               <Button
@@ -528,7 +538,7 @@ export default function Settings() {
             <input type="checkbox" checked={paybillEnabled} onChange={(e) => setPaybillEnabled(e.target.checked)} disabled={paybillBusy} />
             Show PayBill instructions in the tenant portal
           </label>
-          <div className="mt-4"><Button type="submit" disabled={paybillBusy}>{paybillBusy ? 'Saving…' : 'Save PayBill'}</Button></div>
+          <div className="mt-4"><Button type="submit" disabled={paybillBusy} loading={paybillBusy} success={paybillSaved}>{paybillSaved ? 'Saved' : paybillBusy ? 'Saving…' : 'Save PayBill'}</Button></div>
         </form>
       )}
 
@@ -556,7 +566,7 @@ export default function Settings() {
                 />
               </Field>
             </div>
-            <Button type="button" variant="secondary" disabled={testBusy} onClick={() => void sendTestEmail()}>
+            <Button type="button" variant="secondary" disabled={testBusy} loading={testBusy} onClick={() => void sendTestEmail()}>
               {testBusy ? 'Sending…' : 'Send test email'}
             </Button>
           </div>
@@ -620,7 +630,7 @@ export default function Settings() {
                 />
               </Field>
             </div>
-            <Button type="button" variant="secondary" disabled={smsBusy} onClick={() => void sendTestSms()}>
+            <Button type="button" variant="secondary" disabled={smsBusy} loading={smsBusy} onClick={() => void sendTestSms()}>
               {smsBusy ? 'Sending…' : 'Send test SMS'}
             </Button>
           </div>

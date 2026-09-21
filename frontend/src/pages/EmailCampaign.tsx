@@ -81,7 +81,7 @@ export default function EmailCampaign() {
             <div className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
               This will send to <strong>{selectedCount}</strong> tenant{selectedCount === 1 ? '' : 's'} with email addresses. Emails are recorded in Email History.
             </div>
-            <Button onClick={sendCampaign} disabled={busy || loading} className="w-full">
+            <Button onClick={sendCampaign} disabled={busy || loading} loading={busy} className="w-full">
               <Send size={16} aria-hidden /> {busy ? 'Sending…' : 'Send Email'}
             </Button>
           </div>
