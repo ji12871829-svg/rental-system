@@ -172,7 +172,7 @@ export default function Login() {
           {/* Demo credentials must never ship to a real deployment. */}
           {import.meta.env.DEV && (
             <p className="mt-5 text-center text-xs text-gray-400">
-              Demo accounts: admin@rpms.local / Manager@2026! / Staff@2026! — see README
+              Demo accounts: admin@rpms.local / Admin@2026! · manager@rpms.local / Manager@2026! · staff@rpms.local / Staff@2026! — see README
             </p>
           )}
         </div>
