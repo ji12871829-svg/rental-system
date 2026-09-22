@@ -1,7 +1,12 @@
 // `npm run db:setup` — idempotent. Applies the schema, seeds the 24-unit clean
-// configuration, creates the default users (password hashed at runtime), then
-// backfills receipts + SMS notifications for any existing payments.
-import bcrypt from 'bcryptjs';
+// configuration, then backfills receipts + SMS notifications for any existing
+// payments.
+//
+// No default users are created: there are NO seeded credentials in this
+// system. The first account is created through the public "Create account"
+// flow (/register → POST /api/auth/register), which bootstraps as an ACTIVE
+// ADMIN when the users table is empty — every account after that is an
+// admin-approved request. See routes/auth.ts and DEPLOY.md.
 import fs from 'fs';
 import path from 'path';
 import { pool } from '../config/db';
@@ -18,31 +23,9 @@ async function applyFile(file: string): Promise<void> {
   await pool.query(sql);
 }
 
-async function seedUsers(): Promise<void> {
-  const users = [
-    { name: 'System Administrator', email: 'admin@rpms.local', password: 'Admin@2026!', role: 'ADMIN' },
-    { name: 'Property Manager', email: 'manager@rpms.local', password: 'Manager@2026!', role: 'PROPERTY_MANAGER' },
-    { name: 'Front Desk Staff', email: 'staff@rpms.local', password: 'Staff@2026!', role: 'STAFF' },
-  ];
-  for (const u of users) {
-    const existing = await pool.query('SELECT id FROM users WHERE email = $1', [u.email]);
-    if (existing.rowCount === 0) {
-      const hash = await bcrypt.hash(u.password, 12);
-      await pool.query(
-        `INSERT INTO users (name, email, phone, password_hash, role, status)
-         VALUES ($1, $2, $3, $4, $5, 'ACTIVE')`,
-        [u.name, u.email, null, hash, u.role]
-      );
-      // eslint-disable-next-line no-console
-      console.log(`  created user ${u.email} (${u.role})`);
-    }
-  }
-}
-
 async function main() {
   await applyFile(SCHEMA_SQL);
   await applyFile(SEED_SQL);
-  await seedUsers();
   const receipts = await backfillReceipts();
   const sms = await backfillSms();
   // eslint-disable-next-line no-console

@@ -235,6 +235,7 @@ function LandlordForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+  const [bootstrapped, setBootstrapped] = useState(false);
   const [busy, setBusy] = useState(false);
   const [shakeRef, fireShake] = useShake<HTMLFormElement>();
 
@@ -243,12 +244,21 @@ function LandlordForm() {
     setError('');
     setBusy(true);
     try {
-      await api.post('/api/auth/register', {
+      const res = await api.post<{ data: { bootstrap?: boolean } }>('/api/auth/register', {
         name: name.trim(),
         email: email.trim(),
         phone: phone.trim() || undefined,
         password,
       });
+      // bootstrap=true means this was the FIRST account on the install: the
+      // backend already activated it as ADMIN and set the session cookie —
+      // a hard navigation lets the auth provider read it and the dashboard
+      // guards accept it (same pattern as the tenant portal redirect).
+      if (res.data?.bootstrap) {
+        setBootstrapped(true);
+        setTimeout(() => window.location.assign('/'), 1500);
+        return;
+      }
       setDone(true);
     } catch (err) {
       setError((err as Error).message || 'Could not submit your request. Try again.');
@@ -256,6 +266,18 @@ function LandlordForm() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (bootstrapped) {
+    return (
+      <div className="rounded-2xl border border-brand-100 bg-brand-50 p-6 text-center" role="status">
+        <CheckCircle2 size={40} className="mx-auto text-brand-600" aria-hidden />
+        <h3 className="mt-3 text-lg font-semibold text-gray-900">Welcome aboard!</h3>
+        <p className="mt-2 text-sm leading-relaxed text-gray-600">
+          Your administrator account is ready — taking you to the dashboard…
+        </p>
+      </div>
+    );
   }
 
   if (done) {
@@ -291,7 +313,8 @@ function LandlordForm() {
         <KeyRound size={17} className="mt-0.5 shrink-0 text-gray-500" aria-hidden />
         <p>
           This sends a <b>request</b> — your dashboard unlocks only after an administrator activates
-          the account.
+          the account. <span className="font-medium text-gray-800">Setting up a fresh system?</span>{' '}
+          The first account created becomes the active administrator automatically.
         </p>
       </div>
       <label className="block">

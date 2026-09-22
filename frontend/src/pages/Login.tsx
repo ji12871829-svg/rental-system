@@ -272,20 +272,12 @@ export default function Login() {
                 </Link>
               </p>
             ) : (
-              <>
-                {/* Demo credentials must never ship to a real deployment. */}
-                {import.meta.env.DEV && (
-                  <p className="mt-5 text-center text-xs text-gray-400">
-                    Demo accounts: admin@rpms.local / Admin@2026! · manager@rpms.local / Manager@2026! · staff@rpms.local / Staff@2026! — see README
-                  </p>
-                )}
-                <p className="mt-5 text-center text-sm text-gray-500">
-                  New here?{' '}
-                  <Link to="/register" className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800">
-                    Create an account
-                  </Link>
-                </p>
-              </>
+              <p className="mt-5 text-center text-sm text-gray-500">
+                New here?{' '}
+                <Link to="/register" className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800">
+                  Create an account
+                </Link>
+              </p>
             )}
           </div>
 

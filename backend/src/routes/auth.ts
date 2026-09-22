@@ -133,11 +133,17 @@ router.get('/me', requireAuth, asyncHandler(async (req, res) => {
 // ---------------------------------------------------------------------------
 // Public landlord/agent signup ("Create account" on the landing page).
 //
-// This is a REQUEST, not an account: it creates an INACTIVE PROPERTY_MANAGER
-// user that no one can sign in with until an existing admin activates it in
-// Settings → Users. That keeps self-serve onboarding open to the public while
-// every staff login remains admin-vouched — an attacker can at worst create
-// inert rows, never a working session.
+// Two regimes, decided by whether any staff user exists:
+//
+//   * Empty users table (fresh install) → the first signup IS the operator:
+//     created as an ACTIVE ADMIN and signed in immediately. There are no
+//     seeded credentials anywhere in this system, so this is the one door
+//     that opens without an existing account.
+//   * Any user exists → this is a REQUEST, not an account: an INACTIVE
+//     PROPERTY_MANAGER row that no one can sign in with until an existing
+//     admin activates it in Settings → Users. Self-serve onboarding stays
+//     open while every staff login remains admin-vouched — an attacker can
+//     at worst create inert rows, never a working session.
 // ---------------------------------------------------------------------------
 const registerSchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters.').max(150),
@@ -176,18 +182,30 @@ router.post(
     }
 
     const hash = await bcrypt.hash(password, env.bcryptSaltRounds);
+
+    // Bootstrap decision: the first-ever signup becomes the ACTIVE admin and
+    // gets a session; everyone after is an INACTIVE manager request. The
+    // count is taken AFTER the duplicate-email check and BEFORE the insert;
+    // the unique(email) constraint makes a double-submit race safe — the
+    // loser hits the unique violation and surfaces as a 500, never two
+    // admins.
+    const userCount = await queryOne<{ count: string }>('SELECT count(*)::text AS count FROM users');
+    const isFirstUser = (userCount?.count ?? '1') === '0';
+
     const inserted = await query(
       `INSERT INTO users (name, email, phone, password_hash, role, status)
-       VALUES ($1, $2, $3, $4, 'PROPERTY_MANAGER', 'INACTIVE')
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id`,
-      [name, normalized, phone || null, hash],
+      isFirstUser
+        ? [name, normalized, phone || null, hash, 'ADMIN', 'ACTIVE']
+        : [name, normalized, phone || null, hash, 'PROPERTY_MANAGER', 'INACTIVE'],
     );
     await logAudit({
       userId: null,
-      action: 'STAFF_SIGNUP_REQUEST',
+      action: isFirstUser ? 'STAFF_SIGNUP_BOOTSTRAP' : 'STAFF_SIGNUP_REQUEST',
       entity: 'users',
       entityId: inserted[0].id,
-      newValue: { email: normalized, name },
+      newValue: { email: normalized, name, role: isFirstUser ? 'ADMIN' : 'PROPERTY_MANAGER' },
     });
 
     // Notify the operator through the standard email queue so the request
@@ -198,19 +216,47 @@ router.post(
     // is skipped (isTest mirrors dispatchAutoEmail) so assertions can run
     // on the PENDING row. A skipped queue (no branding contact email) is
     // silent — the Users page remains the fallback.
-    let staffRequestId: number | null = null;
-    try {
-      const prepared = await prepareForStaffRequest({ name, email: normalized, phone: phone ?? null });
-      staffRequestId = prepared?.id ?? null;
-    } catch (err) {
-      console.error(`[auth] staff-request email queue failed: ${(err as Error).message}`);
+    //
+    // The bootstrap signup (first user) skips this entirely: there is no
+    // operator yet, and the account is already ACTIVE.
+    if (!isFirstUser) {
+      let staffRequestId: number | null = null;
+      try {
+        const prepared = await prepareForStaffRequest({ name, email: normalized, phone: phone ?? null });
+        staffRequestId = prepared?.id ?? null;
+      } catch (err) {
+        console.error(`[auth] staff-request email queue failed: ${(err as Error).message}`);
+      }
+      if (staffRequestId != null && !isTest) {
+        setTimeout(() => {
+          sendEmailNotification(staffRequestId as number).catch((err) =>
+            console.error(`[auth] staff-request email send failed: ${(err as Error).message}`),
+          );
+        }, 0);
+      }
     }
-    if (staffRequestId != null && !isTest) {
-      setTimeout(() => {
-        sendEmailNotification(staffRequestId as number).catch((err) =>
-          console.error(`[auth] staff-request email send failed: ${(err as Error).message}`),
-        );
-      }, 0);
+
+    if (isFirstUser) {
+      // The operator's account is live immediately — hand them their session
+      // (same cookie shape as /login) so they land on the dashboard instead
+      // of a dead end. No email goes out: there is nobody to notify.
+      const token = jwt.sign(
+        { sub: inserted[0].id, role: 'ADMIN', name, email: normalized },
+        env.jwtStaffSecret,
+        {
+          expiresIn: env.jwtExpiresIn as jwt.SignOptions['expiresIn'],
+          audience: STAFF_JWT_AUDIENCE,
+        }
+      );
+      await logAudit({ userId: inserted[0].id, action: 'LOGIN', entity: 'users', entityId: inserted[0].id });
+      setAuthCookies(res, token);
+      return res.status(201).json({
+        data: {
+          message: 'Welcome! Your administrator account is ready.',
+          bootstrap: true,
+          user: { id: inserted[0].id, name, email: normalized, role: 'ADMIN' },
+        },
+      });
     }
 
     res.status(201).json({

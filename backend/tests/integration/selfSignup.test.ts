@@ -4,12 +4,18 @@
 //   * POST /api/portal/register — tenant self-service portal signup (claims
 //     access for an existing ACTIVE tenant; signs the tenant straight in)
 //   * POST /api/auth/register  — landlord/agent staff-account REQUEST (creates
-//     an INACTIVE PROPERTY_MANAGER row; no session is ever issued)
+//     an INACTIVE PROPERTY_MANAGER row; no session is ever issued) — EXCEPT
+//     the first-ever signup on an empty users table, which bootstraps as an
+//     ACTIVE ADMIN with a session (there are no seeded credentials; someone
+//     has to own the system before anyone can approve anyone else)
 //
 // The security story of the second endpoint is the load-bearing part: a
-// public route that inserts into `users` must never mint a working login, so
-// the tests pin INACTIVE status, the absence of cookies, and login rejection.
+// public route that inserts into `users` must never mint a working login
+// while an approval path exists — so the tests pin INACTIVE status, the
+// absence of cookies, and login rejection, plus the empty-table bootstrap
+// exception.
 import request from 'supertest';
+import type { Server } from 'http';
 import { createApp } from '../../src/app';
 import { pool } from '../../src/config/db';
 
@@ -280,5 +286,100 @@ describe('POST /api/auth/register (landlord/agent staff request)', () => {
       await query('DELETE FROM tenant_portal_access WHERE email = $1', [CLAIM_EMAIL]);
       await query('DELETE FROM tenants WHERE email = $1', [CLAIM_EMAIL]);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// First-user bootstrap: on an EMPTY users table the public signup becomes
+// the ACTIVE ADMIN with a real session. This is the door that makes the
+// "no seeded credentials" policy workable — someone must be able to own a
+// fresh install before any approval chain can exist.
+// ---------------------------------------------------------------------------
+describe('POST /api/auth/register (first-user bootstrap on an empty users table)', () => {
+  const BOOTSTRAP_EMAIL = 'bootstrap.owner@example.test';
+
+  it('creates an ACTIVE ADMIN with a session when no users exist', async () => {
+    const { query } = await import('../../src/config/db');
+
+    // Empty the table (fixture users were created by globalSetup). Other
+    // suites in this file already cleaned up their rows; audit rows referencing
+    // deleted users survive via ON DELETE SET NULL.
+    await query('DELETE FROM users');
+    expect((await query('SELECT id FROM users')).length).toBe(0);
+
+    try {
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({ name: 'Bootstrap Owner', email: BOOTSTRAP_EMAIL, password: 'Passw0rd!123' });
+      expect(res.status).toBe(201);
+      expect(res.body.data.bootstrap).toBe(true);
+      expect(res.body.data.user.role).toBe('ADMIN');
+      expect(res.body.data.message).toMatch(/administrator account is ready/i);
+
+      // A real session rides the standard cookies.
+      expect(res.headers['set-cookie']).toBeDefined();
+
+      // Row: ACTIVE ADMIN.
+      const row = (await query<{ role: string; status: string }>(
+        'SELECT role, status FROM users WHERE email = $1',
+        [BOOTSTRAP_EMAIL],
+      ))[0];
+      expect(row.role).toBe('ADMIN');
+      expect(row.status).toBe('ACTIVE');
+
+      // The session actually works on a guarded route. supertest's header
+      // typing is string|string[] depending on version — normalize safely.
+      const rawCookie = res.headers['set-cookie'];
+      const setCookie: string[] = Array.isArray(rawCookie) ? rawCookie : rawCookie ? [rawCookie] : [];
+      const cookie = setCookie.map((c) => c.split(';')[0]).join('; ');
+      const me = await request(app).get('/api/auth/me').set('Cookie', cookie);
+      expect(me.status).toBe(200);
+      expect(me.body.data.role).toBe('ADMIN');
+
+      // A LOGIN audit row was written for the new admin.
+      const audit = (await query<{ id: number }>(
+        "SELECT id FROM audit_logs WHERE action = 'LOGIN' AND entity = 'users' ORDER BY id DESC LIMIT 1",
+      ))[0];
+      expect(audit).toBeTruthy();
+    } finally {
+      // Restore the fixture users so later suites (and other files, which
+      // assume the seeded trio) find them. globalSetup's exact list, low
+      // cost hashes — same trick the setup uses.
+      const bcrypt = (await import('bcryptjs')).default;
+      const restore = [
+        { name: 'Test Admin', email: 'admin@rpms.local', password: 'Admin@2026!', role: 'ADMIN' },
+        { name: 'Test Manager', email: 'manager@rpms.local', password: 'Manager@2026!', role: 'PROPERTY_MANAGER' },
+        { name: 'Test Staff', email: 'staff@rpms.local', password: 'Staff@2026!', role: 'STAFF' },
+      ];
+      for (const u of restore) {
+        const hash = await bcrypt.hash(u.password, 4);
+        await query(
+          `INSERT INTO users (name, email, phone, password_hash, role, status)
+           VALUES ($1, $2, NULL, $3, $4, 'ACTIVE')`,
+          [u.name, u.email, hash, u.role],
+        );
+      }
+    }
+  });
+
+  it('never bootstraps while any user exists — second signup stays an inert request', async () => {
+    // The bootstrap test above restored the fixture users, so the table is
+    // non-empty here. A fresh signup must be the ordinary INACTIVE request.
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ name: 'Second Signup', email: 'selfsignup.second2@example.test', password: 'Passw0rd!123' });
+    expect(res.status).toBe(201);
+    expect(res.body.data.bootstrap).toBeUndefined();
+    expect(res.headers['set-cookie']).toBeUndefined();
+
+    const { query } = await import('../../src/config/db');
+    const row = (await query<{ role: string; status: string }>(
+      'SELECT role, status FROM users WHERE email = $1',
+      ['selfsignup.second2@example.test'],
+    ))[0];
+    expect(row.role).toBe('PROPERTY_MANAGER');
+    expect(row.status).toBe('INACTIVE');
+
+    await query('DELETE FROM users WHERE email = $1', ['selfsignup.second2@example.test']);
   });
 });

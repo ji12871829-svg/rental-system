@@ -52,15 +52,19 @@ cd backend
 npm run db:setup        # applies database/schema.sql + seed, creates default users
 ```
 
-`db:setup` is idempotent (schema uses `IF NOT EXISTS`, users upsert), so it is
-safe to re-run. **You can skip this entire step** — on the first Render boot
-the app detects the empty database and applies schema + seed + default users
-itself (`src/db/bootstrap.ts`, awaited before the health check turns green).
+`db:setup` is idempotent (schema uses `IF NOT EXISTS`), so it is safe to
+re-run. **You can skip this entire step** — on the first Render boot the app
+detects the empty database and applies schema + seed itself
+(`src/db/bootstrap.ts`, awaited before the health check turns green).
 
-**First production decision (either way):** the seed creates three sample
-users with known passwords (`admin@rpms.local` / `Admin@2026!` etc.). Log in,
-change those passwords immediately (Users page), and delete any sample tenants
-or payments you don't want in production.
+**There are no seeded credentials in this system.** A fresh install has zero
+user accounts. Open the landing page, choose **Create account → Landlord /
+Agent**, and register — the first account on an empty install is created as
+the ACTIVE administrator and signs you straight in. Every account after that
+(support staff, other managers) goes through the same public form but lands
+as an inactive request that the admin approves in **Users** before it can
+sign in. If any sample tenants or payments came with the demo data, delete
+them from the app before going live.
 
 Verify from the same shell that the schema landed:
 
