@@ -92,6 +92,7 @@ export function Pie(_props: {
   data: ChartDatum[];
   dataKey: DataKey;
   nameKey?: DataKey;
+  innerRadius?: number;
   outerRadius?: number;
   label?: boolean | ((datum: ChartDatum) => ReactNode);
   children?: ReactNode;
@@ -724,7 +725,7 @@ export function PieChart(props: {
   const height = 260;
   const [hover, setHover] = useState<{ name: string; value: any; px: number; py: number } | null>(null);
 
-  const pies = pick<{ data: ChartDatum[]; dataKey: DataKey; nameKey?: DataKey; outerRadius?: number; label?: SeriesConfig['label']; children?: ReactNode }>(children, Pie);
+  const pies = pick<{ data: ChartDatum[]; dataKey: DataKey; nameKey?: DataKey; innerRadius?: number; outerRadius?: number; label?: SeriesConfig['label']; children?: ReactNode }>(children, Pie);
   const pie = pies[0];
   const tooltips = pick<{ formatter?: TooltipFormatter }>(children, Tooltip);
   const tooltipFormatter = tooltips[0]?.props.formatter;
@@ -756,10 +757,29 @@ export function PieChart(props: {
 
   if (!pie) return null;
   const outerRadius = pie.props.outerRadius ?? 90;
+  // Donut support: an innerRadius > 0 punches a hole in each sector so a
+  // centered readout (occupancy %, dominant method) can sit in the middle.
+  const innerRadius = Math.min(pie.props.innerRadius ?? 0, outerRadius - 2);
   const cx = width / 2;
   const cy = (height - (hasLegend ? 24 : 0)) / 2;
   const arc = (r: number, a: number) => ({ x: cx + r * Math.sin(a), y: cy - r * Math.cos(a) });
   const sectorPath = (s: { start: number; end: number }) => {
+    if (innerRadius > 0) {
+      // Donut sector: outer arc clockwise, line to inner arc, back.
+      if (s.end - s.start >= Math.PI * 2 - 1e-9) {
+        const p1 = arc(outerRadius, 0);
+        const p2 = arc(outerRadius, Math.PI * 2 - 1e-6);
+        const q1 = arc(innerRadius, 0);
+        const q2 = arc(innerRadius, Math.PI * 2 - 1e-6);
+        return `M${p1.x},${p1.y} A${outerRadius},${outerRadius} 0 1 1 ${p2.x},${p2.y} L${q2.x},${q2.y} A${innerRadius},${innerRadius} 0 1 0 ${q1.x},${q1.y} Z`;
+      }
+      const p1 = arc(outerRadius, s.start);
+      const p2 = arc(outerRadius, s.end);
+      const q2 = arc(innerRadius, s.end);
+      const q1 = arc(innerRadius, s.start);
+      const large = s.end - s.start > Math.PI ? 1 : 0;
+      return `M${p1.x},${p1.y} A${outerRadius},${outerRadius} 0 ${large} 1 ${p2.x},${p2.y} L${q2.x},${q2.y} A${innerRadius},${innerRadius} 0 ${large} 0 ${q1.x},${q1.y} Z`;
+    }
     if (s.end - s.start >= Math.PI * 2 - 1e-9) {
       return `M${cx},${cy - outerRadius} A${outerRadius},${outerRadius} 0 1 1 ${cx - 0.01},${cy - outerRadius} Z`;
     }

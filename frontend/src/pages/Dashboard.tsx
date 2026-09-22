@@ -3,7 +3,7 @@ import {
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
   type ChartDatum,
 } from '../components/charts';
-import { StatGroupCard, PageHeader, useFetch, SkeletonDashboard } from '../components/ui';
+import { PageHeader, useFetch, SkeletonDashboard } from '../components/ui';
 import { QuickActions } from '../components/QuickActions';
 import { Link, useNavigate } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -149,6 +149,185 @@ function Count({ value }: { value: number }) {
   return <span className={flash ? 'value-flash' : undefined}>{Math.round(v).toLocaleString('en-KE')}</span>;
 }
 
+// ---------------------------------------------------------------------------
+// Layout primitives for the operational-band design.
+// ---------------------------------------------------------------------------
+
+// Section eyebrow: tiny uppercase label left, context caption right — every
+// band on the page gets one so the eye can parse the page as chapters.
+function SectionHead({ label, caption }: { label: string; caption?: React.ReactNode }) {
+  return (
+    <div className="mb-3 flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+      <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-gray-500">{label}</h2>
+      {caption && <div className="text-[11px] text-gray-400">{caption}</div>}
+    </div>
+  );
+}
+
+// Small pill badge used in card headers (collection %, margin, wallet…).
+function Badge({ tone = 'good', children, title }: { tone?: 'good' | 'bad' | 'warn' | 'neutral'; children: React.ReactNode; title?: string }) {
+  const tones: Record<string, string> = {
+    good: 'bg-emerald-100 text-emerald-700',
+    bad: 'bg-red-100 text-red-700',
+    warn: 'bg-amber-100 text-amber-700',
+    neutral: 'bg-gray-100 text-gray-600',
+  };
+  return (
+    <span title={title} className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${tones[tone]}`}>
+      {children}
+    </span>
+  );
+}
+
+// Big-number card: uppercase mini title row (with optional right-side badge /
+// link), a huge money/count figure, then a muted footer line. The shell the
+// whole KPI band uses.
+function KpiCard({
+  title,
+  badge,
+  linkTo,
+  linkLabel,
+  children,
+  footer,
+}: {
+  title: React.ReactNode;
+  badge?: React.ReactNode;
+  linkTo?: string;
+  linkLabel?: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      {/* flex-wrap: when the title + badge + link don't fit one row, the
+          right side drops below the title instead of squeezing the title
+          into three stacked lines. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+        <span className="min-w-0 flex-1 text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500 sm:flex-none">{title}</span>
+        <span className="flex shrink-0 items-center gap-2">
+          {badge}
+          {linkTo && (
+            <Link
+              to={linkTo}
+              className="text-[11px] font-semibold text-brand-700 underline-offset-2 transition-colors hover:text-brand-800 hover:underline"
+            >
+              {linkLabel} →
+            </Link>
+          )}
+        </span>
+      </div>
+      <div className="mt-3 flex-1">{children}</div>
+      {footer && <div className="mt-3 border-t border-gray-100 pt-2 text-[11px] text-gray-500">{footer}</div>}
+    </div>
+  );
+}
+
+// Huge figure + optional caption underneath, the KpiCard body workhorse.
+function BigFigure({ value, caption, tone = 'default' }: { value: React.ReactNode; caption?: React.ReactNode; tone?: 'default' | 'good' | 'bad' | 'warn' }) {
+  const tones: Record<string, string> = {
+    default: 'text-gray-900',
+    good: 'text-emerald-600',
+    bad: 'text-red-600',
+    warn: 'text-amber-600',
+  };
+  return (
+    <div>
+      <div className={`text-2xl font-bold tracking-tight tabular-nums sm:text-[1.7rem] ${tones[tone]}`}>{value}</div>
+      {caption && <div className="mt-0.5 text-[11px] text-gray-400">{caption}</div>}
+    </div>
+  );
+}
+
+// Multi-column stat row inside a card (the reference's 3-up figures with a
+// caption under each number).
+function FigureRow({ items }: { items: { label: string; value: React.ReactNode; caption?: React.ReactNode; tone?: 'default' | 'good' | 'bad' | 'warn' }[] }) {
+  const tones: Record<string, string> = {
+    default: 'text-gray-900',
+    good: 'text-emerald-600',
+    bad: 'text-red-600',
+    warn: 'text-amber-600',
+  };
+  return (
+    <div className="grid gap-4 sm:grid-cols-3">
+      {items.map((it) => (
+        <div key={it.label}>
+          <div className="text-[11px] font-medium text-gray-500">{it.label}</div>
+          <div className={`mt-0.5 text-lg font-bold tabular-nums sm:text-xl ${tones[it.tone ?? 'default']}`}>{it.value}</div>
+          {it.caption && <div className="mt-0.5 text-[11px] text-gray-400">{it.caption}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Occupancy progress: brand segment for occupied, amber tail for vacant.
+function OccupancyBar({ total, occupied, vacant }: { total: number; occupied: number; vacant: number }) {
+  const occPct = total > 0 ? Math.round((occupied / total) * 100) : 0;
+  return (
+    <div
+      className="flex h-2.5 w-full overflow-hidden rounded-full bg-gray-100"
+      role="img"
+      aria-label={`${occPct}% occupied, ${vacant} vacant of ${total} units`}
+    >
+      <div className="h-full bg-brand-600 transition-[width] duration-700" style={{ width: `${occPct}%` }} />
+      <div className="h-full bg-amber-400 transition-[width] duration-700" style={{ width: `${total > 0 ? (vacant / total) * 100 : 0}%` }} />
+    </div>
+  );
+}
+
+// Ranked outstanding list — the reference's horizontal red/purple bars with
+// the amount right-aligned on each row. Bars scale to the largest debt; each
+// row deep-links into the arrears page pre-filtered to that unit.
+function OutstandingList({
+  rows,
+  currency,
+  barClass,
+  onSelect,
+}: {
+  rows: { unitNumber: string; [k: string]: number | string }[];
+  currency: string;
+  barClass: string;
+  onSelect: (row: { unitNumber: string }) => void;
+}) {
+  const key = rows.length > 0 && 'outstanding' in rows[0] ? 'outstanding' : 'waterOutstanding';
+  // Only units that actually owe, worst first, capped like the reference's
+  // five-row lists — a clean property shows the all-current message, not
+  // ten rows of KSh 0.
+  const debtors = rows.filter((r) => Number(r[key]) > 0).slice(0, 5);
+  const max = Math.max(...debtors.map((r) => Number(r[key])), 1);
+  if (debtors.length === 0) {
+    return <p className="py-10 text-center text-sm text-gray-400">Nothing outstanding — every unit is current.</p>;
+  }
+  return (
+    <ul className="space-y-2.5">
+      {debtors.map((r) => {
+        const amount = Number(r[key]);
+        return (
+          <li key={r.unitNumber}>
+            <button
+              type="button"
+              onClick={() => onSelect({ unitNumber: r.unitNumber })}
+              className="group flex w-full items-center gap-3 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-gray-50"
+              title={`Open arrears for unit ${r.unitNumber}`}
+            >
+              <span className="w-24 shrink-0 truncate text-xs font-semibold text-gray-700 sm:w-28">{r.unitNumber}</span>
+              <span className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-gray-100">
+                <span
+                  className={`block h-full rounded-full ${barClass} transition-[width] duration-700`}
+                  style={{ width: `${Math.max(4, (amount / max) * 100)}%` }}
+                />
+              </span>
+              <span className="w-24 shrink-0 text-right text-xs font-bold tabular-nums text-gray-900 sm:w-28">
+                {money(amount, currency)}
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export default function Dashboard() {
   // Live dashboard: refetch every 60s while the page is open. Polls stay
   // calm by design: a failed poll keeps the last good KPIs on screen (the
@@ -209,7 +388,8 @@ export default function Dashboard() {
   // open Arrears pre-filtered to that unit.
   const monthReceipts = (type: 'RENT' | 'WATER') => (d: ChartDatum) =>
     navigate(`/receipts?month=${d.month}&receiptType=${type}`);
-  const unitArrears = (d: ChartDatum) => navigate(`/arrears?unit=${encodeURIComponent(String(d.unitNumber))}`);
+  const unitArrearsDirect = (row: { unitNumber: string }) =>
+    navigate(`/arrears?unit=${encodeURIComponent(row.unitNumber)}`);
 
   // Skeleton and error pages are for the FIRST load only; once data exists,
   // polls refresh in place and transient failures keep last-good numbers.
@@ -222,6 +402,18 @@ export default function Dashboard() {
   const { property: p, water: w, combined: c, charts, currency, reportingYear } = data;
   const monthLabel = (m: number) => MONTHS[m - 1].slice(0, 3);
 
+  // Derived presentation figures for the badges and progress bars.
+  const occPct = p.totalUnits > 0 ? Math.round((p.occupiedUnits / p.totalUnits) * 100) : 0;
+  const vacPct = Math.max(0, 100 - occPct);
+  const revenue = p.rentCollected + w.waterCollected;
+  const marginPct = revenue > 0 ? Math.round((p.netPropertyIncome / revenue) * 100) : 0;
+  const waterSurplusPct = w.surplus && w.waterSupplyCost > 0 ? Math.round((w.surplusDeficit / w.waterSupplyCost) * 100) : null;
+  const methodTotal = charts.rentByPaymentMethod.reduce((sum, m) => sum + m.total, 0);
+  const dominantMethod = charts.rentByPaymentMethod.reduce<{ method: string; total: number } | null>(
+    (best, m) => (!best || m.total > best.total ? m : best), null,
+  );
+  const dominantShare = dominantMethod && methodTotal > 0 ? Math.round((dominantMethod.total / methodTotal) * 100) : 0;
+
   return (
     <div>
       <PageHeader
@@ -230,77 +422,154 @@ export default function Dashboard() {
         actions={<QuickActions variant="header" />}
       />
 
-      {/* Property summary */}
-      <h2 className="rise-in mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Property</h2>
+      {/* -------------------------------------------------- PROPERTY band */}
+      <SectionHead label="Property" caption={`All ${p.totalUnits} units · live from the rent ledger`} />
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <StatGroupCard
-          title="Units"
-          stats={[
-            { label: 'Total', value: <Count value={p.totalUnits} />, to: '/units' },
-            { label: 'Occupied', value: <Count value={p.occupiedUnits} />, tone: 'good', to: '/units' },
-            { label: 'Vacant', value: <Count value={p.vacantUnits} />, tone: p.vacantUnits > 0 ? 'warn' : 'good', to: '/units' },
-          ]}
-        />
-        <StatGroupCard
-          title="Rent"
-          stats={[
-            { label: 'Expected (this month)', value: <CountMoney value={p.expectedRent} currency={currency} />, to: '/rent' },
-            { label: 'Collected', value: <CountMoney value={p.rentCollected} currency={currency} />, sub: `${p.rentCollectionRate}% of YTD expected`, tone: 'good', to: '/rent' },
-            { label: 'Outstanding', value: <CountMoney value={p.rentOutstanding} currency={currency} />, tone: p.rentOutstanding > 0 ? 'bad' : 'good', to: '/arrears' },
-          ]}
-        />
-        <StatGroupCard
-          title="Financials"
-          stats={[
-            { label: 'Total Expenses', value: <CountMoney value={p.totalExpenses} currency={currency} />, tone: 'warn', to: '/expenses' },
-            { label: 'Net Property Income', value: <CountMoney value={p.netPropertyIncome} currency={currency} />, tone: p.netPropertyIncome >= 0 ? 'good' : 'bad' },
-          ]}
-        />
+        <KpiCard
+          title="Units Allocation"
+          linkTo="/units"
+          linkLabel="View all units"
+          footer={<span><Count value={p.vacantUnits} /> vacant · turnover visible on the Units page</span>}
+        >
+          <BigFigure value={<Count value={p.totalUnits} />} caption="Total units" />
+          <div className="mt-3">
+            <OccupancyBar total={p.totalUnits} occupied={p.occupiedUnits} vacant={p.vacantUnits} />
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Badge tone="good">{p.occupiedUnits} Occupied ({occPct}%)</Badge>
+              {p.vacantUnits > 0 && <Badge tone="warn">{p.vacantUnits} Vacant ({vacPct}%)</Badge>}
+            </div>
+          </div>
+        </KpiCard>
+
+        <KpiCard
+          title="Monthly Rent Ledger"
+          badge={<Badge tone="good">{p.rentCollectionRate}% YTD Collected</Badge>}
+          linkTo="/rent"
+          linkLabel="Rent"
+          footer={
+            <span>
+              Collected: <span className="font-semibold text-emerald-600">{money(p.rentCollected, currency)}</span>
+              {' · '}Arrears: <span className="font-semibold text-red-600">{money(p.rentOutstanding, currency)}</span>
+            </span>
+          }
+        >
+          <BigFigure
+            value={<CountMoney value={p.expectedRent} currency={currency} />}
+            caption="Expected rent (this month)"
+          />
+        </KpiCard>
+
+        <KpiCard
+          title="Property Financial Yield"
+          badge={
+            <Badge tone={marginPct >= 0 ? 'good' : 'bad'} title="Net income as a share of money collected">
+              {marginPct >= 0 ? '+' : ''}{marginPct}% Margin
+            </Badge>
+          }
+          linkTo="/expenses"
+          linkLabel="Expense ledger"
+          footer={<span>Maintenance &amp; ops outflow: <span className="font-semibold text-amber-600">{money(p.totalExpenses, currency)}</span></span>}
+        >
+          <BigFigure
+            value={<CountMoney value={p.netPropertyIncome} currency={currency} />}
+            caption="Net property income"
+            tone={p.netPropertyIncome >= 0 ? 'good' : 'bad'}
+          />
+        </KpiCard>
       </div>
 
-      {/* Water summary */}
-      <h2 className="rise-in mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-gray-500">Water</h2>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <StatGroupCard
-          title="Water Billing"
-          stats={[
-            { label: 'Billed', value: <CountMoney value={w.waterBilled} currency={currency} />, to: '/water-meter' },
-            { label: 'Collected', value: <CountMoney value={w.waterCollected} currency={currency} />, sub: `${w.collectionRate}% collection rate`, tone: 'good', to: '/water-payments' },
-            { label: 'Outstanding', value: <CountMoney value={w.waterOutstanding} currency={currency} />, tone: w.waterOutstanding > 0 ? 'bad' : 'good', to: '/arrears' },
-          ]}
-        />
-        <StatGroupCard
-          title="Water Supply"
-          stats={[
-            { label: 'Purchased', value: <><Count value={w.waterPurchased} /> units</>, to: '/water-supply' },
-            { label: 'Supply Cost', value: <CountMoney value={w.waterSupplyCost} currency={currency} />, sub: `avg ${money(w.averagePurchaseCost, currency)}/unit`, to: '/water-supply' },
-            {
-              label: w.surplus ? 'Surplus' : 'Deficit',
-              value: <CountMoney value={Math.abs(w.surplusDeficit)} currency={currency} />,
-              tone: w.surplus ? 'good' : 'bad',
-            },
-          ]}
-        />
+      {/* ----------------------------------------------------- WATER band */}
+      <div className="mt-8">
+        <SectionHead label="Water" caption="Bulk distribution & meter yield" />
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <KpiCard
+            title="Water Invoicing & Recovery"
+            badge={<Badge tone={w.collectionRate >= 90 ? 'good' : w.collectionRate >= 70 ? 'warn' : 'bad'}>{w.collectionRate}% collection</Badge>}
+            linkTo="/water-meter"
+            linkLabel="Meter registry"
+            footer={<span>Sub-metered usage — readings from each unit's meter</span>}
+          >
+            <FigureRow
+              items={[
+                { label: 'Total billed', value: <CountMoney value={w.waterBilled} currency={currency} /> },
+                { label: 'Collected', value: <CountMoney value={w.waterCollected} currency={currency} />, tone: 'good' },
+                { label: 'Outstanding', value: <CountMoney value={w.waterOutstanding} currency={currency} />, tone: w.waterOutstanding > 0 ? 'bad' : 'good' },
+              ]}
+            />
+          </KpiCard>
+
+          <KpiCard
+            title="Bulk Inflow & Gross Margin"
+            badge={
+              waterSurplusPct != null ? (
+                <Badge tone="good" title="Water surplus as a share of supply cost">+{waterSurplusPct}% Surplus</Badge>
+              ) : w.surplus ? undefined : (
+                <Badge tone="bad">Running deficit</Badge>
+              )
+            }
+            linkTo="/water-supply"
+            linkLabel="Water supply"
+            footer={<span>Bulk purchase → per-unit sub-meter billing</span>}
+          >
+            <FigureRow
+              items={[
+                { label: 'Purchased', value: <><Count value={w.waterPurchased} /> units</>, caption: 'Metered volume' },
+                { label: 'Supply cost', value: <CountMoney value={w.waterSupplyCost} currency={currency} />, caption: `avg ${money(w.averagePurchaseCost, currency)}/unit` },
+                {
+                  label: w.surplus ? 'Surplus' : 'Deficit',
+                  value: <CountMoney value={Math.abs(w.surplusDeficit)} currency={currency} />,
+                  tone: w.surplus ? 'good' : 'bad',
+                },
+              ]}
+            />
+          </KpiCard>
+        </div>
       </div>
 
-      {/* Combined summary */}
-      <h2 className="rise-in mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-gray-500">Combined</h2>
-      <StatGroupCard
-        stats={[
-          { label: 'Rent + Water Due (this month)', value: <CountMoney value={c.totalDueThisMonth} currency={currency} />, to: `/monthly?month=${new Date().getMonth() + 1}` },
-          { label: 'Total Money Collected', value: <CountMoney value={c.totalCollected} currency={currency} />, sub: `Rent ${money(c.rentCollected, currency)} + Water ${money(c.waterCollected, currency)}`, tone: 'good', to: '/receipts' },
-          { label: 'Total Outstanding', value: <CountMoney value={c.totalOutstanding} currency={currency} />, tone: c.totalOutstanding > 0 ? 'bad' : 'good', to: '/arrears' },
-          { label: 'Total Expenses', value: <CountMoney value={c.totalExpenses} currency={currency} />, to: '/expenses' },
-          { label: 'Net Property Income', value: <CountMoney value={c.netIncome} currency={currency} />, tone: c.netIncome >= 0 ? 'good' : 'bad' },
-        ]}
-      />
+      {/* ------------------------------------------------- COMBINED band */}
+      <div className="mt-8">
+        <SectionHead label="Combined" caption="Consolidated real-time position" />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <CombinedCell
+            label="Rent + Water Due (this month)"
+            value={<CountMoney value={c.totalDueThisMonth} currency={currency} />}
+            caption="Total operational billing"
+            to={`/monthly?month=${new Date().getMonth() + 1}`}
+          />
+          <CombinedCell
+            label="Total Money Collected"
+            value={<CountMoney value={c.totalCollected} currency={currency} />}
+            caption={<span>Rent {money(c.rentCollected, currency)} + Water {money(c.waterCollected, currency)}</span>}
+            tone="good"
+            to="/receipts"
+          />
+          <CombinedCell
+            label="Total Outstanding"
+            value={<CountMoney value={c.totalOutstanding} currency={currency} />}
+            caption={c.totalOutstanding > 0 ? 'Default/arrears risk' : 'All current'}
+            tone={c.totalOutstanding > 0 ? 'bad' : 'good'}
+            to="/arrears"
+          />
+          <CombinedCell
+            label="Total Expenses"
+            value={<CountMoney value={c.totalExpenses} currency={currency} />}
+            caption="Repairs, bulk power & crew"
+            tone="warn"
+            to="/expenses"
+          />
+          <CombinedCell
+            label="Net Property Income"
+            value={<CountMoney value={c.netIncome} currency={currency} />}
+            caption={c.netIncome >= 0 ? 'Consolidated net positive' : 'Negative — review expenses'}
+            tone={c.netIncome >= 0 ? 'good' : 'bad'}
+          />
+        </div>
+      </div>
 
-      {/* Provider status — SMS wallet + delivery failures for both channels,
-          surfacing provider reasons inline so Settings is only needed to fix
-          config, not to discover a problem. Renders nothing if API is older. */}
+      {/* ------------------------------------------------ MESSAGING band */}
       {(data.sms || data.email) && (
         <div className="mt-8">
-          <h2 className="rise-in mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Messaging</h2>
+          <SectionHead label="Messaging" caption="Delivery pipelines & provider health" />
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {data.sms && <SmsHealthCard sms={data.sms} />}
             {data.email && <EmailHealthCard email={data.email} />}
@@ -308,160 +577,232 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Charts — deferred past first paint. The KPI strip above is the
-          information the dashboard exists for; ten hand-rolled SVG charts
-          are below the fold and don't need to block it. Renders skeletons
-          until the browser is idle (or 600ms passes on older browsers),
-          then mounts all charts in one commit. */}
-      <h2 className="rise-in mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-gray-500">Charts</h2>
-      {chartsReady ? (
-      <div key={chartsKey} className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ChartCard title="Monthly Rent Collected" to="/rent">
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={charts.monthlyRentCollected} onBarClick={monthReceipts('RENT')}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={(d: any) => monthLabel(d.month)} />
-              <YAxis />
-              <Tooltip formatter={(v: any) => money(v, currency)} />
-              <Bar dataKey="collected" fill="#1d6fd6" name="Rent collected" />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
+      {/* -------------------------------------------------- CHARTS band */}
+      <div className="mt-8">
+        <SectionHead label="Charts" caption={<>FY {reportingYear} · click any chart to drill in</>} />
+        {chartsReady ? (
+        <div key={chartsKey} className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          <ChartCard title="Monthly Rent Collected" meta={currency} to="/rent">
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={charts.monthlyRentCollected} onBarClick={monthReceipts('RENT')}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey={(d: any) => monthLabel(d.month)} />
+                <YAxis />
+                <Tooltip formatter={(v: any) => money(v, currency)} />
+                <Bar dataKey="collected" fill="#1d6fd6" name="Rent collected" />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
 
-        <ChartCard title="Expected Rent vs Collected Rent" to="/rent">
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={charts.expectedVsCollected} onBarClick={monthReceipts('RENT')}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={(d: any) => monthLabel(d.month)} />
-              <YAxis />
-              <Tooltip formatter={(v: any) => money(v, currency)} />
-              <Legend />
-              <Bar dataKey="expected" fill="#cbd5e1" name="Expected" />
-              <Bar dataKey="collected" fill="#10b981" name="Collected" />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
+          <ChartCard title="Expected vs Collected Rent" to="/rent">
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={charts.expectedVsCollected} onBarClick={monthReceipts('RENT')}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey={(d: any) => monthLabel(d.month)} />
+                <YAxis />
+                <Tooltip formatter={(v: any) => money(v, currency)} />
+                <Legend />
+                <Bar dataKey="expected" fill="#cbd5e1" name="Expected" />
+                <Bar dataKey="collected" fill="#10b981" name="Collected" />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
 
-        <ChartCard title="Occupied vs Vacant Units" to="/units">
-          <ResponsiveContainer width="100%" height={260}>
-            <PieChart onSliceClick={() => navigate('/units')}>
-              <Pie data={[{ name: 'Occupied', value: charts.occupiedVsVacant.occupied }, { name: 'Vacant', value: charts.occupiedVsVacant.vacant }]} dataKey="value" nameKey="name" outerRadius={90} label>
-                {PIE_COLORS.slice(0, 2).map((color, i) => <Cell key={i} fill={color} />)}
-              </Pie>
-              <Tooltip />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
-        </ChartCard>
+          <ChartCard
+            title="Unit Occupancy Spread"
+            meta={<Badge tone={occPct >= 90 ? 'good' : 'warn'}>{occPct}% Occupied</Badge>}
+            to="/units"
+          >
+            <div className="relative">
+              <ResponsiveContainer width="100%" height={260}>
+                <PieChart onSliceClick={() => navigate('/units')}>
+                  <Pie
+                    data={[{ name: 'Occupied', value: charts.occupiedVsVacant.occupied }, { name: 'Vacant', value: charts.occupiedVsVacant.vacant }]}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={62}
+                    outerRadius={92}
+                    label={false}
+                  >
+                    <Cell fill="#1d6fd6" />
+                    <Cell fill="#f59e0b" />
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+              {/* Donut center readout — pointer-events none so slice clicks pass through. */}
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-2xl font-bold tabular-nums text-gray-900">{occPct}%</span>
+                <span className="text-[11px] text-gray-500">Occupancy</span>
+              </div>
+              <div className="mt-1 flex justify-center gap-4 text-[11px] text-gray-600">
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-brand-600" aria-hidden /> Occupied: {charts.occupiedVsVacant.occupied}</span>
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-amber-400" aria-hidden /> Vacant: {charts.occupiedVsVacant.vacant}</span>
+              </div>
+            </div>
+          </ChartCard>
 
-        <ChartCard title="Rent Collected by Payment Method" to="/receipts">
-          <ResponsiveContainer width="100%" height={260}>
-            <PieChart onSliceClick={() => navigate('/receipts')}>
-            {/* Method-filtered receipts don't exist as a page filter yet, so
-                slice clicks land on the receipts list as a whole. */}
-              <Pie data={charts.rentByPaymentMethod} dataKey="total" nameKey="method" outerRadius={90} label={(d: any) => methodLabel(d.method)}>
-                {charts.rentByPaymentMethod.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-              </Pie>
-              <Tooltip formatter={(v: any) => money(v, currency)} />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <ChartCard title="Outstanding Rent by Unit" to="/arrears">
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={charts.outstandingRentByUnit} layout="vertical" onBarClick={unitArrears}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis type="number" />
-              <YAxis type="category" dataKey="unitNumber" width={40} />
-              <Tooltip formatter={(v: any) => money(v, currency)} />
-              <Bar dataKey="outstanding" fill="#ef4444" name="Outstanding" />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <ChartCard title="Monthly Water Billed vs Water Collected" to="/water-payments">
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={charts.monthlyWaterBilledVsCollected} onBarClick={monthReceipts('WATER')}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={(d: any) => monthLabel(d.month)} />
-              <YAxis />
-              <Tooltip formatter={(v: any) => money(v, currency)} />
-              <Legend />
-              <Bar dataKey="billed" fill="#60a5fa" name="Billed" />
-              <Bar dataKey="collected" fill="#10b981" name="Collected" />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <ChartCard title="Water Supply Cost vs Water Collected" to="/water-supply">
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={charts.waterSupplyCostVsCollected}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={(d: any) => monthLabel(d.month)} />
-              <YAxis />
-              <Tooltip formatter={(v: any) => money(v, currency)} />
-              <Legend />
-              <Line type="monotone" dataKey="supplyCost" stroke="#f59e0b" name="Supply cost" />
-              <Line type="monotone" dataKey="collected" stroke="#10b981" name="Collected" />
-            </LineChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <ChartCard title="Monthly Water Surplus / Deficit" to="/water-supply">
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={charts.monthlyWaterSurplusDeficit} onBarClick={() => navigate('/water-supply')}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={(d: any) => monthLabel(d.month)} />
-              <YAxis />
-              <Tooltip formatter={(v: any) => money(v, currency)} />
-              <Bar dataKey="surplusDeficit" name="Surplus / Deficit">
-                {charts.monthlyWaterSurplusDeficit.map((d, i) => (
-                  <Cell key={i} fill={d.surplusDeficit >= 0 ? '#10b981' : '#ef4444'} />
+          <ChartCard
+            title="Payment Method Mix"
+            meta={money(methodTotal, currency)}
+            to="/receipts"
+          >
+            <div className="relative">
+              <ResponsiveContainer width="100%" height={260}>
+                <PieChart onSliceClick={() => navigate('/receipts')}>
+                  {/* Method-filtered receipts don't exist as a page filter yet, so
+                      slice clicks land on the receipts list as a whole. */}
+                  <Pie data={charts.rentByPaymentMethod} dataKey="total" nameKey="method" innerRadius={62} outerRadius={92} label={false}>
+                    {charts.rentByPaymentMethod.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip formatter={(v: any) => money(v, currency)} />
+                </PieChart>
+              </ResponsiveContainer>
+              {dominantMethod && (
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="max-w-[7rem] truncate text-center text-sm font-bold text-gray-900">{methodLabel(dominantMethod.method)}</span>
+                  <span className="text-[11px] text-gray-500">{dominantShare}% dominant</span>
+                </div>
+              )}
+              <div className="mt-1 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-gray-600">
+                {charts.rentByPaymentMethod.map((m, i) => (
+                  <span key={m.method} className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} aria-hidden />
+                    {methodLabel(m.method)} {methodTotal > 0 ? Math.round((m.total / methodTotal) * 100) : 0}%
+                  </span>
                 ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
+              </div>
+            </div>
+          </ChartCard>
 
-        <ChartCard title="Outstanding Water by Unit" to="/arrears">
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={charts.outstandingWaterByUnit} layout="vertical" onBarClick={unitArrears}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis type="number" />
-              <YAxis type="category" dataKey="unitNumber" width={40} />
-              <Tooltip formatter={(v: any) => money(v, currency)} />
-              <Bar dataKey="waterOutstanding" fill="#8b5cf6" name="Outstanding" />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-      </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" aria-hidden>
-          {Array.from({ length: 10 }, (_, i) => (
-            <div key={i} className="h-[318px] animate-pulse rounded-xl border border-gray-200 bg-gray-50" />
-          ))}
+          <ChartCard
+            title="Top Outstanding Rent"
+            meta={<Link to="/arrears" className="font-semibold text-brand-700 hover:underline">Full arrears →</Link>}
+          >
+            <OutstandingList rows={charts.outstandingRentByUnit} currency={currency} barClass="bg-red-500" onSelect={unitArrearsDirect} />
+          </ChartCard>
+
+          <ChartCard title="Water Billed vs Collected" meta={currency} to="/water-payments">
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={charts.monthlyWaterBilledVsCollected} onBarClick={monthReceipts('WATER')}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey={(d: any) => monthLabel(d.month)} />
+                <YAxis />
+                <Tooltip formatter={(v: any) => money(v, currency)} />
+                <Legend />
+                <Bar dataKey="billed" fill="#60a5fa" name="Billed" />
+                <Bar dataKey="collected" fill="#10b981" name="Collected" />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard title="Supply Cost vs Collected" meta={currency} to="/water-supply">
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={charts.waterSupplyCostVsCollected}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey={(d: any) => monthLabel(d.month)} />
+                <YAxis />
+                <Tooltip formatter={(v: any) => money(v, currency)} />
+                <Legend />
+                <Line type="monotone" dataKey="supplyCost" stroke="#f59e0b" name="Supply cost" />
+                <Line type="monotone" dataKey="collected" stroke="#10b981" name="Collected" />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard title="Monthly Water Net Balance" meta={<Badge tone={w.surplus ? 'good' : 'bad'}>{w.surplus ? 'All Positive' : 'Deficit Present'}</Badge>} to="/water-supply">
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={charts.monthlyWaterSurplusDeficit} onBarClick={() => navigate('/water-supply')}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey={(d: any) => monthLabel(d.month)} />
+                <YAxis />
+                <Tooltip formatter={(v: any) => money(v, currency)} />
+                <Bar dataKey="surplusDeficit" name="Surplus / Deficit">
+                  {charts.monthlyWaterSurplusDeficit.map((d, i) => (
+                    <Cell key={i} fill={d.surplusDeficit >= 0 ? '#10b981' : '#ef4444'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard
+            title="Outstanding Water by Unit"
+            meta={<Link to="/arrears" className="font-semibold text-brand-700 hover:underline">Arrears →</Link>}
+          >
+            <OutstandingList rows={charts.outstandingWaterByUnit} currency={currency} barClass="bg-purple-500" onSelect={unitArrearsDirect} />
+          </ChartCard>
         </div>
-      )}
+        ) : (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3" aria-hidden>
+            {Array.from({ length: 9 }, (_, i) => (
+              <div key={i} className="h-[318px] animate-pulse rounded-xl border border-gray-200 bg-gray-50" />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function ChartCard({ title, to, children }: { title: string; to?: string; children: React.ReactNode }) {
+// One cell of the combined strip: tiny label, big colored figure, caption —
+// the whole cell deep-links to the page behind the number.
+function CombinedCell({
+  label,
+  value,
+  caption,
+  tone = 'default',
+  to,
+}: {
+  label: string;
+  value: React.ReactNode;
+  caption?: React.ReactNode;
+  tone?: 'default' | 'good' | 'bad' | 'warn';
+  to?: string;
+}) {
+  const tones: Record<string, string> = {
+    default: 'text-gray-900',
+    good: 'text-emerald-600',
+    bad: 'text-red-600',
+    warn: 'text-amber-600',
+  };
+  const body = (
+    <>
+      <div className="text-[11px] font-medium text-gray-500">{label}</div>
+      <div className={`mt-1 text-xl font-bold tabular-nums ${tones[tone]}`}>{value}</div>
+      {caption && <div className="mt-0.5 text-[11px] text-gray-400">{caption}</div>}
+    </>
+  );
+  return to ? (
+    <Link
+      to={to}
+      className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-colors duration-150 hover:bg-gray-50"
+    >
+      {body}
+    </Link>
+  ) : (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">{body}</div>
+  );
+}
+
+function ChartCard({ title, meta, to, children }: { title: string; meta?: React.ReactNode; to?: string; children: React.ReactNode }) {
   return (
     <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <h3 className="mb-3 text-sm font-semibold text-gray-700">
-        {to ? (
-          <Link
-            to={to}
-            className="underline-offset-2 transition-colors duration-150 hover:text-brand-700 hover:underline"
-          >
-            {title}
-          </Link>
-        ) : (
-          title
-        )}
-      </h3>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-gray-700">
+          {to ? (
+            <Link
+              to={to}
+              className="underline-offset-2 transition-colors duration-150 hover:text-brand-700 hover:underline"
+            >
+              {title}
+            </Link>
+          ) : (
+            title
+          )}
+        </h3>
+        {meta && <span className="shrink-0 text-[11px] font-medium text-gray-400">{meta}</span>}
+      </div>
       {children}
     </div>
   );
@@ -581,7 +922,7 @@ function timeAgo(iso: string): string {
 function SmsHealthCard({ sms }: { sms: DashboardData['sms'] }) {
   const walletTone = sms.balance.state === 'empty' || sms.failedThisMonth > 0 ? 'bad' : sms.balance.state === 'low' ? 'warn' : 'neutral';
   return (
-    <HealthCard title="SMS" tone={walletTone} to="/sms" linkLabel="Manage SMS">
+    <HealthCard title="SMS Gateway Provider" tone={walletTone} to="/sms" linkLabel="Manage SMS">
       <SmsWalletBadge balance={sms.balance} />
       <span className="text-sm text-gray-600">
         <span className="font-semibold text-gray-900"><Count value={sms.sentThisMonth} /></span> sent this month
@@ -597,7 +938,7 @@ function SmsHealthCard({ sms }: { sms: DashboardData['sms'] }) {
 function EmailHealthCard({ email }: { email: NonNullable<DashboardData['email']> }) {
   const emailTone = email.failedThisMonth > 0 ? 'bad' : email.pendingCount > 0 ? 'warn' : 'neutral';
   return (
-    <HealthCard title="Email" tone={emailTone} to="/email-campaign" linkLabel="Tenant Email">
+    <HealthCard title="SMTP Relay Dispatch" tone={emailTone} to="/email-campaign" linkLabel="Tenant Email">
       <span className="text-sm text-gray-600">
         <span className="font-semibold text-gray-900"><Count value={email.sentThisMonth} /></span> sent this month
       </span>
