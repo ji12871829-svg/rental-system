@@ -452,9 +452,8 @@ export async function combinedMonthlySummary(year?: number): Promise<unknown[]> 
 // one-page landscape document with year totals and the business identity
 // footer. Reuses the same summary the Monthly Summary page displays.
 export async function monthlyReportPdf(year: number): Promise<{ bytes: Uint8Array; year: number }> {
-  const [rows, settings, identity] = await Promise.all([
+  const [rows, identity] = await Promise.all([
     combinedMonthlySummary(year),
-    getSettings(),
     getBusinessIdentity(),
   ]);
   const bytes = await monthlyReportPdfBytes(

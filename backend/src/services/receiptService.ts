@@ -1,7 +1,7 @@
 import { poolExec, query, queryOne, withTransaction, type SqlExec } from '../config/db';
 import { paginate } from './paginate';
 import type { Pagination, ReceiptType } from '../types';
-import { conflict, notFound } from '../utils/httpError';
+import { notFound } from '../utils/httpError';
 import { balanceDue, formatReceiptNumber, receiptPrefixFor } from '../utils/businessRules';
 import { n } from '../utils/money';
 import { getBusinessIdentity } from './brandingService';

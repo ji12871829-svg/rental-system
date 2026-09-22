@@ -24,11 +24,11 @@ async function requestWithRetry<T>(path: string, options: RequestInit, retried: 
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
-      ...(options.headers ?? {}),
-    },
+    headers: Object.assign(
+      { 'Content-Type': 'application/json' },
+      csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+      options.headers,
+    ),
   });
 
   if (res.status === 401) {
@@ -105,9 +105,10 @@ export async function authenticatedFetch(path: string, options: RequestInit = {}
   return fetch(`${API_URL}${path}`, {
     ...options,
     credentials: 'include',
-    headers: {
-      ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
-      ...(options.headers ?? {}),
-    },
+    headers: Object.assign(
+      {},
+      csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+      options.headers,
+    ),
   });
 }

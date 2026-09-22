@@ -15,7 +15,6 @@
 // absence of cookies, and login rejection, plus the empty-table bootstrap
 // exception.
 import request from 'supertest';
-import type { Server } from 'http';
 import { createApp } from '../../src/app';
 import { pool } from '../../src/config/db';
 

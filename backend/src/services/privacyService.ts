@@ -347,7 +347,7 @@ export async function exportTenantPersonalDataCsv(
     }
   };
 
-  emit('meta', 'export', { ...{ exportedAt: bundle.exportedAt, generatedBy: bundle.generatedBy }, retentionNote: bundle.retentionNote });
+  emit('meta', 'export', { exportedAt: bundle.exportedAt, generatedBy: bundle.generatedBy, retentionNote: bundle.retentionNote });
   emit('subject', `tenant-${id}`, bundle.subject);
   if (bundle.unit) emit('unit', `unit-${bundle.unit.id}`, bundle.unit);
   for (const [category, records] of Object.entries(bundle.data)) {

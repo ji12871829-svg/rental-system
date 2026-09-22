@@ -27,7 +27,7 @@ export interface ReceiptDocument {
   property_address?: string | null;
 }
 
-export function escapeHtml(value: string): string {
+function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

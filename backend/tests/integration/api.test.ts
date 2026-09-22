@@ -77,7 +77,7 @@ describe('Security', () => {
       .send({ email: 'staff@rpms.local', password: 'Staff@2026!' });
     const setCookies = loginRes.headers['set-cookie'] as unknown as string[];
     const cookies = setCookies.map((cookie) => cookie.split(';')[0]).join('; ');
-    const csrf = setCookies.find((cookie) => cookie.startsWith('rpms_csrf='))?.split(';')[0].split('=')[1];
+    // (csrf token stays in the cookie jar — logout is CSRF-exempt by design)
 
     // Logout is deliberately CSRF-exempt: a session must always be able to
     // end itself (self-heal / forced-logout paths rely on it).

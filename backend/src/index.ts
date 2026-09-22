@@ -17,7 +17,7 @@ async function main() {
     // on a ready service.
     await bootstrapIfEmpty();
     await applyMigrations();
-    const server = app.listen(env.port, () => {
+    app.listen(env.port, () => {
       // eslint-disable-next-line no-console
       console.log(`RPMS API listening on http://localhost:${env.port} (${env.nodeEnv})`);
       startSmsRetryJob();

@@ -2,7 +2,7 @@ import { query, queryOne, withTransaction } from '../config/db';
 import { paginate } from './paginate';
 import { MONTH_NAMES, type Pagination } from '../types';
 import { balanceDue, computeWaterBill, paymentStatus, waterCollectionRate, waterSurplusDeficit } from '../utils/businessRules';
-import { badRequest, conflict, notFound, unprocessable } from '../utils/httpError';
+import { conflict, notFound, unprocessable } from '../utils/httpError';
 import { n, round2 } from '../utils/money';
 import { csvCell } from '../utils/csv';
 import { logAudit } from './auditService';
@@ -67,12 +67,11 @@ export async function listReadings(filters: ReadingFilters): Promise<{ rows: unk
   const enriched = rows.map((row: any) => {
     const paid = paidByKey.get(row.tenant_id + ":" + row.billing_month + ":" + row.billing_year) ?? 0;
     const bill = n(row.water_bill);
-    return {
-      ...row,
+    return Object.assign({}, row, {
       totalWaterPaid: round2(paid),
       waterBalance: balanceDue(bill, paid),
       status: paymentStatus(bill, paid),
-    };
+    });
   });
   return { rows: enriched, pagination };
 }
@@ -310,13 +309,12 @@ export async function listWaterPayments(filters: WaterPaymentFilters): Promise<{
   const enriched = rows.map((row: any) => {
     const bill = billByKey.get(row.unit_id + ":" + row.billing_month + ":" + row.billing_year) ?? 0;
     const paid = paidByKey.get(row.tenant_id + ":" + row.billing_month + ":" + row.billing_year) ?? 0;
-    return {
-      ...row,
+    return Object.assign({}, row, {
       waterBill: bill,
       totalWaterPaid: round2(paid),
       waterBalance: balanceDue(bill, paid),
       status: paymentStatus(bill, paid),
-    };
+    });
   });
   return { rows: enriched, pagination };
 }

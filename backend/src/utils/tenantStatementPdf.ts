@@ -37,7 +37,7 @@ const COL_W = {
   totalBal: 49,
 } as const;
 type ColKey = keyof typeof COL_W;
-const MONEY_KEYS: ColKey[] = ['expRent', 'prev', 'curr', 'cons', 'waterBill', 'rentPaid', 'waterPaid', 'totalPaid', 'rentBal', 'waterBal', 'totalBal'];
+const MONEY_KEYS = new Set<ColKey>(['expRent', 'prev', 'curr', 'cons', 'waterBill', 'rentPaid', 'waterPaid', 'totalPaid', 'rentBal', 'waterBal', 'totalBal']);
 const BALANCE_KEYS = new Set<ColKey>(['rentBal', 'waterBal', 'totalBal']);
 
 // X of the RIGHT edge of each column (money cells are right-aligned).
@@ -181,7 +181,7 @@ export async function tenantStatementPdfBytes(
   // --- Table header -------------------------------------------------------------
   (Object.keys(COL_W) as ColKey[]).forEach((key) => {
     const header = HEADERS[key];
-    if (MONEY_KEYS.includes(key)) {
+    if (MONEY_KEYS.has(key)) {
       draw(header, { x: rightX(header, 6.5, bold, COL_RIGHT[key]), y, size: 6.5, font: bold, color: MUTED });
     } else {
       const left = key === 'unit' ? MARGIN + COL_W.month : MARGIN;

@@ -17,7 +17,6 @@ const INK = rgb(0.07, 0.09, 0.15);
 const MUTED = rgb(0.42, 0.45, 0.5);
 const RULE = rgb(0.85, 0.87, 0.9);
 const RED = rgb(0.72, 0.11, 0.11);
-const GREEN = rgb(0.08, 0.5, 0.28);
 
 /**
  * Exported because financeService.ts references this type via an inline
@@ -58,8 +57,7 @@ const COLS = [
   { key: 'monthsInArrears', label: 'Mos.', w: 30, align: 'right' as const },
   { key: 'status', label: 'Status', w: 55, align: 'left' as const },
 ];
-// Statuses that mean money is owed (drives the red highlight).
-const OWED = new Set(['UNPAID', 'PARTIAL', 'OVERDUE']);
+// (status colors are driven by `owed` from totalOutstanding, not by status set)
 
 export async function arrearsReportPdfBytes(
   data: ArrearsReportData,
@@ -159,7 +157,6 @@ export async function arrearsReportPdfBytes(
     const owedColor = owed ? RED : INK;
     for (const c of COLS) {
       const text = cellText(r, c.key);
-      const isMoney = MONEY_KEYS.has(c.key);
       // Balance columns (and the total) turn red when money is owed; cleared
       // rows keep ink.
       const isBalance = c.key === 'rentBalance' || c.key === 'waterBalance' || c.key === 'totalOutstanding';

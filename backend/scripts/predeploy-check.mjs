@@ -48,15 +48,16 @@ if (process.env.DATABASE_URL) {
   }
 
   const client = new Client({ connectionString: url, ssl: ssl ? { rejectUnauthorized: false } : false, connectionTimeoutMillis: 10_000 });
+  const EXPECTED_TABLES = ['users', 'tenants', 'rent_payments', 'settings', 'business_branding', 'audit_logs'];
   try {
     await client.connect();
     const { rows } = await client.query(
       `SELECT table_name FROM information_schema.tables
        WHERE table_schema = 'public' AND table_name = ANY($1)`,
-      [['users', 'tenants', 'rent_payments', 'settings', 'business_branding', 'audit_logs']]
+      [EXPECTED_TABLES]
     );
-    const found = rows.map((r) => r.table_name);
-    const missing = ['users', 'tenants', 'rent_payments', 'settings', 'business_branding', 'audit_logs'].filter((t) => !found.includes(t));
+    const found = new Set(rows.map((r) => r.table_name));
+    const missing = EXPECTED_TABLES.filter((t) => !found.has(t));
     if (missing.length > 0) {
       // Not fatal: the first boot auto-applies schema + seed on an empty
       // database (src/db/bootstrap.ts). Only worth flagging so the log

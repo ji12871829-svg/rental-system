@@ -23,7 +23,7 @@ function waitForServer(pid, timeoutMs = 20000) {
         resolve(res);
       } catch {
         if (Date.now() - started > timeoutMs) {
-          try { pid && process.kill(pid); } catch {}
+          try { if (pid) process.kill(pid); } catch {}
           reject(new Error(`server on :${PORT} did not come up within ${timeoutMs}ms`));
         } else setTimeout(tick, 500);
       }

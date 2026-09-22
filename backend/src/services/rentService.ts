@@ -2,7 +2,7 @@ import { query, queryOne, withTransaction } from '../config/db';
 import { paginate } from './paginate';
 import { MONTH_NAMES, type Pagination } from '../types';
 import { balanceDue, paymentStatus } from '../utils/businessRules';
-import { badRequest, notFound, unprocessable } from '../utils/httpError';
+import { notFound, unprocessable } from '../utils/httpError';
 import { csvCell } from '../utils/csv';
 import { n, round2 } from '../utils/money';
 import { logAudit } from './auditService';
@@ -86,13 +86,12 @@ export async function listRentPayments(filters: RentPaymentFilters): Promise<{ r
   const enriched = rows.map((row: any) => {
     const paid = paidByKey.get(row.tenant_id + ":" + row.billing_month + ":" + row.billing_year) ?? 0;
     const expected = n(row.monthly_rent);
-    return {
-      ...row,
+    return Object.assign({}, row, {
       expectedRent: expected,
       totalPaidForMonth: round2(paid),
       balance: balanceDue(expected, paid),
       status: paymentStatus(expected, paid),
-    };
+    });
   });
 
   return { rows: enriched, pagination };

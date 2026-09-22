@@ -95,7 +95,7 @@ try {
   record('GET /', false, err.message);
 }
 
-for (const [path, desc] of [
+for (const [path] of [
   ['/manifest.webmanifest', 'PWA manifest (name, start_url "/", icons)'],
   ['/sw.js', 'service worker (installable = served, no-cache)'],
   ['/pwa-192.png', 'PWA icon 192'],

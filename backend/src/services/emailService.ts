@@ -617,22 +617,4 @@ export async function listEmails(filters: EmailFilters): Promise<{ rows: EmailRo
   });
 }
 
-// Backfill for seeded receipts: creates PENDING email rows for any receipt
-// whose tenant has an email address but no email row yet. Currently unused —
-// the db:setup backfill path imports backfillReceipts/backfillSms only. Kept
-// module-private as ready-made parity with the SMS backfill.
-async function backfillEmails(): Promise<number> {
-  const receipts = await query<ReceiptWithEmail>(
-    `SELECT r.*, t.email AS tenant_email
-     FROM receipts r
-     JOIN tenants t ON t.id = r.tenant_id
-     WHERE t.email IS NOT NULL
-       AND NOT EXISTS (SELECT 1 FROM email_notifications e WHERE e.receipt_id = r.id)`
-  );
-  let created = 0;
-  for (const receipt of receipts) {
-    await prepareForReceipt(receipt.id);
-    created += 1;
-  }
-  return created;
-}
+

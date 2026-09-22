@@ -1,7 +1,6 @@
 // receiptDocument — pure builders for the emailed receipt (no DB).
 // BUSINESS_NAME etc. come from backend/.env via env.ts (module load).
 import {
-  escapeHtml,
   receiptEmailHtml,
   receiptSubject,
   receiptText,

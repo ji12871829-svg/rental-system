@@ -54,7 +54,7 @@ async function api(path, opts = {}) {
   try {
     res = await fetch(API + path, {
       ...opts,
-      headers: { Authorization: `Bearer ${KEY}`, Accept: 'application/json', ...(opts.headers || {}) },
+      headers: { Authorization: `Bearer ${KEY}`, Accept: 'application/json', ...opts.headers },
       signal: AbortSignal.timeout(30_000),
     });
   } catch (e) {
@@ -177,7 +177,7 @@ async function ghListDeployments({ env, sha, perPage }) {
   if (env) params.set('environment', env);
   if (sha) params.set('sha', sha);
   const deps = await ghApi(`/repos/${repo.owner}/${repo.repo}/deployments?${params}`);
-  return deps.map((d) => ({ ...d, repo }));
+  return deps.map((d) => Object.assign({}, d, { repo }));
 }
 
 // --- gh subcommands --------------------------------------------------------

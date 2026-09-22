@@ -257,7 +257,7 @@ export default function Settings() {
 
   // --- Logo upload -----------------------------------------------------------
   const LOGO_MAX_BYTES = 512 * 1024;
-  const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'];
+  const LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']);
 
   function toDataUrl(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -270,7 +270,7 @@ export default function Settings() {
 
   async function handleLogoFile(file: File) {
     setLogoError(null);
-    if (!LOGO_TYPES.includes(file.type)) {
+    if (!LOGO_TYPES.has(file.type)) {
       setLogoError('Please choose a PNG, JPEG, GIF, WebP or SVG image.');
       return;
     }

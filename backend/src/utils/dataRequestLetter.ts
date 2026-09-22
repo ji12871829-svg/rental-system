@@ -145,7 +145,6 @@ export async function renderDataLetterPdf(letter: DataRequestLetter): Promise<Ui
   doc.setProducer('RPMS');
 
   const serif = await doc.embedFont(StandardFonts.TimesRoman);
-  const serifBold = await doc.embedFont(StandardFonts.TimesRomanBold);
   const sans = await doc.embedFont(StandardFonts.Helvetica);
   const sansBold = await doc.embedFont(StandardFonts.HelveticaBold);
 

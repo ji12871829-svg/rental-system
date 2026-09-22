@@ -157,10 +157,10 @@ export async function monthlyReportPdfBytes(
   y -= 16;
 
   // --- Monthly rows -------------------------------------------------------------
-  const totals = MONEY_COLS.reduce(
-    (acc, key) => ({ ...acc, [key]: data.rows.reduce((s, r) => s + n(r[key]), 0) }),
-    {} as Record<(typeof MONEY_COLS)[number], number>
-  );
+  const totals = {} as Record<(typeof MONEY_COLS)[number], number>;
+  for (const key of MONEY_COLS) {
+    totals[key] = data.rows.reduce((s, r) => s + n(r[key]), 0);
+  }
 
   for (const r of data.rows) {
     draw(page, r.monthName ?? `Month ${r.month}`, { y, size: 8.5, font: bold });

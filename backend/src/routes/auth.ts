@@ -8,7 +8,7 @@ import { requireAuth } from '../middleware/auth';
 import { STAFF_JWT_AUDIENCE } from '../middleware/portalAuth';
 import { loginLimiter } from '../middleware/rateLimiter';
 import { validateBody } from '../middleware/validate';
-import { conflict, unauthorized } from '../utils/httpError';
+import { unauthorized } from '../utils/httpError';
 import { asyncHandler } from '../utils/asyncHandler';
 import { logAudit } from '../services/auditService';
 import { isTest } from '../config/env';

@@ -100,7 +100,7 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
 // client-side validation rejection or a server error. Web Animations API, so
 // re-triggering cancels the running animation and restarts cleanly; no CSS
 // class juggling, no remounts. Respects prefers-reduced-motion by not running.
-export function shakeEl(el: HTMLElement | null): void {
+function shakeEl(el: HTMLElement | null): void {
   if (!el) return;
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   el.getAnimations().forEach((a) => a.cancel());

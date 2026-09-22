@@ -29,11 +29,11 @@ async function requestWithRetry<T>(path: string, options: RequestInit, retried: 
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
-      ...(options.headers ?? {}),
-    },
+    headers: Object.assign(
+      { 'Content-Type': 'application/json' },
+      csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+      options.headers,
+    ),
   });
 
   // Parse error bodies once, up front.
@@ -90,7 +90,7 @@ export async function portalStatementDownload(): Promise<void> {
   const csrfToken = getCsrfToken();
   const res = await fetch(`${API_URL}/api/portal/statement.pdf`, {
     credentials: 'include',
-    headers: { ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
+    headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : undefined,
   });
   if (!res.ok) throw new Error(`Statement download failed (${res.status}).`);
   const blob = await res.blob();

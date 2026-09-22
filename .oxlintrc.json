@@ -1,0 +1,75 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "perf": "warn",
+    "pedantic": "off"
+  },
+  "plugins": ["typescript", "oxc", "unicorn"],
+  "env": {
+    "browser": true,
+    "node": true,
+    "es2024": true
+  },
+  "globals": {
+    "process": "readonly",
+    "Buffer": "readonly",
+    "URL": "readonly",
+    "URLSearchParams": "readonly"
+  },
+  "settings": {
+    "jsx-a11y": { "polymeric-semantics": false }
+  },
+  "overrides": [
+    {
+      "files": ["backend/**/*.ts", "scripts/**/*.mjs", "frontend/**/*.ts", "frontend/**/*.tsx"],
+      "rules": {
+        "no-console": "off",
+        "unicorn/prefer-top-level-await": "off",
+        "unicorn/no-null": "off",
+        "unicorn/prefer-node-protocol": "off",
+        "typescript/no-non-null-assertion": "off"
+      }
+    },
+    {
+      "files": ["backend/tests/**/*.ts", "backend/tests/**/*.tsx"],
+      "rules": {
+        "typescript/no-unsafe-function-type": "off",
+        "@typescript-eslint/no-explicit-any": "off"
+      }
+    },
+    {
+      "files": ["frontend/src/**/*.tsx", "frontend/src/**/*.ts"],
+      "rules": {
+        "no-console": "off",
+        "react-hooks/exhaustive-deps": "warn"
+      }
+    },
+    {
+      "files": ["backend/tests/**/*"],
+      "rules": {
+        "no-await-in-loop": "off"
+      }
+    },
+    {
+      "files": ["scripts/**/*", "frontend/scripts/**/*", "frontend/public/sw.js"],
+      "rules": {
+        "no-await-in-loop": "off"
+      }
+    },
+    {
+      "files": [
+        "backend/src/db/migrations.ts",
+        "backend/src/services/smsRetryJob.ts",
+        "backend/src/services/tenantRetentionJob.ts",
+        "backend/src/services/receiptService.ts",
+        "backend/src/services/emailService.ts",
+        "backend/src/services/smsService.ts",
+        "backend/src/utils/receiptPdf.ts"
+      ],
+      "rules": {
+        "no-await-in-loop": "off"
+      }
+    }
+  ]
+}

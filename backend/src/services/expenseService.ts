@@ -2,7 +2,7 @@ import { query, queryOne } from '../config/db';
 import { paginate } from './paginate';
 import { MONTH_NAMES, type Pagination } from '../types';
 import { notFound } from '../utils/httpError';
-import { n, round2 } from '../utils/money';
+import { n } from '../utils/money';
 import { logAudit } from './auditService';
 
 export interface ExpenseInput {

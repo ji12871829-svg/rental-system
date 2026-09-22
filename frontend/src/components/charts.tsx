@@ -598,8 +598,8 @@ export function LineChart(props: {
   const width = containerWidth ?? 600;
   const [hover, setHover] = useState<{ i: number; px: number; py: number } | null>(null);
 
-  const xAxes = Children.toArray(children).filter(isAxis).filter((c) => c.props.type !== 'number');
-  const yAxes = Children.toArray(children).filter(isAxis).filter((c) => c.props.type === 'number' || c.type === YAxis);
+  const catAxis = Children.toArray(children).filter(isAxis).find((c) => c.props.type !== 'number');
+  const yAxis = Children.toArray(children).filter(isAxis).find((c) => c.props.type === 'number' || c.type === YAxis);
   const tooltips = pick<{ formatter?: TooltipFormatter }>(children, Tooltip);
   const hasLegend = pick(children, Legend).length > 0;
   const lines = pick<{ dataKey: DataKey; stroke?: string; name?: string; type?: string }>(children, Line);
@@ -611,8 +611,7 @@ export function LineChart(props: {
     monotone: (l.props.type ?? 'linear') === 'monotone',
   }));
 
-  const catAxis = xAxes[0];
-  const marginLeft = yAxes[0]?.props.width ?? 60;
+  const marginLeft = yAxis?.props.width ?? 60;
   const marginRight = 14;
   const marginTop = 10;
   const marginBottom = 30;

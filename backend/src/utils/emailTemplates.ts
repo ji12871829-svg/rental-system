@@ -183,7 +183,6 @@ export function composeStaffRequestEmail(input: {
   phone: string | null;
   identity: IdentityFields;
 }): ComposedEmail {
-  const name = input.identity.name?.trim() || 'Property Management';
   const subject = `New staff access request — ${input.name}`;
   const contactRows = [
     ['Name', input.name],

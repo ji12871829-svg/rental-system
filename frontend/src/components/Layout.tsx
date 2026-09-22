@@ -151,14 +151,15 @@ export default function Layout() {
   // Only the untitled Dashboard section always renders open.
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
-  const visibleSections = NAV_SECTIONS.map((section) => ({
-    ...section,
-    items: section.items.filter((n) => {
-      if (n.adminOnly && user?.role !== 'ADMIN') return false;
-      if (n.managerOnly && user?.role === 'STAFF') return false;
-      return true;
-    }),
-  })).filter((section) => section.items.length > 0);
+  const visibleSections = NAV_SECTIONS.map((section) =>
+    Object.assign({}, section, {
+      items: section.items.filter((n) => {
+        if (n.adminOnly && user?.role !== 'ADMIN') return false;
+        if (n.managerOnly && user?.role === 'STAFF') return false;
+        return true;
+      }),
+    })
+  ).filter((section) => section.items.length > 0);
 
   function handleLogout() {
     logout();

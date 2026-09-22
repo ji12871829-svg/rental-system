@@ -11,7 +11,6 @@ import {
   eraseTenantPersonalData,
   exportTenantPersonalData,
   exportTenantPersonalDataCsv,
-  listPrivacyRequests,
 } from '../services/privacyService';
 import { prepareForDataRequestLetter, prepareForPortalCredentials, sendEmailNotification } from '../services/emailService';
 import { renderDataLetterEmail, renderDataLetterPdf, dataEnclosureName, dataLetterPdfName } from '../utils/dataRequestLetter';
