@@ -2,15 +2,23 @@
   "name": "rental-system-workspace",
   "private": true,
   "scripts": {
-    "lint": "oxlint backend/src backend/tests frontend/src scripts --config=.oxlintrc.json || node scripts/run-oxlint.mjs",
+    "lint": "node scripts/run-oxlint.mjs",
     "knip": "knip --include files,dependencies,exports,types",
     "typecheck": "npm --prefix backend run typecheck",
     "typecheck:backend": "npm --prefix backend run typecheck",
     "typecheck:frontend": "npm --prefix frontend run typecheck",
-    "typecheck:all": "npm run typecheck:backend && npm run typecheck:frontend"
+    "typecheck:all": "npm run typecheck:backend && npm run typecheck:frontend",
+    "prepare": "husky"
   },
   "devDependencies": {
+    "husky": "^9.1.7",
     "knip": "^6.35.1",
+    "lint-staged": "^16.4.0",
     "oxlint": "^1.85.0"
+  },
+  "lint-staged": {
+    "*.{js,mjs,cjs,ts,tsx}": [
+      "node scripts/run-oxlint.mjs"
+    ]
   }
 }
