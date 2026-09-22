@@ -18,9 +18,8 @@ import { randomBytes } from 'crypto';
 import { queryOne, query } from '../config/db';
 import { env } from '../config/env';
 import { getSettings } from './settingsService';
-import { getPaybillInstructions } from './brandingService';
+import { getBusinessIdentity, getPaybillInstructions } from './brandingService';
 import { logAudit } from './auditService';
-import { initiateTenantStkPush } from './mpesaService';
 import { tenantStatementPdf } from './financeService';
 import { conflict, forbidden, notFound, unauthorized } from '../utils/httpError';
 
@@ -296,36 +295,41 @@ export async function getPortalReceipts(tenantId: number, limit = 12): Promise<u
   );
 }
 
-export async function portalPayRent(tenantId: number, amount: number): Promise<{
-  checkoutRequestId: string;
-  accountReference: string;
-  provider: string;
-}> {
-  const result = await initiateTenantStkPush(tenantId, amount);
-  return {
-    checkoutRequestId: result.checkoutRequestId,
-    accountReference: result.accountReference,
-    provider: env.mpesaProvider,
-  };
-}
-
+// Send-money payment instructions for the tenant portal. Rent and water are
+// paid by sending money to the business's M-Pesa (PayBill/send-to-mobile)
+// details — the tenant copies the account reference, sends the money, and the
+// office reconciles it (C2B callback or manual entry). There is no
+// tenant-initiated push any more: paying is not an in-app action, it is a
+// set of details + exact references to send money TO.
 export async function getPortalPaymentInstructions(tenantId: number): Promise<{
-  enabled: boolean;
+  businessName: string | null;
   number: string | null;
-  name: string | null;
+  accountName: string | null;
   instructions: string | null;
   rentReference: string | null;
   waterReference: string | null;
+  rentBalance: number;
+  waterBalance: number;
 }> {
-  const [paybill, identity] = await Promise.all([
+  const [paybill, identity, summary, contactPhone] = await Promise.all([
     getPaybillInstructions(),
     getPortalIdentity(tenantId),
+    getPortalSummary(tenantId),
+    // The send-to number falls back to the business contact phone when no
+    // PayBill is configured — many small landlords take payments to their
+    // own line, and that number is already maintained in business identity.
+    getBusinessIdentity().then((i) => i.phone?.trim() || null),
   ]);
   const unit = identity.unitNumber?.trim() || null;
   return {
-    ...paybill,
-    rentReference: paybill.enabled ? unit : null,
-    waterReference: paybill.enabled && identity.waterEnabled && unit ? `${unit}-WATER` : null,
+    businessName: identity.name ?? null,
+    number: paybill.number ?? contactPhone,
+    accountName: paybill.name,
+    instructions: paybill.instructions,
+    rentReference: unit,
+    waterReference: identity.waterEnabled && unit ? `${unit}-WATER` : null,
+    rentBalance: summary.rentThisMonth.balance,
+    waterBalance: summary.waterThisMonth.balance,
   };
 }
 

@@ -75,7 +75,7 @@ export default function PortalHome() {
         </p>
         {owing && (
           <Link to="/portal/payments" className="mt-2 inline-block text-sm font-medium text-brand-700 hover:underline">
-            Pay rent now →
+            Send money to clear this →
           </Link>
         )}
       </div>

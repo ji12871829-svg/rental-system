@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, Copy, Loader2 } from 'lucide-react';
+import { Check, Copy } from 'lucide-react';
 import { PageHeader, SkeletonTable, useFetch } from '../../components/ui';
 import { money, formatDate } from '../../lib/format';
 import { portalApi } from '../../lib/portalApi';
@@ -16,12 +16,14 @@ interface PortalPayment {
 }
 
 interface PaymentInstructions {
-  enabled: boolean;
+  businessName: string | null;
   number: string | null;
-  name: string | null;
+  accountName: string | null;
   instructions: string | null;
   rentReference: string | null;
   waterReference: string | null;
+  rentBalance: number;
+  waterBalance: number;
 }
 
 const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -43,36 +45,9 @@ export default function PortalPayments() {
   const currency = summaryData?.data.currency ?? 'KSh';
   const fmt = (n: number | null | undefined) => money(n ?? 0, currency);
 
-  // The one tenant-initiated action: an M-Pesa STK Push for the rent balance.
-  const [amount, setAmount] = useState('');
-  const [paying, setPaying] = useState(false);
-  const [payMessage, setPayMessage] = useState<string | null>(null);
-  const [payError, setPayError] = useState<string | null>(null);
+  // Payments are "send money": copy the number + exact account reference,
+  // open M-Pesa, and send that amount. There is no in-app push to a phone.
   const [copied, setCopied] = useState<string | null>(null);
-
-  const rentBalance = summaryData?.data.rentThisMonth.balance ?? 0;
-  const suggested = amount === '' ? rentBalance : Number(amount);
-
-  const startStkPush = async () => {
-    setPayError(null);
-    setPayMessage(null);
-    if (!(suggested > 0)) {
-      setPayError('Enter an amount greater than zero.');
-      return;
-    }
-    setPaying(true);
-    try {
-      const res = await portalApi.post<{ data: { message: string; provider: string } }>(
-        '/api/portal/pay-rent',
-        { amount: suggested },
-      );
-      setPayMessage(res.data.message);
-    } catch (err) {
-      setPayError(err instanceof Error ? err.message : 'Could not start the payment.');
-    } finally {
-      setPaying(false);
-    }
-  };
 
   const copyValue = async (label: string, value: string) => {
     await navigator.clipboard.writeText(value);
@@ -84,51 +59,41 @@ export default function PortalPayments() {
     <div className="space-y-6">
       <PageHeader title="Payments" subtitle="Pay rent and review everything you have paid" />
 
-      {instructionsData?.data.enabled && (
+      {instructionsData?.data.number && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <h3 className="text-sm font-semibold text-gray-900">Pay by M-Pesa PayBill</h3>
-          <p className="mt-1 text-sm text-gray-600">Use the exact account reference for the payment type. Do not use your phone number or name.</p>
+          <h3 className="text-sm font-semibold text-gray-900">Send money via M-Pesa</h3>
+          <p className="mt-1 text-sm text-gray-600">
+            Send the amount you owe to the details below, using the exact account reference for what you are paying (rent or water). The payment reflects on your account once it is confirmed.
+          </p>
           <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-            <CopyRow label="PayBill" value={instructionsData.data.number!} onCopy={copyValue} copied={copied} />
-            {instructionsData.data.name && <CopyRow label="Business name" value={instructionsData.data.name} onCopy={copyValue} copied={copied} />}
+            <CopyRow label="M-Pesa number" value={instructionsData.data.number} onCopy={copyValue} copied={copied} />
+            {(instructionsData.data.accountName || instructionsData.data.businessName) && (
+              <CopyRow label="Account name" value={instructionsData.data.accountName || instructionsData.data.businessName!} onCopy={copyValue} copied={copied} />
+            )}
             {instructionsData.data.rentReference && <CopyRow label="Rent account" value={instructionsData.data.rentReference} onCopy={copyValue} copied={copied} />}
             {instructionsData.data.waterReference && <CopyRow label="Water account" value={instructionsData.data.waterReference} onCopy={copyValue} copied={copied} />}
+          </div>
+          <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+            {instructionsData.data.rentReference && (
+              <AmountRow
+                label="Rent to send"
+                amount={instructionsData.data.rentBalance}
+                fmt={fmt}
+                positive={instructionsData.data.rentBalance > 0}
+              />
+            )}
+            {instructionsData.data.waterReference && (
+              <AmountRow
+                label="Water to send"
+                amount={instructionsData.data.waterBalance}
+                fmt={fmt}
+                positive={instructionsData.data.waterBalance > 0}
+              />
+            )}
           </div>
           {instructionsData.data.instructions && <p className="mt-3 text-sm text-gray-600">{instructionsData.data.instructions}</p>}
         </div>
       )}
-
-      <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <h3 className="text-sm font-semibold text-gray-900">Pay rent with M-Pesa</h3>
-        {summaryData && (
-          <p className="mt-1 text-sm text-gray-500">
-            This month's rent balance: <b className={rentBalance > 0 ? 'text-red-700' : 'text-green-700'}>{fmt(rentBalance)}</b>
-            {' · '}a prompt will be sent to the M-Pesa number on your account.
-          </p>
-        )}
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <input
-            type="number"
-            min={1}
-            inputMode="decimal"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder={rentBalance > 0 ? String(rentBalance) : 'Amount'}
-            className="w-36 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-            aria-label="Payment amount"
-          />
-          <button
-            onClick={startStkPush}
-            disabled={paying}
-            className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {paying && <Loader2 className="h-4 w-4 animate-spin" />}
-            {paying ? 'Sending prompt…' : 'Send M-Pesa prompt'}
-          </button>
-        </div>
-        {payMessage && <p className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">{payMessage}</p>}
-        {payError && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{payError}</p>}
-      </div>
 
       <div className="rounded-xl border border-gray-200 bg-white">
         <div className="border-b border-gray-200 px-4 py-3">
@@ -168,6 +133,20 @@ export default function PortalPayments() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function AmountRow({ label, amount, fmt, positive }: {
+  label: string;
+  amount: number;
+  fmt: (n: number) => string;
+  positive: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-3 py-2">
+      <span className="text-gray-500">{label}</span>
+      <b className={positive ? 'text-red-700' : 'text-green-700'}>{positive ? fmt(amount) : 'Nothing — you are up to date'}</b>
     </div>
   );
 }

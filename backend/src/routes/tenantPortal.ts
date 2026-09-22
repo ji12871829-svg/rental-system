@@ -23,7 +23,6 @@ import {
   getPortalSummary,
   getPortalWaterReadings,
   portalLogin,
-  portalPayRent,
   portalStatementPdf,
 } from '../services/tenantPortalService';
 import { logAudit } from '../services/auditService';
@@ -181,24 +180,11 @@ router.get('/statement.pdf', requireTenant, asyncHandler(async (req, res) => {
   res.send(Buffer.from(bytes));
 }));
 
-// The one tenant-initiated action: pay rent via M-Pesa STK Push to their own
-// phone. The tenant never posts a payment directly — the provider callback
-// confirms it, exactly like the office-initiated push.
-const paySchema = z.object({
-  amount: z.coerce.number().positive().max(1_000_000),
-});
-
-router.post('/pay-rent', requireTenant, validateBody(paySchema), asyncHandler(async (req, res) => {
-  const { amount } = req.body as z.infer<typeof paySchema>;
-  try {
-    const result = await portalPayRent(req.tenant!.tenantId, amount);
-    res.status(202).json({ data: { ...result, message: 'Check your phone for the M-Pesa prompt and enter your PIN.' } });
-  } catch (err) {
-    // Provider errors (no phone, disabled unit, Daraja failure) surface as a
-    // clean 400 rather than a 500.
-    throw badRequest((err as Error).message);
-  }
-}));
+// Payments are now "send money" only: the tenant copies the PayBill/account
+// details from /payment-instructions and sends the money from M-Pesa. The
+// office-side reconciliation paths (C2B callback auto-match, or manual entry
+// by staff with the M-Pesa reference) post the actual payment — a tenant can
+// still never post one directly.
 
 // Sliding-session renewal for the tenant portal — same grace semantics as
 // staff /api/auth/refresh: keepalive renews before expiry; a tab that slept
