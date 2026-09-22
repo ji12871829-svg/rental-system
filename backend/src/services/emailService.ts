@@ -442,7 +442,8 @@ export async function prepareForStatementEmail(opts: {
     attachments: [
       { filename: `tenant-statement-${opts.tenantId}-${opts.year}.pdf`, content: Buffer.from(bytes).toString('base64'), contentType: 'application/pdf' },
     ],
-  });    await logAudit({
+  });
+  await logAudit({
       userId: opts.userId ?? null,
       action: 'STATEMENT_EMAILED',
       entity: 'tenant',

@@ -24,6 +24,15 @@ export interface TenantFilters {
   q?: string;
 }
 
+// The reporting year's "current month" horizon: the real current month when
+// querying the live year, otherwise December (full-year view). Mirrors
+// financeService.currentMonthForYear — kept here as a tiny copy so the two
+// services stay independent.
+function currentReportingMonth(year: number): number {
+  const now = new Date();
+  return now.getFullYear() === year ? now.getMonth() + 1 : 12;
+}
+
 export async function listTenants(filters: TenantFilters): Promise<{ rows: unknown[]; pagination: Pagination }> {
   const where: string[] = [];
   const params: unknown[] = [];
@@ -79,9 +88,25 @@ export async function getTenant(id: number, reportingYear: number): Promise<unkn
   );
   if (!row) throw notFound('Tenant not found.');
 
-  // Current balances from real transactions (spec §46).
+  // Current balances from real transactions (spec §46). The expected side is
+  // the SAME move-in-aware YTD expected rent the dashboard uses — comparing
+  // one month's rent against a year of payments showed three months paid as
+  // a large negative ("overpaid") balance.
   const rentPaid = n((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(amount), 0)::text AS v FROM rent_payments WHERE tenant_id = $1 AND billing_year = $2`, [id, reportingYear]
+  ))?.v);
+  const rentExpectedYtd = n((await queryOne<{ v: string }>(
+    `SELECT COALESCE(SUM(u.monthly_rent * occ.months), 0)::text AS v
+     FROM tenants t
+     JOIN units u ON u.id = t.unit_id
+     JOIN LATERAL (
+       SELECT COUNT(*)::int AS months
+       FROM generate_series(1, $3::int) AS mm
+       WHERE t.move_in_date <= (DATE ($2::text || '-01-01') + mm * INTERVAL '1 month' - INTERVAL '1 day')
+         AND (t.move_out_date IS NULL OR t.move_out_date >= (DATE ($2::text || '-01-01') + (mm - 1) * INTERVAL '1 month'))
+     ) occ ON TRUE
+     WHERE t.id = $1`,
+    [id, reportingYear, currentReportingMonth(reportingYear)]
   ))?.v);
   const waterBilled = n((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(wmr.water_bill), 0)::text AS v
@@ -96,12 +121,13 @@ export async function getTenant(id: number, reportingYear: number): Promise<unkn
     ...row,
     balances: {
       reportingYear,
+      rentExpectedYtd,
       rentPaid,
-      rentBalance: balanceDue(row.monthly_rent ? n(row.monthly_rent) : 0, rentPaid),
+      rentBalance: balanceDue(rentExpectedYtd, rentPaid),
       waterBilled,
       waterPaid,
       waterBalance: balanceDue(waterBilled, waterPaid),
-      combinedBalance: round2(balanceDue(row.monthly_rent ? n(row.monthly_rent) : 0, rentPaid) + balanceDue(waterBilled, waterPaid)),
+      combinedBalance: round2(balanceDue(rentExpectedYtd, rentPaid) + balanceDue(waterBilled, waterPaid)),
     },
   };
 }

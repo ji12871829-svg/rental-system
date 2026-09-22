@@ -110,9 +110,18 @@ export async function dashboard(year?: number): Promise<unknown> {
 
   const outstandingRentByUnit = await query<{ unit_number: string; outstanding: string }>(
     `SELECT u.unit_number,
-            (u.monthly_rent * $2 - COALESCE((SELECT SUM(rp.amount) FROM rent_payments rp WHERE rp.unit_id = u.id AND rp.billing_year = $1), 0))::text AS outstanding
+            (u.monthly_rent * COALESCE(occ.months, 0) - COALESCE((SELECT SUM(rp.amount) FROM rent_payments rp WHERE rp.unit_id = u.id AND rp.billing_year = $1::int), 0))::text AS outstanding
      FROM units u
      JOIN tenants t ON t.unit_id = u.id AND t.status = 'ACTIVE'
+     JOIN LATERAL (
+       -- Months the tenancy was actually live, matching expectedRentYtd
+       -- semantics — a unit rented only since September must not show the
+       -- whole year's rent as outstanding.
+       SELECT COUNT(*)::int AS months
+       FROM generate_series(1, $2) AS mm
+       WHERE t.move_in_date <= (DATE ($1::text || '-01-01') + mm * INTERVAL '1 month' - INTERVAL '1 day')
+         AND (t.move_out_date IS NULL OR t.move_out_date >= (DATE ($1::text || '-01-01') + (mm - 1) * INTERVAL '1 month'))
+     ) occ ON TRUE
      ORDER BY outstanding DESC
      LIMIT 10`,
     [targetYear, currentMonth]
@@ -238,7 +247,11 @@ export async function arrears(year?: number): Promise<unknown[]> {
     ))?.v);
     const waterBalance = balanceDue(waterBilled, waterPaid);
 
-    // Months in arrears: months where the tenant paid less than the rent due.
+    // Months in arrears: months where the tenant was living in the unit
+    // (same occupancy window as rentExpectedYtd above) AND paid less than
+    // the rent due. Without the move-in filter, a tenant who moved in
+    // mid-year carried every pre-move-in month as an arrears month and was
+    // flagged OVERDUE on day one.
     const monthsInArrears = Number((await queryOne<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM (
          SELECT mm AS month
@@ -246,7 +259,9 @@ export async function arrears(year?: number): Promise<unknown[]> {
          JOIN tenants t ON t.id = $1
          JOIN units u2 ON u2.id = t.unit_id
          WHERE u2.monthly_rent > COALESCE((SELECT SUM(rp.amount) FROM rent_payments rp
-                                           WHERE rp.tenant_id = t.id AND rp.billing_month = mm AND rp.billing_year = $2), 0)
+                                           WHERE rp.tenant_id = t.id AND rp.billing_month = mm AND rp.billing_year = $2::int), 0)
+           AND t.move_in_date <= (DATE ($2::text || '-01-01') + mm * INTERVAL '1 month' - INTERVAL '1 day')
+           AND (t.move_out_date IS NULL OR t.move_out_date >= (DATE ($2::text || '-01-01') + (mm - 1) * INTERVAL '1 month'))
        ) s`,
       [u.tenant_id, targetYear, currentMonth]
     ))?.count ?? 0);
@@ -301,28 +316,60 @@ export async function tenantLedger(tenantId: number, year?: number): Promise<unk
       )
     : null;
 
-  const months = Array.from({ length: 12 }, (_, i) => i + 1);
-  const rows = await Promise.all(months.map(async (m) => {
-    const expectedRent = unit ? n(unit.monthly_rent) : 0;
-    const rentPaid = n((await queryOne<{ v: string }>(
-      `SELECT COALESCE(SUM(amount), 0)::text AS v FROM rent_payments
-       WHERE tenant_id = $1 AND billing_month = $2 AND billing_year = $3`,
-      [tenantId, m, targetYear]
-    ))?.v);
-    const reading = unit ? await queryOne<{
-      previous_reading: string; current_reading: string; consumption: string;
-      water_bill: string; water_rate: string; reading_date: string;
-    }>(
-      `SELECT previous_reading, current_reading, consumption, water_bill, water_rate, reading_date
-       FROM water_meter_readings WHERE unit_id = $1 AND billing_month = $2 AND billing_year = $3`,
-      [unit.id, m, targetYear]
-    ) : null;
-    const waterBill = reading ? n(reading.water_bill) : 0;
-    const waterPaid = n((await queryOne<{ v: string }>(
-      `SELECT COALESCE(SUM(amount), 0)::text AS v FROM water_payments
-       WHERE tenant_id = $1 AND billing_month = $2 AND billing_year = $3`,
-      [tenantId, m, targetYear]
-    ))?.v);
+  // ONE set-based query instead of the old 36 round-trips (3 per month × 12):
+  // a 12-month spine LEFT JOINs per-month aggregates for rent paid, water
+  // paid, and the meter reading (unique per unit+month+year in the schema).
+  // All status/derivation logic stays in JS through the shared helpers so the
+  // row shape is byte-identical to the loop version.
+  const ledgerRows = await query<{
+    month: number; unit_number: string | null; monthly_rent: string | null;
+    rent_paid: string; water_paid: string;
+    previous_reading: string | null; current_reading: string | null;
+    consumption: string | null; water_bill: string | null;
+  }>(
+    `WITH months AS (SELECT generate_series(1, 12) AS m),
+     tn AS (SELECT unit_id, move_in_date, move_out_date FROM tenants WHERE id = $1),
+     rent AS (
+       SELECT billing_month AS m, SUM(amount) AS paid
+       FROM rent_payments WHERE tenant_id = $1 AND billing_year = $2::int
+       GROUP BY billing_month
+     ),
+     water_paid AS (
+       SELECT billing_month AS m, SUM(amount) AS paid
+       FROM water_payments WHERE tenant_id = $1 AND billing_year = $2::int
+       GROUP BY billing_month
+     )
+     SELECT ms.m AS month,
+            u.unit_number,
+            -- Expected rent follows the tenancy window: 0 before move-in and
+            -- after move-out, the monthly rent for lived-in months. Keeps the
+            -- ledger consistent with the move-in-aware YTD balances card.
+            CASE WHEN tn.unit_id IS NULL THEN NULL
+                 WHEN tn.move_in_date IS NOT NULL
+                      AND tn.move_in_date <= (DATE ($2::text || '-01-01') + ms.m * INTERVAL '1 month' - INTERVAL '1 day')
+                      AND (tn.move_out_date IS NULL OR tn.move_out_date >= (DATE ($2::text || '-01-01') + (ms.m - 1) * INTERVAL '1 month'))
+                 THEN u.monthly_rent
+                 ELSE 0 END AS monthly_rent,
+            COALESCE(rp.paid, 0) AS rent_paid,
+            COALESCE(wp.paid, 0) AS water_paid,
+            wmr.previous_reading, wmr.current_reading, wmr.consumption,
+            wmr.water_bill
+     FROM months ms
+     LEFT JOIN rent rp ON rp.m = ms.m
+     LEFT JOIN water_paid wp ON wp.m = ms.m
+     CROSS JOIN tn
+     LEFT JOIN units u ON u.id = tn.unit_id
+     LEFT JOIN water_meter_readings wmr
+            ON wmr.unit_id = tn.unit_id AND wmr.billing_month = ms.m AND wmr.billing_year = $2::int
+     ORDER BY ms.m`,
+    [tenantId, targetYear]
+  );
+
+  const rows = ledgerRows.map((row) => {
+    const expectedRent = row.monthly_rent === null ? 0 : n(row.monthly_rent);
+    const rentPaid = n(row.rent_paid);
+    const waterBill = n(row.water_bill);
+    const waterPaid = n(row.water_paid);
 
     const rentBalance = balanceDue(expectedRent, rentPaid);
     const waterBalance = balanceDue(waterBill, waterPaid);
@@ -331,13 +378,13 @@ export async function tenantLedger(tenantId: number, year?: number): Promise<unk
     const totalBalance = balanceDue(totalDue, totalPaid);
 
     return {
-      month: m,
-      monthName: MONTH_NAMES[m - 1],
-      unit: unit ? unit.unit_number : null,
+      month: row.month,
+      monthName: MONTH_NAMES[row.month - 1],
+      unit: row.unit_number ?? null,
       expectedRent,
-      previousWaterReading: reading ? n(reading.previous_reading) : null,
-      currentWaterReading: reading ? n(reading.current_reading) : null,
-      waterConsumed: reading ? n(reading.consumption) : 0,
+      previousWaterReading: row.previous_reading === null ? null : n(row.previous_reading),
+      currentWaterReading: row.current_reading === null ? null : n(row.current_reading),
+      waterConsumed: row.consumption === null ? 0 : n(row.consumption),
       waterBill,
       rentPaid,
       waterPaid,
@@ -347,7 +394,7 @@ export async function tenantLedger(tenantId: number, year?: number): Promise<unk
       totalBalance,
       status: totalDue > 0 ? paymentStatus(totalDue, totalPaid) : 'UNPAID',
     };
-  }));
+  });
 
   const totals = {
     rentPaid: round2(rows.reduce((s, r: any) => s + r.rentPaid, 0)),

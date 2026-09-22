@@ -85,7 +85,7 @@ router.post(
       entity: 'demo_requests',
       entityId: inserted[0]?.id ?? null,
       newValue: { name, email: normalized },
-    });
+    }).catch((err) => console.error(`[public] demo-request audit failed: ${(err as Error).message}`));
 
     res.status(201).json({ data: { message: 'Request received. We will be in touch shortly.' } });
   }),

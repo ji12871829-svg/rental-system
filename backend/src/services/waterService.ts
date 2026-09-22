@@ -4,6 +4,7 @@ import { MONTH_NAMES, type Pagination } from '../types';
 import { balanceDue, computeWaterBill, paymentStatus, waterCollectionRate, waterSurplusDeficit } from '../utils/businessRules';
 import { badRequest, conflict, notFound, unprocessable } from '../utils/httpError';
 import { n, round2 } from '../utils/money';
+import { csvCell } from '../utils/csv';
 import { logAudit } from './auditService';
 import { createReceipt } from './receiptService';
 import { autoSendEnabled, dispatchAutoSend, prepareForReceipt } from './smsService';
@@ -246,10 +247,10 @@ export async function waterPaymentsCsv(filters: { year?: number; month?: number 
     const bill = n(r.water_bill);
     const paid = round2(n(r.total_paid));
     return [
-      r.payment_date, r.billing_month, r.billing_year, `"${r.full_name}"`, r.unit_number,
+      r.payment_date, r.billing_month, r.billing_year, r.full_name, r.unit_number,
       r.amount, r.payment_method, bill, paid, balanceDue(bill, paid), paymentStatus(bill, paid),
       r.receipt_number ?? '',
-    ].join(',');
+    ].map(csvCell).join(',');
   });
   return [header, ...lines].join('\n');
 }
@@ -417,10 +418,21 @@ export async function createWaterPayment(input: WaterPaymentInput, userId: numbe
 }
 
 export async function deleteWaterPayment(id: number, userId: number): Promise<void> {
-  const row = await queryOne<{ id: number }>('SELECT id FROM water_payments WHERE id = $1', [id]);
+  const row = await queryOne<{ id: number; receipt_number: string | null }>(
+    'SELECT id, receipt_number FROM water_payments WHERE id = $1',
+    [id]
+  );
   if (!row) throw notFound('Water payment not found.');
-  await query('DELETE FROM water_payments WHERE id = $1', [id]);
-  await logAudit({ userId, action: 'WATER_PAYMENT_DELETED', entity: 'water_payments', entityId: id });
+  await withTransaction(async (client) => {
+    await client.query('DELETE FROM water_payments WHERE id = $1', [id]);
+    // Same orphan-receipt cleanup as deleteRentPayment — receipts link to
+    // payments only by receipt_number, so the minted receipt would otherwise
+    // survive with no payment behind it.
+    if (row.receipt_number) {
+      await client.query('DELETE FROM receipts WHERE receipt_number = $1', [row.receipt_number]);
+    }
+    await logAudit({ userId, action: 'WATER_PAYMENT_DELETED', entity: 'water_payments', entityId: id });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -558,27 +570,55 @@ export async function waterSummary(year?: number): Promise<unknown> {
 export async function monthlyWaterSummary(year?: number): Promise<unknown[]> {
   const settings = await getSettings();
   const targetYear = year ?? settings.reporting_year;
-  const months = Array.from({ length: 12 }, (_, i) => i + 1);
 
-  return Promise.all(months.map(async (m) => {
-    const billed = n((await queryOne<{ v: string }>(
-      `SELECT COALESCE(SUM(water_bill), 0)::text AS v FROM water_meter_readings WHERE billing_year = $1 AND billing_month = $2`, [targetYear, m]
-    ))?.v);
-    const collected = n((await queryOne<{ v: string }>(
-      `SELECT COALESCE(SUM(amount), 0)::text AS v FROM water_payments WHERE billing_year = $1 AND billing_month = $2`, [targetYear, m]
-    ))?.v);
-    const supplyCost = n((await queryOne<{ v: string }>(
-      `SELECT COALESCE(SUM(total_cost), 0)::text AS v FROM water_purchases
-       WHERE EXTRACT(YEAR FROM purchase_date)::int = $1 AND EXTRACT(MONTH FROM purchase_date)::int = $2`, [targetYear, m]
-    ))?.v);
-    const purchased = n((await queryOne<{ v: string }>(
-      `SELECT COALESCE(SUM(quantity), 0)::text AS v FROM water_purchases
-       WHERE EXTRACT(YEAR FROM purchase_date)::int = $1 AND EXTRACT(MONTH FROM purchase_date)::int = $2`, [targetYear, m]
-    ))?.v);
+  // ONE set-based query instead of the old 48 round-trips (4 per month × 12):
+  // a 12-month spine LEFT JOINs per-month aggregates for metered billing,
+  // payments, and purchase volume/cost. Derivations stay in JS via the shared
+  // helpers, so each row is identical to the loop version.
+  const rows = await query<{
+    month: number; billed: string; collected: string;
+    supply_cost: string; purchased: string;
+  }>(
+    `WITH months AS (SELECT generate_series(1, 12) AS m),
+     billed AS (
+       SELECT billing_month AS m, SUM(water_bill) AS v
+       FROM water_meter_readings WHERE billing_year = $1::int
+       GROUP BY billing_month
+     ),
+     collected AS (
+       SELECT billing_month AS m, SUM(amount) AS v
+       FROM water_payments WHERE billing_year = $1::int
+       GROUP BY billing_month
+     ),
+     purchases AS (
+       SELECT EXTRACT(MONTH FROM purchase_date)::int AS m,
+              SUM(total_cost) AS cost, SUM(quantity) AS qty
+       FROM water_purchases
+       WHERE EXTRACT(YEAR FROM purchase_date)::int = $1::int
+       GROUP BY 1
+     )
+     SELECT ms.m AS month,
+            COALESCE(b.v, 0) AS billed,
+            COALESCE(c.v, 0) AS collected,
+            COALESCE(p.cost, 0) AS supply_cost,
+            COALESCE(p.qty, 0) AS purchased
+     FROM months ms
+     LEFT JOIN billed b ON b.m = ms.m
+     LEFT JOIN collected c ON c.m = ms.m
+     LEFT JOIN purchases p ON p.m = ms.m
+     ORDER BY ms.m`,
+    [targetYear]
+  );
+
+  return rows.map((row) => {
+    const billed = n(row.billed);
+    const collected = n(row.collected);
+    const supplyCost = n(row.supply_cost);
+    const purchased = n(row.purchased);
 
     return {
-      month: m,
-      monthName: MONTH_NAMES[m - 1],
+      month: row.month,
+      monthName: MONTH_NAMES[row.month - 1],
       waterBilled: billed,
       waterCollected: collected,
       waterOutstanding: balanceDue(billed, collected),
@@ -588,7 +628,7 @@ export async function monthlyWaterSummary(year?: number): Promise<unknown[]> {
       collectionRate: waterCollectionRate(collected, billed),
       currency: settings.currency,
     };
-  }));
+  });
 }
 
 // Outstanding water by unit — used by the arrears and dashboard charts.

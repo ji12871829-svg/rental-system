@@ -3,6 +3,7 @@ import { paginate } from './paginate';
 import { MONTH_NAMES, type Pagination } from '../types';
 import { balanceDue, paymentStatus } from '../utils/businessRules';
 import { badRequest, notFound, unprocessable } from '../utils/httpError';
+import { csvCell } from '../utils/csv';
 import { n, round2 } from '../utils/money';
 import { logAudit } from './auditService';
 import { createReceipt } from './receiptService';
@@ -204,10 +205,21 @@ export async function createRentPayment(input: RentPaymentInput, userId: number 
 }
 
 export async function deleteRentPayment(id: number, userId: number): Promise<void> {
-  const payment = await queryOne<{ id: number }>('SELECT id FROM rent_payments WHERE id = $1', [id]);
+  const payment = await queryOne<{ id: number; receipt_number: string | null }>(
+    'SELECT id, receipt_number FROM rent_payments WHERE id = $1',
+    [id]
+  );
   if (!payment) throw notFound('Rent payment not found.');
-  await query('DELETE FROM rent_payments WHERE id = $1', [id]);
-  await logAudit({ userId, action: 'RENT_PAYMENT_DELETED', entity: 'rent_payments', entityId: id });
+  await withTransaction(async (client) => {
+    await client.query('DELETE FROM rent_payments WHERE id = $1', [id]);
+    // The receipt this payment minted would otherwise orphan — receipts link
+    // to payments only by receipt_number, so nothing else references it once
+    // the payment is gone (SMS/emails carry receipt_id FKs with SET NULL).
+    if (payment.receipt_number) {
+      await client.query('DELETE FROM receipts WHERE receipt_number = $1', [payment.receipt_number]);
+    }
+    await logAudit({ userId, action: 'RENT_PAYMENT_DELETED', entity: 'rent_payments', entityId: id });
+  });
 }
 
 export async function rentPaymentsCsv(filters: { year?: number; month?: number }): Promise<string> {
@@ -234,7 +246,7 @@ export async function rentPaymentsCsv(filters: { year?: number; month?: number }
   );
   const header = 'payment_date,billing_month,billing_year,tenant,unit,amount,payment_method,receipt_number,payment_reference';
   const lines = rows.map((r: any) =>
-    [r.payment_date, r.billing_month, r.billing_year, `"${r.full_name}"`, r.unit_number, r.amount, r.payment_method, r.receipt_number ?? '', r.payment_reference ?? ''].join(',')
+    [r.payment_date, r.billing_month, r.billing_year, r.full_name, r.unit_number, r.amount, r.payment_method, r.receipt_number ?? '', r.payment_reference ?? ''].map(csvCell).join(',')
   );
   return [header, ...lines].join('\n');
 }
