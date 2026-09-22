@@ -278,12 +278,16 @@ export default function Landing() {
           <img
             src="/building/building-1-800.webp"
             alt=""
-            className="absolute inset-0 h-full w-full object-cover opacity-60"
+            className="absolute inset-0 h-full w-full object-cover opacity-90"
             loading="eager"
             decoding="async"
           />
         </picture>
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0b1f3a]/95 via-[#0b1f3a]/80 to-[#0b1f3a]/40" aria-hidden />
+        {/* Scrim: heavy only behind the copy (top-left) so the white headline
+            keeps AAA contrast while the building itself stays clearly visible
+            on the right — the photo is the point, not a texture. */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0b1f3a]/95 via-[#0b1f3a]/60 to-[#0b1f3a]/20" aria-hidden />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0b1f3a]/70 via-transparent to-transparent" aria-hidden />
 
         <div className="relative mx-auto max-w-6xl px-5 py-16 lg:py-24">
           {/* Left: pitch */}

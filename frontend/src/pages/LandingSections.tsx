@@ -77,23 +77,42 @@ export function HowItWorks() {
   return (
     <section id="how-it-works" className="scroll-mt-20 border-t border-gray-100">
       <div className="mx-auto max-w-6xl px-5 py-16 lg:py-20">
-        <div className="mx-auto max-w-2xl text-center">
-          <h2 className="text-3xl font-semibold tracking-tight text-gray-900">Get started in under an hour</h2>
-          <p className="mt-3 text-base text-gray-500">
-            No training needed. Your first rent payment can land the same day you sign in.
-          </p>
+        <div className="grid items-center gap-10 lg:grid-cols-[1.15fr_0.85fr]">
+          <div>
+            <div className="mx-auto max-w-2xl text-center lg:text-left">
+              <h2 className="text-3xl font-semibold tracking-tight text-gray-900">Get started in under an hour</h2>
+              <p className="mt-3 text-base text-gray-500">
+                No training needed. Your first rent payment can land the same day you sign in.
+              </p>
+            </div>
+            <ol data-reveal className="mt-10 grid gap-5 sm:grid-cols-2">
+            {STEPS.map((s) => (
+              <li key={s.n} className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                <span className="text-3xl font-bold text-brand-100" aria-hidden>
+                  {s.n}
+                </span>
+                <h3 className="mt-2 text-base font-semibold text-gray-900">{s.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-gray-500">{s.body}</p>
+              </li>
+            ))}
+            </ol>
+          </div>
+          {/* Move-in moment — the photo this system exists for: keys changing
+              hands, rent flowing into the ledger instead of a notebook. */}
+          <figure data-reveal className="relative mx-auto w-full max-w-md lg:max-w-none">
+            <div className="absolute -inset-4 rounded-[2rem] bg-brand-500/10 blur-2xl" aria-hidden />
+            <img
+              src="/photos/keys-move-in.jpg"
+              alt="Keys handed over at a move-in — the moment the tenancy enters the system"
+              className="relative w-full rounded-2xl object-cover shadow-xl ring-1 ring-black/5"
+              loading="lazy"
+              decoding="async"
+            />
+            <figcaption className="absolute bottom-3 left-3 rounded-lg bg-white/90 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm backdrop-blur-sm">
+              Every tenancy, tracked from day one
+            </figcaption>
+          </figure>
         </div>
-        <ol data-reveal className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {STEPS.map((s) => (
-            <li key={s.n} className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <span className="text-3xl font-bold text-brand-100" aria-hidden>
-                {s.n}
-              </span>
-              <h3 className="mt-2 text-base font-semibold text-gray-900">{s.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-gray-500">{s.body}</p>
-            </li>
-          ))}
-        </ol>
       </div>
     </section>
   );
@@ -269,8 +288,18 @@ export function DemoRequest({ contactEmail }: { contactEmail?: string | null }) 
         </div>
 
         <div data-reveal className="mt-10 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-          {/* Reach-us cards — real contacts from the business identity */}
+          {/* Reach-us cards — real contacts from the business identity, with a
+              photo of what a walkthrough actually looks like. */}
           <div className="flex flex-col gap-4">
+            <figure className="relative overflow-hidden rounded-2xl shadow-sm ring-1 ring-black/5">
+              <img
+                src="/photos/unit-viewing.jpg"
+                alt="An agent showing a couple around a bright, empty unit"
+                className="h-40 w-full object-cover"
+                loading="lazy"
+                decoding="async"
+              />
+            </figure>
             <div className="flex-1 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
               <h3 className="text-base font-semibold text-gray-900">Reach us directly</h3>
               <div className="mt-4 space-y-4">
