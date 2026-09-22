@@ -2,15 +2,17 @@ import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
-import { queryOne } from '../config/db';
+import { query, queryOne } from '../config/db';
 import { env } from '../config/env';
 import { requireAuth } from '../middleware/auth';
 import { STAFF_JWT_AUDIENCE } from '../middleware/portalAuth';
 import { loginLimiter } from '../middleware/rateLimiter';
 import { validateBody } from '../middleware/validate';
-import { unauthorized } from '../utils/httpError';
+import { conflict, unauthorized } from '../utils/httpError';
 import { asyncHandler } from '../utils/asyncHandler';
 import { logAudit } from '../services/auditService';
+import { isTest } from '../config/env';
+import { prepareForStaffRequest, sendEmailNotification } from '../services/emailService';
 import { clearAuthCookies, setAuthCookies, readCookies, SESSION_COOKIE } from '../utils/authCookies';
 
 const router = Router();
@@ -127,5 +129,96 @@ router.post('/logout', requireAuth, (_req, res) => {
 router.get('/me', requireAuth, asyncHandler(async (req, res) => {
   res.json({ data: req.user });
 }));
+
+// ---------------------------------------------------------------------------
+// Public landlord/agent signup ("Create account" on the landing page).
+//
+// This is a REQUEST, not an account: it creates an INACTIVE PROPERTY_MANAGER
+// user that no one can sign in with until an existing admin activates it in
+// Settings → Users. That keeps self-serve onboarding open to the public while
+// every staff login remains admin-vouched — an attacker can at worst create
+// inert rows, never a working session.
+// ---------------------------------------------------------------------------
+const registerSchema = z.object({
+  name: z.string().trim().min(2, 'Name must be at least 2 characters.').max(150),
+  email: z.string().email(),
+  phone: z.string().trim().max(30).optional(),
+  // Min 8 (no MFA yet — the sheet would prefer 15, but the staff creators
+  // share the same policy), max 128 so bcrypt cost can't be weaponized.
+  password: z.string().min(8, 'Password must be at least 8 characters.').max(128),
+});
+
+// Same timing-equalizer trick as the tenant signup: duplicate-email and
+// other early exits burn one bcrypt compare so probing by response time
+// can't distinguish "email already registered" from "email is new".
+const TIMING_DUMMY_HASH = bcrypt.hashSync('timing-equalizer-not-a-password', env.bcryptSaltRounds);
+
+router.post(
+  '/register',
+  loginLimiter,
+  validateBody(registerSchema),
+  asyncHandler(async (req, res) => {
+    const { name, email, phone, password } = req.body as z.infer<typeof registerSchema>;
+    const normalized = email.toLowerCase();
+
+    const existing = await queryOne<{ id: number }>('SELECT id FROM users WHERE email = $1', [normalized]);
+    if (existing) {
+      // Burn the bcrypt cost, then answer with the SAME generic body and
+      // status a successful request gets — the response must not confirm
+      // whether the email already has an account (user enumeration via the
+      // registration form is called out explicitly in the OWASP sheet).
+      await bcrypt.compare(password, TIMING_DUMMY_HASH).catch(() => false);
+      return res.status(201).json({
+        data: {
+          message: 'Request received. An administrator will review and activate your account, then you can sign in.',
+        },
+      });
+    }
+
+    const hash = await bcrypt.hash(password, env.bcryptSaltRounds);
+    const inserted = await query(
+      `INSERT INTO users (name, email, phone, password_hash, role, status)
+       VALUES ($1, $2, $3, $4, 'PROPERTY_MANAGER', 'INACTIVE')
+       RETURNING id`,
+      [name, normalized, phone || null, hash],
+    );
+    await logAudit({
+      userId: null,
+      action: 'STAFF_SIGNUP_REQUEST',
+      entity: 'users',
+      entityId: inserted[0].id,
+      newValue: { email: normalized, name },
+    });
+
+    // Notify the operator through the standard email queue so the request
+    // never sits unnoticed in Users. Queued AFTER the audit log; dispatched
+    // best-effort via setTimeout(0) so a provider outage can neither fail
+    // the public signup (the account row already exists and is audited) nor
+    // delay the response. In tests the queue happens but the provider call
+    // is skipped (isTest mirrors dispatchAutoEmail) so assertions can run
+    // on the PENDING row. A skipped queue (no branding contact email) is
+    // silent — the Users page remains the fallback.
+    let staffRequestId: number | null = null;
+    try {
+      const prepared = await prepareForStaffRequest({ name, email: normalized, phone: phone ?? null });
+      staffRequestId = prepared?.id ?? null;
+    } catch (err) {
+      console.error(`[auth] staff-request email queue failed: ${(err as Error).message}`);
+    }
+    if (staffRequestId != null && !isTest) {
+      setTimeout(() => {
+        sendEmailNotification(staffRequestId as number).catch((err) =>
+          console.error(`[auth] staff-request email send failed: ${(err as Error).message}`),
+        );
+      }, 0);
+    }
+
+    res.status(201).json({
+      data: {
+        message: 'Request received. An administrator will review and activate your account, then you can sign in.',
+      },
+    });
+  })
+);
 
 export default router;

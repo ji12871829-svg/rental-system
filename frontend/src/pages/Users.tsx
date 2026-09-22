@@ -133,11 +133,13 @@ function UserForm({ open, user, onClose, onSaved }: { open: boolean; user: UserR
   const [phone, setPhone] = useState(user?.phone ?? '');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRow['role']>(user?.role ?? 'STAFF');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(false);  const [shakeN, setShakeN] = useState(0);
+  const bumpShake = () => setShakeN((n) => n + 1);
+
 
   async function save() {
-    if (name.trim().length < 2) { toast('error', 'Name is required.'); return; }
-    if (!user && password.length < 8) { toast('error', 'Password must be at least 8 characters.'); return; }
+    if (name.trim().length < 2) { toast('error', 'Name is required.'); bumpShake(); return; }
+    if (!user && password.length < 8) { toast('error', 'Password must be at least 8 characters.'); bumpShake(); return; }
     setBusy(true);
     try {
       if (user) {
@@ -153,13 +155,14 @@ function UserForm({ open, user, onClose, onSaved }: { open: boolean; user: UserR
       setPassword('');
     } catch (err) {
       toast('error', (err as Error).message);
+      bumpShake();
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Modal open={open} title={user ? `Edit ${user.name}` : 'Add User'} onClose={onClose}>
+    <Modal open={open} title={user ? `Edit ${user.name}` : 'Add User'} onClose={onClose} shakeSignal={shakeN}>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Full Name"><TextInput value={name} onChange={(e) => setName(e.target.value)} /></Field>
@@ -188,7 +191,9 @@ function UserForm({ open, user, onClose, onSaved }: { open: boolean; user: UserR
 function ResetPasswordModal({ user, onClose, onSaved }: { user: UserRow | null; onClose: () => void; onSaved: (msg: string) => void }) {
   const { toast } = useToast();
   const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(false);  const [shakeN, setShakeN] = useState(0);
+  const bumpShake = () => setShakeN((n) => n + 1);
+
 
   async function reset() {
     if (!user || password.length < 8) { toast('error', 'New password must be at least 8 characters.'); return; }
@@ -198,13 +203,14 @@ function ResetPasswordModal({ user, onClose, onSaved }: { user: UserRow | null; 
       onSaved(`Password reset for ${user.name}.`);
     } catch (err) {
       toast('error', (err as Error).message);
+      bumpShake();
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Modal open={user !== null} title={`Reset Password — ${user?.name ?? ''}`} onClose={onClose}>
+    <Modal open={user !== null} title={`Reset Password — ${user?.name ?? ''}`} onClose={onClose} shakeSignal={shakeN}>
       <p className="mb-3 text-sm text-gray-600">
         The user will sign in with this new password on their next login. Share it with them securely.
       </p>

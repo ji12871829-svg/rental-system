@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Mail, Send } from 'lucide-react';
-import { Button, EmptyState, Field, PageHeader, Select, SkeletonTable, TextInput, useFetch, useToast } from '../components/ui';
+import { Button, EmptyState, Field, PageHeader, Select, SkeletonTable, TextInput, useFetch, useShake, useToast } from '../components/ui';
 import { api } from '../lib/api';
 
 interface TenantOption {
@@ -18,6 +18,7 @@ export default function EmailCampaign() {
   const [subject, setSubject] = useState('Olbano Plaza update');
   const [message, setMessage] = useState('Dear {{name}},\n\nWe have an important update for you.\n\nRegards,\nOlbano Plaza');
   const [busy, setBusy] = useState(false);
+  const [shakeRef, fireShake] = useShake();
   const { data, loading, error } = useFetch(() => api.list<TenantOption>('/api/tenants?status=ACTIVE&limit=100'), []);
   const tenants = data?.data ?? [];
   const emailTenants = useMemo(() => tenants.filter((tenant) => tenant.email), [tenants]);
@@ -41,6 +42,7 @@ export default function EmailCampaign() {
   async function sendCampaign() {
     if (!subject.trim() || !message.trim() || emailTenants.length === 0) {
       toast('error', 'Enter a subject and message, and ensure tenants have email addresses.');
+      fireShake();
       return;
     }
     setBusy(true);
@@ -53,6 +55,7 @@ export default function EmailCampaign() {
       toast('success', `Email campaign processed: ${result.data.sent} sent, ${result.data.failed} failed, ${result.data.skipped} skipped.`);
     } catch (err) {
       toast('error', (err as Error).message);
+      fireShake();
     } finally {
       setBusy(false);
     }
@@ -62,7 +65,7 @@ export default function EmailCampaign() {
     <div>
       <PageHeader title="Tenant Email" subtitle="Send payment warnings or a message to active tenants" />
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,28rem)]">
-        <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <section ref={shakeRef} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center gap-3">
             <Mail size={20} className="text-brand-600" aria-hidden />
             <h2 className="font-semibold text-gray-900">Compose message</h2>

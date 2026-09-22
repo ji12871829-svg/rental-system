@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { Building2, Loader2 } from 'lucide-react';
 import { usePortalAuth } from '../../lib/portalAuth';
 import { portalApi } from '../../lib/portalApi';
@@ -111,6 +111,12 @@ export default function PortalLogin() {
         </form>
         <p className="mt-4 text-center text-xs text-gray-400">
           Access is issued by your property manager. Contact them if you haven't received credentials.
+        </p>
+        <p className="mt-3 text-center text-sm text-gray-500">
+          Don't have access yet?{' '}
+          <Link to="/register?type=tenant" className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800">
+            Create tenant access
+          </Link>
         </p>
       </div>
     </div>

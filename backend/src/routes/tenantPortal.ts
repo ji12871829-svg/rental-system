@@ -1,13 +1,14 @@
 import { Router } from 'express';
+import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { env } from '../config/env';
-import { queryOne } from '../config/db';
+import { query, queryOne } from '../config/db';
 import { PORTAL_JWT_AUDIENCE, requireTenant } from '../middleware/portalAuth';
 import { loginLimiter } from '../middleware/rateLimiter';
 import { validateBody } from '../middleware/validate';
-import { unauthorized } from '../utils/httpError';
 import { asyncHandler } from '../utils/asyncHandler';
+import { badRequest, conflict, unauthorized } from '../utils/httpError';
 import {
   PORTAL_COOKIE,
   clearPortalCookies,
@@ -26,7 +27,6 @@ import {
   portalStatementPdf,
 } from '../services/tenantPortalService';
 import { logAudit } from '../services/auditService';
-import { badRequest } from '../utils/httpError';
 
 const router = Router();
 
@@ -39,7 +39,90 @@ const portalLoginSchema = z.object({
   password: z.string().min(1),
 });
 
+// Self-service signup: a tenant whose record already exists (staff entered
+// them with an email) claims portal access with that email. The unit field
+// is optional and only used to disambiguate the rare case of several ACTIVE
+// tenants sharing one email — it never grants anything by itself.
+const portalRegisterSchema = z.object({
+  email: z.string().email(),
+  // Max length cap: bcrypt at cost 12 on unbounded input is a DoS vector
+  // (OWASP Authentication Cheat Sheet — password length limits). 128 is
+  // generous for passphrases while bounding the hash work.
+  password: z.string().min(8, 'Password must be at least 8 characters.').max(128),
+  unit: z.string().trim().max(20).optional(),
+});
+
+// One-time dummy hash so every early-exit path in /register can burn the
+// same bcrypt cost as the success path — without it, response timing would
+// separate "email has a tenancy" from "email does not", an enumeration
+// oracle (OWASP: avoid quick-exit timing discrepancies).
+const TIMING_DUMMY_HASH = bcrypt.hashSync('timing-equalizer-not-a-password', env.bcryptSaltRounds);
+
 // Public: tenant login. Same rate limiter and audit treatment as staff login.
+// Public: tenant self-registration ("Create account" on the landing page).
+// Requires the email to match an ACTIVE staff-entered tenant record without
+// existing portal access — it claims access, it never creates tenancies.
+router.post('/register', loginLimiter, validateBody(portalRegisterSchema), asyncHandler(async (req, res) => {
+  const { email, password, unit } = req.body as z.infer<typeof portalRegisterSchema>;
+  const normalized = email.toLowerCase();
+
+  const candidates = await query<{ id: number; tenant_id: number; full_name: string; unit_number: string | null }>(
+    `SELECT t.id, t.id AS tenant_id, t.full_name, u.unit_number
+     FROM tenants t
+     LEFT JOIN units u ON u.id = t.unit_id
+     WHERE lower(t.email) = $1 AND t.status = 'ACTIVE'
+     ORDER BY t.created_at DESC`,
+    [normalized],
+  );
+  if (candidates.length === 0) {
+    // Burn the same bcrypt cost as the success path before answering, so
+    // probing emails by response time learns nothing.
+    await bcrypt.compare(password, TIMING_DUMMY_HASH).catch(() => false);
+    // Deliberately not a 404-style "email unknown" hint beyond what the flow
+    // already implies — the page explains tenants must be added by staff.
+    throw badRequest('No active tenancy was found for this email. Ask your property manager to add you as a tenant with this email address first.');
+  }
+  if (candidates.length > 1 && unit) {
+    const wanted = unit.trim().toLowerCase();
+    const match = candidates.find((c) => (c.unit_number ?? '').toLowerCase() === wanted);
+    if (match) candidates.unshift(match);
+  }
+  const tenant = candidates[0];
+
+  const existing = await queryOne<{ id: number }>(
+    'SELECT id FROM tenant_portal_access WHERE tenant_id = $1 OR email = $2',
+    [tenant.tenant_id, normalized],
+  );
+  if (existing) {
+    // Same timing treatment for the "already claimed" path.
+    await bcrypt.compare(password, TIMING_DUMMY_HASH).catch(() => false);
+    throw conflict('Portal access has already been set up for this email. Sign in instead.', 'PORTAL_EXISTS');
+  }
+
+  const passwordHash = await bcrypt.hash(password, env.bcryptSaltRounds);
+  await query(
+    `INSERT INTO tenant_portal_access (tenant_id, email, password_hash, status)
+     VALUES ($1, $2, $3, 'ACTIVE')`,
+    [tenant.tenant_id, normalized, passwordHash],
+  );
+  await logAudit({
+    userId: null,
+    action: 'PORTAL_SELF_REGISTER',
+    entity: 'tenant_portal_access',
+    entityId: tenant.tenant_id,
+    newValue: { email: normalized },
+  });
+
+  // Straight into the portal — the account is real the moment it is created.
+  const token = jwt.sign(
+    { sub: tenant.tenant_id, email: normalized, name: tenant.full_name },
+    env.jwtPortalSecret,
+    { expiresIn: env.jwtExpiresIn as jwt.SignOptions['expiresIn'], audience: PORTAL_JWT_AUDIENCE }
+  );
+  setPortalCookies(res, token);
+  res.status(201).json({ data: { name: tenant.full_name, email: normalized } });
+}));
+
 router.post('/login', loginLimiter, validateBody(portalLoginSchema), asyncHandler(async (req, res) => {
   const { email, password } = req.body as z.infer<typeof portalLoginSchema>;
   const result = await portalLogin(email, password);

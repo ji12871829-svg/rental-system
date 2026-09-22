@@ -194,10 +194,12 @@ function ExpenseForm({ open, expense, onClose, onSaved }: { open: boolean; expen
   const [referenceNumber, setReferenceNumber] = useState(expense?.reference_number ?? '');
   const [notes, setNotes] = useState(expense?.notes ?? '');
   const [busy, setBusy] = useState(false);
+  const [shakeN, setShakeN] = useState(0);
+  const bumpShake = () => setShakeN((n) => n + 1);
 
   async function save() {
-    if (description.trim().length < 2) { toast('error', 'A short description is required.'); return; }
-    if (amount <= 0) { toast('error', 'Amount must be greater than zero.'); return; }
+    if (description.trim().length < 2) { toast('error', 'A short description is required.'); bumpShake(); return; }
+    if (amount <= 0) { toast('error', 'Amount must be greater than zero.'); bumpShake(); return; }
     setBusy(true);
     try {
       const body = {
@@ -209,13 +211,14 @@ function ExpenseForm({ open, expense, onClose, onSaved }: { open: boolean; expen
       onSaved(`Expense "${description.trim()}" of ${money(amount)} saved.`);
     } catch (err) {
       toast('error', (err as Error).message);
+      bumpShake();
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Modal open={open} title={expense ? 'Edit Expense' : 'Add Expense'} onClose={onClose}>
+    <Modal open={open} title={expense ? 'Edit Expense' : 'Add Expense'} onClose={onClose} shakeSignal={shakeN}>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Expense Date"><TextInput type="date" value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} /></Field>

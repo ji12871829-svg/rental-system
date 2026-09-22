@@ -13,6 +13,8 @@ import { routeChunks } from './lib/routeChunks';
 // the first paint. Loaders live in routeChunks.ts so the sidebar can prefetch
 // the exact same chunks on hover/focus — see lib/routeChunks.ts.
 const Login = lazy(routeChunks.login);
+const Landing = lazy(routeChunks.landing);
+const Register = lazy(routeChunks.register);
 const NotFound = lazy(() => import('./pages/NotFound'));
 const Privacy = lazy(() => routeChunks.legal().then((m) => ({ default: m.Privacy })));
 const Terms = lazy(() => routeChunks.legal().then((m) => ({ default: m.Terms })));
@@ -57,8 +59,13 @@ function RequirePortalAuth({ children }: { children: React.ReactNode }) {
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { token, ready } = useAuth();
+  const location = useLocation();
   if (!ready) return <RouteFallback />;
-  if (!token) return <Navigate to="/login" replace />;
+  if (!token) {
+    // The root is the public landing page for signed-out visitors; any other
+    // protected URL deep-links straight to sign-in.
+    return <Navigate to={location.pathname === '/' ? '/landing' : '/login'} replace />;
+  }
   return <>{children}</>;
 }
 
@@ -100,6 +107,8 @@ const TITLES: Record<string, string> = {
   '/privacy-register': 'Privacy Register',
   '/mpesa-review': 'M-Pesa Review',
   '/login': 'Sign in',
+  '/landing': 'Welcome',
+  '/register': 'Create account',
   '/privacy': 'Privacy Policy',
   '/terms': 'Terms & Conditions',
   '/cookies': 'Cookie & Storage Policy',
@@ -127,7 +136,36 @@ export default function App() {
       <CookieBanner />
       <Suspense fallback={<RouteFallback />}>
         <Routes>
-          <Route path="/login" element={<Login />} />
+          {/* Public surfaces — reachable before any sign-in. Wrapped in the
+              portal auth provider so an already-signed-in tenant skips the
+              marketing shell (same pattern as /portal/login). */}
+          <Route
+            path="/landing"
+            element={
+              <PortalAuthProvider>
+                <Landing />
+              </PortalAuthProvider>
+            }
+          />
+          <Route
+            path="/register"
+            element={
+              <PortalAuthProvider>
+                <Register />
+              </PortalAuthProvider>
+            }
+          />
+          {/* Unified sign-in — serves both staff and tenant logins via tabs,
+              so it needs the portal provider (and keeps the deep links
+              ?type=tenant / ?email=… working). */}
+          <Route
+            path="/login"
+            element={
+              <PortalAuthProvider>
+                <Login />
+              </PortalAuthProvider>
+            }
+          />
           {/* Legal pages are public — they must be readable before signing in. */}
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />

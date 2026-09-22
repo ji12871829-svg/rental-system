@@ -149,10 +149,13 @@ function WaterPaymentForm({ open, tenants, onClose, onSaved }: { open: boolean; 
   const [paymentMethod, setPaymentMethod] = useState('M_PESA');
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
+  const [shakeN, setShakeN] = useState(0);
+  const bumpShake = () => setShakeN((n) => n + 1);
 
   async function save() {
     if (tenantId === '' || !amount || Number(amount) <= 0) {
       toast('error', 'Select a tenant and enter an amount greater than zero.');
+      bumpShake();
       return;
     }
     setBusy(true);
@@ -176,13 +179,14 @@ function WaterPaymentForm({ open, tenants, onClose, onSaved }: { open: boolean; 
       setNotes('');
     } catch (err) {
       toast('error', (err as Error).message);
+      bumpShake();
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Modal open={open} title="Record Water Payment" onClose={onClose}>
+    <Modal open={open} title="Record Water Payment" onClose={onClose} shakeSignal={shakeN}>
       <div className="space-y-4">
         <Field label="Tenant (water units 14–24)">
           <Select value={tenantId} onChange={(e) => setTenantId(e.target.value === '' ? '' : Number(e.target.value))}>

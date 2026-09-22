@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CheckCircle2, CircleDashed, ImageUp, Trash2 } from 'lucide-react';
-import { Button, Field, PageHeader, Skeleton, TextInput, useFetch, useToast } from '../components/ui';
+import { Button, Field, PageHeader, Skeleton, TextInput, useFetch, useShake, useToast } from '../components/ui';
 import { BrandLogo } from '../components/BrandLogo';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -127,6 +127,7 @@ export default function Settings() {
   const [retentionYears, setRetentionYears] = useState(7);
   const [busy, setBusy] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [shakeFormRef, shakeForm] = useShake<HTMLFormElement>();
 
   useEffect(() => {
     if (data) {
@@ -154,6 +155,7 @@ export default function Settings() {
       window.setTimeout(() => setSettingsSaved(false), 1200);
     } catch (err) {
       toast('error', (err as Error).message);
+      shakeForm();
     } finally {
       setBusy(false);
     }
@@ -163,6 +165,7 @@ export default function Settings() {
   const [identityForm, setIdentityForm] = useState<IdentityForm | null>(null);
   const [identityBusy, setIdentityBusy] = useState(false);
   const [identitySaved, setIdentitySaved] = useState(false);
+  const [shakeIdentityRef, shakeIdentity] = useShake<HTMLFormElement>();
   // --- Logo upload -----------------------------------------------------------
   const [logoBusy, setLogoBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -186,6 +189,7 @@ export default function Settings() {
   const [paybillEnabled, setPaybillEnabled] = useState(false);
   const [paybillBusy, setPaybillBusy] = useState(false);
   const [paybillSaved, setPaybillSaved] = useState(false);
+  const [shakePaybillRef, shakePaybill] = useShake<HTMLFormElement>();
 
   // Fill the form the first time identity arrives; after a save the form is
   // re-synced explicitly, so live updates never clobber in-progress edits.
@@ -223,6 +227,7 @@ export default function Settings() {
       window.setTimeout(() => setIdentitySaved(false), 1200);
     } catch (err) {
       toast('error', (err as Error).message);
+      shakeIdentity();
     } finally {
       setIdentityBusy(false);
     }
@@ -244,6 +249,7 @@ export default function Settings() {
       window.setTimeout(() => setPaybillSaved(false), 1200);
     } catch (err) {
       toast('error', (err as Error).message);
+      shakePaybill();
     } finally {
       setPaybillBusy(false);
     }
@@ -364,7 +370,7 @@ export default function Settings() {
           Your role (STAFF) can view settings but not change them.
         </div>
       )}
-      <form onSubmit={save} className="space-y-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <form ref={shakeFormRef} onSubmit={save} className="space-y-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
         <Field label="Reporting Year" hint="Dashboard, monthly reports, arrears and charts all follow this year.">
           <TextInput type="number" min={2000} max={2100} value={reportingYear} onChange={(e) => setReportingYear(Number(e.target.value))} disabled={!canEdit} />
         </Field>
@@ -467,7 +473,7 @@ export default function Settings() {
       )}
 
       {canEditIdentity && (
-        <form noValidate onSubmit={saveIdentity} className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <form noValidate ref={shakeIdentityRef} onSubmit={saveIdentity} className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
           <h2 className="text-base font-semibold text-gray-900">Edit business identity</h2>
           <p className="mt-1 mb-4 text-sm text-gray-500">
             These details appear on legal pages, printed and PDF receipts, SMS/email receipts, footers and the favicon.
@@ -518,7 +524,7 @@ export default function Settings() {
       )}
 
       {canEditIdentity && (
-        <form onSubmit={savePaybill} className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <form ref={shakePaybillRef} onSubmit={savePaybill} className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
           <h2 className="text-base font-semibold text-gray-900">Tenant PayBill</h2>
           <p className="mt-1 mb-4 text-sm text-gray-500">One landlord PayBill for all tenants. Rent uses the unit number; water uses the unit number followed by <b>-WATER</b>.</p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

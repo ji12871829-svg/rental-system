@@ -169,6 +169,54 @@ export function composeCampaignEmail(input: { tenantName: string; unitNumber: st
   return { subject: personalSubject, personalSubject, html, text: messageText };
 }
 
+// --- Staff access request (public landlord/agent signup) -------------------------
+
+// Operator notification for POST /api/auth/register: someone asked for a
+// staff account. The recipient is the business branding general email, so
+// every field the operator needs to act (who, where to reach them, that the
+// Users page is where activation happens) is baked into the body. No
+// password or hash is ever included — the requester never chose a working
+// secret worth knowing.
+export function composeStaffRequestEmail(input: {
+  name: string;
+  email: string;
+  phone: string | null;
+  identity: IdentityFields;
+}): ComposedEmail {
+  const name = input.identity.name?.trim() || 'Property Management';
+  const subject = `New staff access request — ${input.name}`;
+  const contactRows = [
+    ['Name', input.name],
+    ['Email', input.email],
+    ['Phone', input.phone?.trim() || '—'],
+  ]
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px">${escapeHtml(label)}</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;font-weight:600">${escapeHtml(value)}</td></tr>`,
+    )
+    .join('');
+  const text = [
+    'New staff access request',
+    '',
+    `Name: ${input.name}`,
+    `Email: ${input.email}`,
+    `Phone: ${input.phone?.trim() || '—'}`,
+    '',
+    `Review it in the app under Users — the account stays inactive (unable to`,
+    `sign in) until an administrator activates it there.`,
+    '',
+    textSignOff(input.identity),
+  ].join('\n');
+  const html = frame(
+    `<p style="margin:0 0 12px;font-weight:600">New staff access request</p>
+<p style="margin:0 0 16px">Someone has requested a landlord/agent account through the public sign-up form. The account is created <strong>inactive</strong> and cannot sign in until it is activated.</p>
+<table style="width:100%;border-collapse:collapse;margin:0 0 16px">${contactRows}</table>
+<p style="margin:0;color:#6b7280;font-size:14px">Review and activate it in the app under <strong>Users</strong>.</p>`,
+    input.identity,
+  );
+  return { subject, html, text };
+}
+
 // --- Provider self-test -----------------------------------------------------------
 
 export function composeTestEmail(input: { provider: string; live: boolean; identity: IdentityFields }): ComposedEmail {

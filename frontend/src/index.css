@@ -146,6 +146,52 @@ html.dark .table-scroll {
   }
 }
 
+/* ==========================================================================
+   Landing — Apple-style motion & materials (see pages/Landing.tsx)
+   ========================================================================== */
+
+/* Anchor navigation glides instead of snapping; the reduced-motion guard
+   above forces scroll-behavior back to auto for users who need it. */
+html:has(#create-account) {
+  scroll-behavior: smooth;
+}
+
+/* Reveal-on-scroll: sections marked data-reveal start slightly lowered and
+   transparent ONLY when JS adds .landing-reveal (below-fold elements at
+   mount), then rise in once when they enter the viewport. Compositor-only
+   properties; no replay, no scroll handlers. */
+.landing-reveal {
+  opacity: 0;
+  transform: translateY(14px);
+}
+.landing-reveal-in {
+  animation: landing-reveal-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes landing-reveal-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* Reduced motion: the hook never adds .landing-reveal, but belt-and-braces
+   in case markup changes later — never hide content behind a fade. */
+@media (prefers-reduced-motion: reduce) {
+  .landing-reveal {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Translucent chrome: the sticky header reads as a material (blur + color
+   saturation + a bright top hairline where light catches it), not an opaque
+   bar. Dark mode keeps its own remap of bg-white/90 below. */
+.landing-header-material {
+  background: rgb(255 255 255 / 0.72);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+}
+html.dark .landing-header-material {
+  background: rgb(13 15 20 / 0.78);
+}
+
 /* Tighter cell padding on small screens so more columns fit before scrolling. */
 @media (max-width: 640px) {
   .table-scroll thead th,
@@ -253,6 +299,11 @@ html.dark .disabled\:bg-gray-50:disabled { background-color: #06070a; }
 /* Cookie banner: translucent white → the card tone at near-full opacity so
    the backdrop-blur still reads. */
 html.dark .bg-white\/95 { background-color: rgb(13 15 20 / 0.97); }
+
+/* Landing header: same translucent-white treatment as the cookie banner —
+   without it the sticky bar stays light over the dark page and the brand
+   text disappears. */
+html.dark .bg-white\/90 { background-color: rgb(13 15 20 / 0.92); }
 
 /* Sidebar + drawer (bg-slate-800 in Layout) join the black ramp — one
    visible step lighter than the black page so the chrome still separates

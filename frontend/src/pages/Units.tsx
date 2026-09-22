@@ -128,10 +128,13 @@ function UnitForm({ open, unit, onClose, onSaved }: { open: boolean; unit: Unit 
   const [waterEnabled, setWaterEnabled] = useState(unit?.water_enabled ?? false);
   const [occupancyStatus, setOccupancyStatus] = useState<'OCCUPIED' | 'VACANT'>(unit?.occupancy_status ?? 'VACANT');
   const [busy, setBusy] = useState(false);
+  const [shakeN, setShakeN] = useState(0);
+  const bumpShake = () => setShakeN((n) => n + 1);
 
   async function save() {
     if (!unitNumber.trim() || monthlyRent < 0) {
       toast('error', 'Unit number and a non-negative rent are required.');
+      bumpShake();
       return;
     }
     setBusy(true);
@@ -142,13 +145,14 @@ function UnitForm({ open, unit, onClose, onSaved }: { open: boolean; unit: Unit 
       onSaved();
     } catch (err) {
       toast('error', (err as Error).message);
+      bumpShake();
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Modal open={open} title={unit ? `Edit Unit ${unit.unit_number}` : 'Add Unit'} onClose={onClose}>
+    <Modal open={open} title={unit ? `Edit Unit ${unit.unit_number}` : 'Add Unit'} onClose={onClose} shakeSignal={shakeN}>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Unit Number"><TextInput value={unitNumber} onChange={(e) => setUnitNumber(e.target.value)} /></Field>

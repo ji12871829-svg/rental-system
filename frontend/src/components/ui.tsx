@@ -95,6 +95,37 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
   );
 }
 
+// --- Shake (validation-failure feedback) -------------------------------------
+// A short horizontal shake on a form (or any element) when submission fails —
+// client-side validation rejection or a server error. Web Animations API, so
+// re-triggering cancels the running animation and restarts cleanly; no CSS
+// class juggling, no remounts. Respects prefers-reduced-motion by not running.
+export function shakeEl(el: HTMLElement | null): void {
+  if (!el) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  el.getAnimations().forEach((a) => a.cancel());
+  el.animate(
+    [
+      { transform: 'translateX(0)' },
+      { transform: 'translateX(-8px)' },
+      { transform: 'translateX(7px)' },
+      { transform: 'translateX(-5px)' },
+      { transform: 'translateX(3px)' },
+      { transform: 'translateX(0)' },
+    ],
+    { duration: 400, easing: 'ease-out' },
+  );
+}
+
+// For inline (non-Modal) forms: attach the ref to the form's container and
+// call fire() wherever a submission fails. Generic so the ref can attach to
+// the form element itself (useShake<HTMLFormElement>()) or any container.
+export function useShake<T extends HTMLElement = HTMLDivElement>(): [React.RefObject<T>, () => void] {
+  const ref = useRef<T>(null);
+  const fire = useCallback(() => shakeEl(ref.current), []);
+  return [ref, fire];
+}
+
 // Button feedback icons (stroke = currentColor: correct on every variant and
 // in both themes with zero theme-specific code).
 function SpinnerIcon({ className = '', ...rest }: React.SVGProps<SVGSVGElement>) {
@@ -186,7 +217,15 @@ export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 }
 
 // --------------------------------------------------------------------- Modal
-export function Modal({ open, title, onClose, children, wide }: { open: boolean; title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+export function Modal({ open, title, onClose, children, wide, shakeSignal = 0 }: { open: boolean; title: string; onClose: () => void; children: ReactNode; wide?: boolean;
+  // Bump this counter to shake the panel — pass it from a form component's
+  // failure state (setShakeN(n => n + 1)) so a failed submit visibly shakes
+  // the dialog. 0 (initial) never fires.
+  shakeSignal?: number }) {
+  // Shake the panel whenever the signal increments past the initial 0.
+  useEffect(() => {
+    if (shakeSignal > 0) shakeEl(panelRef.current);
+  }, [shakeSignal]);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Keyboard support: Escape closes the dialog; focus moves into it while open.

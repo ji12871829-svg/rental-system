@@ -173,12 +173,14 @@ function PurchaseForm({ open, purchase, onClose, onSaved }: { open: boolean; pur
   const [referenceNumber, setReferenceNumber] = useState(purchase?.reference_number ?? '');
   const [notes, setNotes] = useState(purchase?.notes ?? '');
   const [busy, setBusy] = useState(false);
+  const [shakeN, setShakeN] = useState(0);
+  const bumpShake = () => setShakeN((n) => n + 1);
 
   const totalCost = Math.round(quantity * costPerUnit * 100) / 100;
 
   async function save() {
-    if (!supplier.trim()) { toast('error', 'Supplier is required.'); return; }
-    if (quantity <= 0) { toast('error', 'Quantity must be greater than zero.'); return; }
+    if (!supplier.trim()) { toast('error', 'Supplier is required.'); bumpShake(); return; }
+    if (quantity <= 0) { toast('error', 'Quantity must be greater than zero.'); bumpShake(); return; }
     setBusy(true);
     try {
       const body = {
@@ -190,13 +192,14 @@ function PurchaseForm({ open, purchase, onClose, onSaved }: { open: boolean; pur
       onSaved(`Water purchase of ${money(totalCost)} from ${supplier.trim()} saved.`);
     } catch (err) {
       toast('error', (err as Error).message);
+      bumpShake();
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Modal open={open} title={purchase ? 'Edit Water Purchase' : 'Record Water Purchase'} onClose={onClose}>
+    <Modal open={open} title={purchase ? 'Edit Water Purchase' : 'Record Water Purchase'} onClose={onClose} shakeSignal={shakeN}>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Purchase Date"><TextInput type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} /></Field>

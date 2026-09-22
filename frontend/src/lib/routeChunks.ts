@@ -12,6 +12,8 @@
 // warms the same cache `lazy()` reads.
 
 export const routeChunks = {
+  landing: () => import('../pages/Landing'),
+  register: () => import('../pages/Register'),
   login: () => import('../pages/Login'),
   dashboard: () => import('../pages/Dashboard'),
   instructions: () => import('../pages/Instructions'),

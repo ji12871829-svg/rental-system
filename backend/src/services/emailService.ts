@@ -36,6 +36,7 @@ import {
   composeDataLetterEmail,
   composeMonthlyReportEmail,
   composePortalCredentialsEmail,
+  composeStaffRequestEmail,
   composeStatementEmail,
   composeTestEmail,
 } from '../utils/emailTemplates';
@@ -386,6 +387,38 @@ export async function prepareForMonthlyReport(opts: {
   return { id: row.id, email_address: row.email_address, subject: row.subject, status: row.status };
 }
 
+export interface PreparedStaffRequestEmail {
+  id: number;
+  email_address: string;
+  subject: string;
+  status: 'PENDING' | 'SENT' | 'FAILED';
+}
+
+// Creates a PENDING email notifying the operator that a public landlord/agent
+// sign-up (POST /api/auth/register) created an inactive staff account. The
+// recipient is the business branding general email — the same operator
+// address the monthly report uses; when it is unset the queue is skipped and
+// the caller learns about the request through the Users page as before.
+// No tenant_id: operational mail to the operator, not tenant correspondence.
+export async function prepareForStaffRequest(opts: {
+  name: string;
+  email: string;
+  phone: string | null;
+}): Promise<PreparedStaffRequestEmail | null> {
+  const identity = await getBusinessIdentity();
+  const to = identity.email?.trim() ?? '';
+  if (!to || !isValidEmail(to)) return null;
+
+  const composed = composeStaffRequestEmail({ name: opts.name, email: opts.email, phone: opts.phone, identity });
+  const row = await queueEmail({
+    to,
+    subject: composed.subject,
+    html: composed.html,
+    text: composed.text,
+  });
+  return { id: row.id, email_address: row.email_address, subject: row.subject, status: row.status };
+}
+
 // Creates a PENDING email carrying a tenant's yearly statement PDF. The
 // recipient is the tenant's stored email unless an explicit address is passed
 // (either way it must be valid — never guessed). Queued with the statement's
@@ -409,15 +442,13 @@ export async function prepareForStatementEmail(opts: {
     attachments: [
       { filename: `tenant-statement-${opts.tenantId}-${opts.year}.pdf`, content: Buffer.from(bytes).toString('base64'), contentType: 'application/pdf' },
     ],
-  });
-
-  await logAudit({
-    userId: opts.userId ?? null,
-    action: 'STATEMENT_EMAILED',
-    entity: 'tenant',
-    entityId: opts.tenantId,
-    newValue: { year: opts.year, to: row.email_address },
-  });
+  });    await logAudit({
+      userId: opts.userId ?? null,
+      action: 'STATEMENT_EMAILED',
+      entity: 'tenant',
+      entityId: opts.tenantId,
+      newValue: { year: opts.year, to: row.email_address },
+    });
 
   return { id: row.id, email_address: row.email_address, subject: row.subject, status: row.status };
 }

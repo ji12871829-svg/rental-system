@@ -1,5 +1,11 @@
 /// <reference types="vite/client" />
 
+// Deployment-provided keys (see docs/RUNBOOK-clerk-setup.md). Unset = Clerk
+// sign-in UI stays dormant and the password form is the only door.
+interface ImportMetaEnv {
+  readonly VITE_CLERK_PUBLISHABLE_KEY?: string;
+}
+
 // Virtual module injected by the lastUpdatedVirtual() plugin in vite.config.ts
 // (mtime of src/lib/branding.ts at build/dev-server time).
 declare module 'virtual:last-updated' {

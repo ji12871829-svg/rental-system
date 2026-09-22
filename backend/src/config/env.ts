@@ -27,6 +27,11 @@ export const env = {
   // see the startup warning below.
   jwtStaffSecret: process.env.JWT_STAFF_SECRET || process.env.JWT_SECRET || 'dev-only-secret-change-me',
   jwtPortalSecret: process.env.JWT_PORTAL_SECRET || process.env.JWT_SECRET || 'dev-only-secret-change-me',
+  // Clerk (staff sign-in): when CLERK_SECRET_KEY is set the backend accepts
+  // Clerk sessions on staff routes (mapped to local users by email, see
+  // user_external_ids) and the staff tab of /login renders Clerk's hosted
+  // sign-in. Empty = the legacy JWT/bcrypt flow only — nothing else changes.
+  clerkSecretKey: process.env.CLERK_SECRET_KEY || '',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
   bcryptSaltRounds: Number(process.env.BCRYPT_SALT_ROUNDS) || 12,
   // Comma-separated allowlist. On same-origin deploys (frontend served by

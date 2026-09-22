@@ -50,12 +50,21 @@ function isPublicCallback(path: string): boolean {
   // which authenticate by their own signature/params.
   return path === '/api/auth/login'
     || path === '/api/portal/login'
+    || path === '/api/auth/register'
+    || path === '/api/portal/register'
     || path === '/api/auth/refresh'
     || path === '/api/portal/refresh'
     || path === '/api/auth/logout'
     || path === '/api/portal/logout'
+    // Clerk → staff-session bridge: the caller authenticates with Clerk's own
+    // HttpOnly session cookies (verified server-side in the route), the same
+    // class as login — it mints the first session, so it cannot require one.
+    || path === '/api/auth/clerk/session'
     || path.startsWith('/api/mpesa/')
-    || path === '/api/sms/delivery-reports';
+    || path === '/api/sms/delivery-reports'
+    // Public landing-page demo form: same class as login — session-less
+    // first contact, throttled by its own rate limiter, nothing to forge.
+    || path === '/api/public/demo-requests';
 }
 
 function safeEqual(left: string, right: string): boolean {

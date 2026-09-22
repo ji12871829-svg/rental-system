@@ -282,6 +282,8 @@ function PortalAccessModal({ tenant, onClose, onDone }: {
   const [busy, setBusy] = useState(false);
   const [deliverEmail, setDeliverEmail] = useState(true);
   const [credentials, setCredentials] = useState<{ email: string; password: string; emailed: string } | null>(null);
+  const [shakeN, setShakeN] = useState(0);
+  const bumpShake = () => setShakeN((n) => n + 1);
 
   async function issue() {
     if (!tenant) return;
@@ -308,6 +310,7 @@ function PortalAccessModal({ tenant, onClose, onDone }: {
       }
     } catch (err) {
       toast('error', (err as Error).message);
+      bumpShake();
     } finally {
       setBusy(false);
     }
@@ -342,7 +345,7 @@ function PortalAccessModal({ tenant, onClose, onDone }: {
   }
 
   return (
-    <Modal open={tenant !== null} title={`Tenant Portal — ${tenant?.full_name ?? ''}`} onClose={handleClose}>
+    <Modal open={tenant !== null} title={`Tenant Portal — ${tenant?.full_name ?? ''}`} onClose={handleClose} shakeSignal={shakeN}>
       {tenant && (
         <div className="space-y-4 text-sm">
           <p className="text-gray-600">
@@ -399,6 +402,8 @@ function PrivacyRequestModal({ request, onClose, onDone, onErased, onLetter }: {
   const { user } = useAuth();
   const { toast } = useToast();
   const [requester, setRequester] = useState('');
+  const [shakeN, setShakeN] = useState(0);
+  const bumpShake = () => setShakeN((n) => n + 1);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const ready = requester.trim().length >= 2 && reason.trim().length >= 2;
@@ -441,6 +446,7 @@ function PrivacyRequestModal({ request, onClose, onDone, onErased, onLetter }: {
       }
     } catch (err) {
       toast('error', (err as Error).message);
+      bumpShake();
     } finally {
       setBusy(false);
     }
@@ -453,7 +459,7 @@ function PrivacyRequestModal({ request, onClose, onDone, onErased, onLetter }: {
         ? 'Data-request response letter'
         : `Export personal data (${request?.action.toUpperCase()})`;
   return (
-    <Modal open={request !== null} title={request ? `${label} — ${request.tenant.full_name}` : ''} onClose={onClose}>
+    <Modal open={request !== null} title={request ? `${label} — ${request.tenant.full_name}` : ''} onClose={onClose} shakeSignal={shakeN}>
       {request && (
         <div className="space-y-4 text-sm">
           {request.action === 'erase' && (
@@ -501,6 +507,8 @@ function TenantForm({ open, tenant, onClose, onSaved }: { open: boolean; tenant:
   const [unitId, setUnitId] = useState<number | ''>(tenant?.unit_number ? 0 : '');
   const [consent, setConsent] = useState(Boolean(tenant));
   const [busy, setBusy] = useState(false);
+  const [shakeN, setShakeN] = useState(0);
+  const bumpShake = () => setShakeN((n) => n + 1);
 
   // Load units when the modal opens.
   const { data: unitData } = useFetch(() => api.list<{ id: number; unit_number: string; occupancy_status: string }>('/api/units?limit=100'), [open]);
@@ -515,10 +523,12 @@ function TenantForm({ open, tenant, onClose, onSaved }: { open: boolean; tenant:
   async function save() {
     if (fullName.trim().length < 2) {
       toast('error', 'Tenant name is required.');
+      bumpShake();
       return;
     }
     if (!consent) {
       toast('error', "Please confirm the tenant's consent to storing their contact details.");
+      bumpShake();
       return;
     }
     setBusy(true);
@@ -529,13 +539,14 @@ function TenantForm({ open, tenant, onClose, onSaved }: { open: boolean; tenant:
       onSaved();
     } catch (err) {
       toast('error', (err as Error).message);
+      bumpShake();
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Modal open={open} title={tenant ? `Edit ${tenant.full_name}` : 'Add Tenant'} onClose={onClose}>
+    <Modal open={open} title={tenant ? `Edit ${tenant.full_name}` : 'Add Tenant'} onClose={onClose} shakeSignal={shakeN}>
       <div className="space-y-4">
         <Field label="Full Name"><TextInput value={fullName} onChange={(e) => setFullName(e.target.value)} /></Field>
         <div className="grid grid-cols-2 gap-3">
@@ -578,12 +589,15 @@ function TransferModal({ tenant, onClose, onDone }: { tenant: Tenant | null; onC
   const { toast } = useToast();
   const [units, setUnits] = useState<{ id: number; unit_number: string; occupancy_status: string }[]>([]);
   const [targetId, setTargetId] = useState<number | ''>('');
+  const [shakeN, setShakeN] = useState(0);
+  const bumpShake = () => setShakeN((n) => n + 1);
   const { data: unitData } = useFetch(() => api.list<{ id: number; unit_number: string; occupancy_status: string }>('/api/units?limit=100'), [tenant !== null]);
   if (tenant && units.length === 0 && unitData) setUnits(unitData.data.filter((u) => u.occupancy_status === 'VACANT'));
 
   async function doTransfer() {
     if (!tenant || targetId === '') {
       toast('error', 'Choose a vacant unit to transfer to.');
+      bumpShake();
       return;
     }
     try {
@@ -591,11 +605,12 @@ function TransferModal({ tenant, onClose, onDone }: { tenant: Tenant | null; onC
       onDone();
     } catch (err) {
       toast('error', (err as Error).message);
+      bumpShake();
     }
   }
 
   return (
-    <Modal open={tenant !== null} title={`Transfer ${tenant?.full_name ?? ''}`} onClose={onClose}>
+    <Modal open={tenant !== null} title={`Transfer ${tenant?.full_name ?? ''}`} onClose={onClose} shakeSignal={shakeN}>
       <p className="mb-3 text-sm text-gray-600">
         The tenant's payments and ledger stay attached to the tenant; the unit changes and both units' occupancy updates automatically.
       </p>

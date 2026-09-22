@@ -320,6 +320,8 @@ function EmailModal({ receipt, provider, live, from, onClose }: {
   const { toast } = useToast();
   const [toEmail, setToEmail] = useState('');
   const [busy, setBusy] = useState(false);
+  const [shakeN, setShakeN] = useState(0);
+  const bumpShake = () => setShakeN((n) => n + 1);
   const valid = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(toEmail.trim());
 
   async function send() {
@@ -334,13 +336,14 @@ function EmailModal({ receipt, provider, live, from, onClose }: {
       onClose();
     } catch (err) {
       toast('error', (err as Error).message);
+      bumpShake();
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Modal open={receipt !== null} title={receipt ? `Email receipt ${receipt.receipt_number}` : ''} onClose={onClose}>
+    <Modal open={receipt !== null} title={receipt ? `Email receipt ${receipt.receipt_number}` : ''} onClose={onClose} shakeSignal={shakeN}>
       {receipt && (
         <div className="space-y-4 text-sm">
           <p className="text-gray-600">
@@ -387,22 +390,25 @@ function GenerateModal({ open, tenants, onClose, onSaved }: { open: boolean; ten
   const [billingMonth, setBillingMonth] = useState(now.getMonth() + 1);
   const [billingYear, setBillingYear] = useState(now.getFullYear());
   const [busy, setBusy] = useState(false);
+  const [shakeN, setShakeN] = useState(0);
+  const bumpShake = () => setShakeN((n) => n + 1);
 
   async function generate() {
-    if (tenantId === '') { toast('error', 'Select a tenant.'); return; }
+    if (tenantId === '') { toast('error', 'Select a tenant.'); bumpShake(); return; }
     setBusy(true);
     try {
       const res = await api.post<{ data: Receipt }>('/api/receipts/generate', { tenantId, billingMonth, billingYear });
       onSaved(`Combined receipt ${res.data.receipt_number} ready.`);
     } catch (err) {
       toast('error', (err as Error).message);
+      bumpShake();
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Modal open={open} title="Generate Combined (RWC) Receipt" onClose={onClose}>
+    <Modal open={open} title="Generate Combined (RWC) Receipt" onClose={onClose} shakeSignal={shakeN}>
       <div className="space-y-4">
         <Field label="Tenant">
           <Select value={tenantId} onChange={(e) => setTenantId(e.target.value === '' ? '' : Number(e.target.value))}>

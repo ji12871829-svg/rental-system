@@ -8,11 +8,17 @@ import { pool } from './config/db';
 import { errorHandler } from './middleware/errorHandler';
 import { globalLimiter } from './middleware/rateLimiter';
 import { csrfProtection } from './middleware/csrf';
+// Clerk (staff sign-in bridge): both are inert unless CLERK_SECRET_KEY is
+// set — without keys the legacy JWT flow is the only auth, unchanged.
+import { clerkMiddleware } from '@clerk/express';
+import { clerkAuth } from './middleware/clerkAuth';
+import clerkAuthRoutes from './routes/clerkAuthRoutes';
 import auditRoutes from './routes/audit';
 import authRoutes from './routes/auth';
 import brandingRoutes from './routes/branding';
 import emailRoutes from './routes/emails';
 import privacyRequestRoutes from './routes/privacyRequests';
+import publicRoutes from './routes/public';
 import expenseRoutes from './routes/expenses';
 import receiptRoutes from './routes/receipts';
 import rentRoutes from './routes/rent';
@@ -43,6 +49,15 @@ export function createApp() {
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
   app.use(csrfProtection);
   app.use(globalLimiter);
+
+  // Clerk session parsing + local-user mapping. Mounted after CSRF (Clerk
+  // sessions are HttpOnly-cookie based, not CSRF-token based) and before the
+  // routers so clerkAuth can stamp req.user ahead of the guards. Both are
+  // no-ops without CLERK_SECRET_KEY.
+  if (env.clerkSecretKey) {
+    app.use(clerkMiddleware());
+    app.use(clerkAuth);
+  }
 
   // HSTS — browsers must refuse plain HTTP for this origin, ever. Response
   // headers only; no effect on the API contract, so it applies to every
@@ -82,6 +97,9 @@ export function createApp() {
   app.use('/api/branding', brandingRoutes);
 
   app.use('/api/auth', authRoutes);
+  // Clerk → staff-session bridge (inert unless CLERK_SECRET_KEY is set —
+  // the route itself 401s when Clerk is not configured).
+  app.use('/api/auth/clerk', clerkAuthRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/settings', settingsRoutes);
   app.use('/api/units', unitRoutes);
@@ -89,6 +107,9 @@ export function createApp() {
   // Tenant self-service portal — separate cookie + JWT audience from staff
   // auth (see middleware/portalAuth.ts). Mounted before the /api 404 guard.
   app.use('/api/portal', tenantPortalRoutes);
+  // Public marketing endpoints (landing price list + demo requests). No
+  // requireAuth — the landing page renders for signed-out visitors.
+  app.use('/api/public', publicRoutes);
   app.use('/api/rent', rentRoutes);
   app.use('/api/mpesa', mpesaRoutes);
   app.use('/api/mpesa/review', mpesaReviewRoutes);

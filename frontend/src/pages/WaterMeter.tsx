@@ -147,6 +147,8 @@ function ReadingForm({ open, units, prefillUnitId, onClose, onSaved }: { open: b
   const [currentReading, setCurrentReading] = useState('');
   const [previousReading, setPreviousReading] = useState('');
   const [busy, setBusy] = useState(false);
+  const [shakeN, setShakeN] = useState(0);
+  const bumpShake = () => setShakeN((n) => n + 1);
 
   // Apply the suggested unit whenever the form opens with nothing selected —
   // covers deep-link opens (selection empty) and late-arriving unit data,
@@ -158,6 +160,7 @@ function ReadingForm({ open, units, prefillUnitId, onClose, onSaved }: { open: b
   async function save() {
     if (unitId === '' || currentReading === '' || Number(currentReading) < 0) {
       toast('error', 'Select a water-enabled unit and enter the current reading.');
+      bumpShake();
       return;
     }
     setBusy(true);
@@ -177,13 +180,14 @@ function ReadingForm({ open, units, prefillUnitId, onClose, onSaved }: { open: b
       setPreviousReading('');
     } catch (err) {
       toast('error', (err as Error).message);
+      bumpShake();
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Modal open={open} title="Record Meter Reading" onClose={onClose}>
+    <Modal open={open} title="Record Meter Reading" onClose={onClose} shakeSignal={shakeN}>
       <div className="space-y-4">
         <Field label="Unit (water-enabled only)">
           <Select value={unitId} onChange={(e) => setUnitId(e.target.value === '' ? '' : Number(e.target.value))}>

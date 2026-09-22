@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PageHeader, Button, useFetch, useToast } from '../components/ui';
+import { PageHeader, Button, useFetch, useShake, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { money, formatDate } from '../lib/format';
 
@@ -25,11 +25,13 @@ export default function MpesaReview() {
   const { data: tenantsData } = useFetch<{ data: TenantRow[] }>(() => api.get('/api/tenants?limit=100'), []);
   const [busy, setBusy] = useState<number | null>(null);
   const [selection, setSelection] = useState<Record<number, { tenantId: string; kind: 'RENT' | 'WATER' }>>({});
+  const [shakeRef, fireShake] = useShake();
 
   async function resolve(row: ReviewRow) {
     const selected = selection[row.id];
     if (!selected?.tenantId) {
       toast('error', 'Select the tenant before resolving this payment.');
+      fireShake();
       return;
     }
     setBusy(row.id);
@@ -39,6 +41,7 @@ export default function MpesaReview() {
       refresh();
     } catch (err) {
       toast('error', (err as Error).message);
+      fireShake();
     } finally {
       setBusy(null);
     }
@@ -52,6 +55,7 @@ export default function MpesaReview() {
       refresh();
     } catch (err) {
       toast('error', (err as Error).message);
+      fireShake();
     } finally {
       setBusy(null);
     }
@@ -60,7 +64,7 @@ export default function MpesaReview() {
   return (
     <div>
       <PageHeader title="M-Pesa Review" subtitle="Resolve PayBill transactions that could not be matched automatically" />
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+      <div ref={shakeRef} className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
         {loading && <p className="p-6 text-sm text-gray-500">Loading review queue…</p>}
         {!loading && (data?.data.length ?? 0) === 0 && <p className="p-6 text-sm text-gray-500">No unmatched M-Pesa transactions.</p>}
         {!loading && (data?.data.length ?? 0) > 0 && (

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Button, EmptyState, Field, PageHeader, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
+import { Button, EmptyState, Field, PageHeader, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useShake, useToast } from '../components/ui';
 import { api, authenticatedFetch, qs } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { MONTHS, formatDate, methodLabel, money } from '../lib/format';
@@ -54,6 +54,8 @@ export default function RentCollection() {
   // True for ~1.2s after a successful save: the Record button shows a drawn
   // checkmark so confirming a payment is visible, not just a text swap.
   const [saved, setSaved] = useState(false);
+  // Failed submits (validation guard or server error) shake the form card.
+  const [shakeRef, fireShake] = useShake();
   const [stkBusy, setStkBusy] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [monthFilter, setMonthFilter] = useState('');
@@ -124,6 +126,7 @@ export default function RentCollection() {
   async function recordPayment() {
     if (tenantId === '' || !amount || Number(amount) <= 0) {
       toast('error', 'Choose a tenant and enter an amount greater than zero.');
+      fireShake();
       return;
     }
     setBusy(true);
@@ -159,6 +162,7 @@ export default function RentCollection() {
       window.setTimeout(() => setSaved(false), 1200);
     } catch (err) {
       toast('error', (err as Error).message);
+      fireShake();
     } finally {
       setBusy(false);
     }
@@ -167,6 +171,7 @@ export default function RentCollection() {
   async function requestStkPush() {
     if (tenantId === '' || !amount || Number(amount) <= 0) {
       toast('error', 'Choose a tenant and enter an amount greater than zero.');
+      fireShake();
       return;
     }
     setStkBusy(true);
@@ -189,7 +194,7 @@ export default function RentCollection() {
 
       <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Form */}
-        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div ref={shakeRef} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="mb-4 text-base font-semibold text-gray-900">Record Rent Payment</h2>
           <div className="space-y-3">
             <Field label="Tenant / Unit">

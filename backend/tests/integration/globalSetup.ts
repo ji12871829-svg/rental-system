@@ -28,6 +28,12 @@ export default async function globalSetup(): Promise<void> {
   await pool.query(schema);
   await pool.query(seed);
 
+  // 3b. Migrations — production boots applyMigrations() after bootstrap; the
+  // test DB must carry the same post-schema additions (demo_requests,
+  // audit_logs back-fill, …) or any route touching them 500s under test.
+  const { applyMigrations } = await import('../../src/db/migrations');
+  await applyMigrations();
+
   // 4. Users (hashes generated at runtime — never stored in the repo).
   const users = [
     { name: 'Test Admin', email: 'admin@rpms.local', password: 'Admin@2026!', role: 'ADMIN' },
