@@ -25,7 +25,9 @@ import {
   portalLogin,
   portalStatementPdf,
 } from '../services/tenantPortalService';
+import { getPortalStkConfig, requestPortalStkPush } from '../services/portalStkService';
 import { logAudit } from '../services/auditService';
+import rateLimit from 'express-rate-limit';
 
 const router = Router();
 
@@ -180,11 +182,49 @@ router.get('/statement.pdf', requireTenant, asyncHandler(async (req, res) => {
   res.send(Buffer.from(bytes));
 }));
 
-// Payments are now "send money" only: the tenant copies the PayBill/account
-// details from /payment-instructions and sends the money from M-Pesa. The
-// office-side reconciliation paths (C2B callback auto-match, or manual entry
-// by staff with the M-Pesa reference) post the actual payment — a tenant can
-// still never post one directly.
+// Payments are now "send money" + one in-app action: the tenant copies the
+// PayBill/account details from /payment-instructions and sends the money from
+// M-Pesa — or taps "Pay with M-Pesa" for an STK push to their own phone.
+// Either way the office-side reconciliation (PayHero poller → auto-match →
+// oldest-arrears allocation → receipt → auto-SMS) posts the actual payment —
+// a tenant can still never post one directly.
+
+// --- Pay with M-Pesa (STK push) ---------------------------------------------
+
+// Availability probe: hides the pay button entirely when PayHero is not
+// configured or the tenant record has no phone number (with a reason string
+// for the UI). GETs are cheap; the card checks once per mount.
+router.get('/pay-rent/config', requireTenant, asyncHandler(async (req, res) => {
+  res.json({ data: await getPortalStkConfig(req.tenant!.tenantId) });
+}));
+
+// One push per tenant per 10 minutes — an STK prompt is a user-facing
+// Safaricom action and each retry costs a real push; a throttle blunts both
+// accidental double-taps and scripted hammering. Skipped in tests.
+const stkLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => env.nodeEnv === 'test',
+  message: { error: 'RATE_LIMITED', message: 'Too many payment requests. Please wait a few minutes before trying again.', details: {} },
+});
+
+// Bounded amounts: above the ceiling, something is wrong (a mistyped figure,
+// an extra zero, or abuse) — refuse rather than push an absurd prompt.
+const STK_MAX_AMOUNT = 1_000_000;
+
+const stkPushSchema = z.object({
+  amount: z
+    .number({ invalid_type_error: 'Amount must be a number.' })
+    .positive('Amount must be greater than zero.')
+    .max(STK_MAX_AMOUNT, 'Amount exceeds the maximum allowed for one payment.'),
+});
+
+router.post('/pay-rent/stk-push', requireTenant, stkLimiter, validateBody(stkPushSchema), asyncHandler(async (req, res) => {
+  const result = await requestPortalStkPush(req.tenant!.tenantId, req.body.amount, req.tenant!.email);
+  res.status(202).json({ data: result });
+}));
 
 // Sliding-session renewal for the tenant portal — same grace semantics as
 // staff /api/auth/refresh: keepalive renews before expiry; a tab that slept

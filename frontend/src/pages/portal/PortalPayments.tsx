@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Check, Copy } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Check, Copy, Smartphone } from 'lucide-react';
 import { PageHeader, SkeletonTable, useFetch } from '../../components/ui';
 import { money, formatDate } from '../../lib/format';
 import { portalApi } from '../../lib/portalApi';
@@ -26,6 +26,19 @@ interface PaymentInstructions {
   waterBalance: number;
 }
 
+interface StkConfig {
+  enabled: boolean;
+  reason: string | null;
+  targetPhone: string | null;
+}
+
+interface StkPushResult {
+  checkoutRequestId: string;
+  phone: string;
+  expiresInSeconds: number;
+  instructions: string;
+}
+
 const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export default function PortalPayments() {
@@ -37,8 +50,14 @@ export default function PortalPayments() {
     () => portalApi.get<{ data: PortalPayment[] }>('/api/portal/payments'),
     [],
   );
-  const { data: instructionsData } = useFetch(
+  const { data: instructionsData, refresh: refreshInstructions } = useFetch(
     () => portalApi.get<{ data: PaymentInstructions }>('/api/portal/payment-instructions'),
+    [],
+  );
+  // STK availability: the pay card renders only when the backend says the
+  // PayHero channel is configured AND the tenant record has a phone number.
+  const { data: stkConfigData } = useFetch(
+    () => portalApi.get<{ data: StkConfig }>('/api/portal/pay-rent/config'),
     [],
   );
 
@@ -55,9 +74,113 @@ export default function PortalPayments() {
     window.setTimeout(() => setCopied(null), 1800);
   };
 
+  // --- Pay with M-Pesa (STK push) ---
+  // Pushes only INITIATE: completion is reconciled server-side when the money
+  // arrives via PayHero, so while pending we simply poll the instructions
+  // (balances) every 10s for up to 3 minutes and let the figures speak.
+  const stkConfig = stkConfigData?.data ?? null;
+  const [amount, setAmount] = useState('');
+  const [pushing, setPushing] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+  const [pushResult, setPushResult] = useState<StkPushResult | null>(null);
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
+
+  // Prefill the amount once the rent balance is known (only on first load —
+  // never clobber what the tenant is typing).
+  const [prefilled, setPrefilled] = useState(false);
+  useEffect(() => {
+    if (!prefilled && instructionsData && instructionsData.data.rentBalance > 0) {
+      setAmount(String(instructionsData.data.rentBalance));
+      setPrefilled(true);
+    }
+  }, [prefilled, instructionsData]);
+
+  useEffect(() => {
+    if (!awaitingConfirmation) return;
+    const poll = window.setInterval(() => refreshInstructions(), 10_000);
+    const stop = window.setTimeout(() => setAwaitingConfirmation(false), 3 * 60_000);
+    return () => {
+      window.clearInterval(poll);
+      window.clearTimeout(stop);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [awaitingConfirmation]);
+
+  const startPush = async () => {
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) {
+      setPushError('Enter the amount you want to pay.');
+      return;
+    }
+    if (value > 1_000_000) {
+      setPushError('Amount exceeds the maximum allowed for one payment.');
+      return;
+    }
+    setPushing(true);
+    setPushError(null);
+    try {
+      const { data } = await portalApi.post<{ data: StkPushResult }>('/api/portal/pay-rent/stk-push', { amount: value });
+      setPushResult(data);
+      setAwaitingConfirmation(true);
+    } catch (err) {
+      setPushError((err as Error).message);
+    } finally {
+      setPushing(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader title="Payments" subtitle="Pay rent and review everything you have paid" />
+
+      {stkConfig?.enabled && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+            <Smartphone className="h-4 w-4" /> Pay with M-Pesa
+          </h3>
+          <p className="mt-1 text-sm text-gray-600">
+            Enter the amount and we'll send an M-Pesa request to your phone ({stkConfig.targetPhone}). Enter your PIN to complete the payment — your balance updates automatically.
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <input
+              type="number"
+              min="1"
+              step="1"
+              inputMode="numeric"
+              value={amount}
+              onChange={(e) => { setAmount(e.target.value); setPushError(null); }}
+              placeholder="Amount to pay"
+              aria-label="Amount to pay"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 sm:max-w-xs"
+            />
+            <button
+              type="button"
+              onClick={startPush}
+              disabled={pushing || awaitingConfirmation || !Number(amount)}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {pushing ? 'Sending request…' : 'Send M-Pesa request'}
+            </button>
+          </div>
+          {pushError && <p className="mt-2 text-sm text-red-700">{pushError}</p>}
+          {pushResult && (
+            <div className="mt-3 rounded-lg border border-emerald-300 bg-white p-3 text-sm">
+              {awaitingConfirmation ? (
+                <p className="text-gray-700">
+                  <span className="font-medium">Request sent to {pushResult.phone}.</span> Check your phone and enter your M-Pesa PIN. This page refreshes your balance automatically for a few minutes while M-Pesa confirms.
+                </p>
+              ) : (
+                <p className="text-gray-700">
+                  Request sent to {pushResult.phone}. If you haven't completed it, you can send another request — the payment posts once M-Pesa confirms.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {stkConfig && !stkConfig.enabled && stkConfig.reason && (
+        <p className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500">{stkConfig.reason}</p>
+      )}
 
       {instructionsData?.data.number && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
