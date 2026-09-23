@@ -272,6 +272,93 @@ export async function getPortalPayments(tenantId: number, limit = 24): Promise<u
     .slice(0, limit);
 }
 
+// --- Payment status timeline -------------------------------------------------
+//
+// A tenant-facing progress view for M-Pesa payments tied to THIS tenant:
+//   push initiated → M-Pesa confirmed → posted to ledger (→ receipt SMS).
+//
+// Privacy shape: the row is scoped by tenant_id — a tenant can only ever see
+// statuses for payments the system already attributes to them. Deliberately
+// NOT exposed: provider payloads, error_message (staff wording), other
+// tenants' rows, and send-money collections still in the shared queue before
+// matching (a C2B row belongs to nobody until it matches — listing them would
+// leak "someone with this phone just paid X" into a session anyone could be
+// using on a shared device).
+export interface PortalPaymentStatus {
+  id: number;
+  amount: number;
+  /** Timeline stage the payment has reached. */
+  stage: 'CONFIRMING' | 'MATCHED' | 'POSTED' | 'NEEDS_REVIEW';
+  /** ISO timestamp of the last stage change (when we know it). */
+  updatedAt: string;
+  /** Kenya-calendar date the money arrived, for display. */
+  payDate: string;
+  /** Posted stage only: the month the allocation landed on. */
+  allocatedMonth: number | null;
+  allocatedYear: number | null;
+  /** Posted stage only: receipt number, so the tenant can quote it. */
+  receiptNumber: string | null;
+  /** CONFIRMING stage only: M-Pesa prompts expire after ~60s. */
+  pushExpiresInSeconds: number | null;
+}
+
+export async function getPortalPaymentTimeline(tenantId: number, limit = 8): Promise<PortalPaymentStatus[]> {
+  const rows = await query<{
+    id: number;
+    amount: string;
+    status: string;
+    transaction_date: Date | null;
+    created_at: Date;
+    updated_at: Date;
+    billing_month: number | null;
+    billing_year: number | null;
+    receipt_number: string | null;
+  }>(
+    `SELECT m.id, m.amount::text AS amount, m.status, m.transaction_date, m.created_at, m.updated_at,
+            rp.billing_month, rp.billing_year, rp.receipt_number
+     FROM mpesa_transactions m
+     LEFT JOIN rent_payments rp ON rp.id = m.rent_payment_id
+     WHERE m.tenant_id = $1 AND m.payment_kind = 'RENT'
+     ORDER BY m.created_at DESC
+     LIMIT $2`,
+    [tenantId, Math.min(limit, 50)]
+  );
+  return rows.map((row) => {
+    const status = row.status;
+    const stage: PortalPaymentStatus['stage'] =
+      status === 'POSTED'
+        ? 'POSTED'
+        : status === 'MATCHED'
+          ? 'MATCHED'
+          : status === 'FAILED' || status === 'UNMATCHED' || status === 'AMBIGUOUS'
+            ? 'NEEDS_REVIEW'
+            : 'CONFIRMING';
+    return {
+      id: row.id,
+      amount: Number(row.amount),
+      stage,
+      updatedAt: (row.updated_at ?? row.created_at).toISOString(),
+      payDate: kenyaDay(new Date(row.created_at)),
+      allocatedMonth: row.billing_month,
+      allocatedYear: row.billing_year,
+      receiptNumber: row.receipt_number,
+      pushExpiresInSeconds: stage === 'CONFIRMING' ? 60 : null,
+    };
+  });
+}
+
+/** Kenya-calendar YYYY-MM-DD for a timestamp (same rule the ledger uses). */
+function kenyaDay(date: Date): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Nairobi',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const v = Object.fromEntries(parts.filter((p) => p.type !== 'literal').map((p) => [p.type, p.value]));
+  return `${v.year}-${v.month}-${v.day}`;
+}
+
 export async function getPortalWaterReadings(tenantId: number, limit = 12): Promise<unknown[]> {
   return query(
     `SELECT r.reading_date, r.billing_month, r.billing_year,

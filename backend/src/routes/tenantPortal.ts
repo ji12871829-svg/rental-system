@@ -18,6 +18,7 @@ import {
 import {
   getPortalIdentity,
   getPortalPaymentInstructions,
+  getPortalPaymentTimeline,
   getPortalPayments,
   getPortalReceipts,
   getPortalSummary,
@@ -163,6 +164,12 @@ router.get('/payments', requireTenant, asyncHandler(async (req, res) => {
 
 router.get('/payment-instructions', requireTenant, asyncHandler(async (req, res) => {
   res.json({ data: await getPortalPaymentInstructions(req.tenant!.tenantId) });
+}));
+
+// Live status of this tenant's recent M-Pesa payments (push initiated →
+// confirmed → posted). Scoped to the session tenant by the service.
+router.get('/payment-status', requireTenant, asyncHandler(async (req, res) => {
+  res.json({ data: await getPortalPaymentTimeline(req.tenant!.tenantId) });
 }));
 
 router.get('/water', requireTenant, asyncHandler(async (req, res) => {
