@@ -1,7 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "ignore": [".ua/**"],
-  "ignoreDependencies": ["lint-staged"],
   "workspaces": {
     ".": {
       "entry": ["scripts/*.mjs"]

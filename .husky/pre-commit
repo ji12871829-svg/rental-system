@@ -1,3 +1,20 @@
-# Lint-staged: oxlint on the staged files only (config in package.json).
-# Fails the commit on errors so broken code never lands.
-npx lint-staged
+# 1) oxlint on the staged files only (config in package.json).
+# 2) knip dead-code gate — the same whole-tree check CI runs (files, deps,
+#    exports, types), so a finding is caught at commit time instead of the
+#    first push. Skipped when nothing staged can change knip's result
+#    (code files, manifests, or the knip config itself).
+# Either gate failing blocks the commit; use `git commit --no-verify` to
+# bypass deliberately.
+npx lint-staged || exit 1
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+if printf '%s\n' "$STAGED" | grep -qE '\.(js|mjs|cjs|ts|tsx)$|(^|/)package(-lock)?\.json$|^knip\.json$|^\.husky/'; then
+  npm run knip || {
+    echo ""
+    echo "✖ knip found dead code (unused files/dependencies/exports/types)."
+    echo "  Details are in the knip output above; fix them or, if intentional,"
+    echo "  record the exception in knip.json (ignore / ignoreDependencies)."
+    echo "  Deliberate bypass: git commit --no-verify"
+    exit 1
+  }
+fi
