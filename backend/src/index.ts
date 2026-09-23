@@ -6,6 +6,8 @@ import { applyMigrations } from './db/migrations';
 import { getSmsConfig } from './services/smsProvider';
 import { startSmsRetryJob, stopSmsRetryJob } from './services/smsRetryJob';
 import { startTenantRetentionJob, stopTenantRetentionJob } from './services/tenantRetentionJob';
+import { startPayheroPollJob, stopPayheroPollJob } from './services/payheroPollJob';
+import { startStaleUnmatchedAlertJob, stopStaleUnmatchedAlertJob } from './services/staleUnmatchedAlertJob';
 
 const app = createApp();
 
@@ -22,6 +24,8 @@ async function main() {
       console.log(`RPMS API listening on http://localhost:${env.port} (${env.nodeEnv})`);
       startSmsRetryJob();
       startTenantRetentionJob();
+      startPayheroPollJob();
+      startStaleUnmatchedAlertJob();
       const sms = getSmsConfig();
       if (sms.provider === 'mock') {
         // eslint-disable-next-line no-console
@@ -51,6 +55,8 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     stopSmsRetryJob();
     stopTenantRetentionJob();
+    stopPayheroPollJob();
+    stopStaleUnmatchedAlertJob();
     process.exit(0);
   });
 }

@@ -65,6 +65,9 @@
         "backend/src/services/receiptService.ts",
         "backend/src/services/emailService.ts",
         "backend/src/services/smsService.ts",
+        "backend/src/services/mpesaService.ts",
+        "backend/src/services/payheroPollJob.ts",
+        "backend/src/services/staleUnmatchedAlertJob.ts",
         "backend/src/utils/receiptPdf.ts"
       ],
       "rules": {

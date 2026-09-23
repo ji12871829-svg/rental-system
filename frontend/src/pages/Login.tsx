@@ -106,7 +106,9 @@ export default function Login() {
             className="absolute inset-0 h-full w-full object-cover"
             loading="eager"
             decoding="async"
-            fetchPriority="high"
+            // React 18 types only know the lowercase DOM attribute; camelCase
+            // `fetchPriority` triggers a console warning on every render.
+            {...{ fetchpriority: 'high' } as Record<string, string>}
           />
         </picture>
         {/* Scrim so the copy below stays legible over the photo. */}
@@ -316,7 +318,7 @@ export default function Login() {
               <span className={`${identity?.address || identity?.contactPhone ? 'mt-0.5' : ''} block`}>
                 Need help?{' '}
                 {supportContacts.map((c, i) => (
-                  <span key={c.email}>
+                  <span key={`${c.label}:${c.email}`}>
                     {i > 0 && (
                       <span className="mx-1.5" aria-hidden>
                         ·

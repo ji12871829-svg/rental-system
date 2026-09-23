@@ -31,3 +31,4 @@ videos/
 
 # Local tooling: standalone oxlint binary (scripts/run-oxlint.mjs fallback)
 .tools/
+.ua/

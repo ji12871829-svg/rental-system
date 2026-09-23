@@ -53,7 +53,7 @@ export default function Register() {
             className="absolute inset-0 h-full w-full object-cover"
             loading="eager"
             decoding="async"
-            fetchPriority="high"
+            {...{ fetchpriority: 'high' } as Record<string, string>}
           />
         </picture>
         <div className="absolute inset-0 bg-gradient-to-t from-[#0b1f3a] via-[#0b1f3a]/75 to-[#0b1f3a]/25" aria-hidden />

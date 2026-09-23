@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import { KeyRound, Plus } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { KeyRound, Loader2, MessageSquare, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { DataRequestLetterModal, type LetterData } from '../components/DataRequestLetter';
@@ -47,6 +47,10 @@ export default function Tenants() {
   const [letter, setLetter] = useState<LetterData | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [portalTenant, setPortalTenant] = useState<Tenant | null>(null);
+  // Reminder SMS flow: pick a template kind → backend composes from the live
+  // ledger → confirm modal shows the exact message → queued as PENDING.
+  const [reminder, setReminder] = useState<{ tenant: Tenant; kind: 'BALANCE_DUE' | 'OVERDUE' } | null>(null);
+  const [reminderBusy, setReminderBusy] = useState(false);
 
   const { data, loading, error } = useFetch(
     () => api.list<Tenant>(`/api/tenants${qs({ q, status: status || undefined, page, limit: 25 })}`),
@@ -84,6 +88,8 @@ export default function Tenants() {
       } catch (err) { toast('error', (err as Error).message); }
     } else if (action === 'portal') {
       setPortalTenant(tenant);
+    } else if (action === 'sms-due' || action === 'sms-overdue') {
+      setReminder({ tenant, kind: action === 'sms-due' ? 'BALANCE_DUE' : 'OVERDUE' });
     } else if (action === 'delete') {
       if (!window.confirm(`Permanently delete ${tenant.full_name}?`)) return;
       try {
@@ -185,6 +191,8 @@ export default function Tenants() {
                           <option value="edit">Edit tenant</option>
                           <option value="transfer">Transfer unit</option>
                           <option value="move-out">Move out</option>
+                          <option value="sms-due">Reminder: statement / balance due…</option>
+                          <option value="sms-overdue">Reminder: overdue notice…</option>
                         </>
                       )}
                       {isAdmin && (
@@ -256,6 +264,18 @@ export default function Tenants() {
         onDone={(msg) => { setPrivacyRequest(null); refresh(); toast('success', msg); }}
         onErased={(msg) => { setPrivacyRequest(null); setDetail(null); refresh(); toast('success', msg); }}
         onLetter={(l) => setLetter(l)}
+      />
+
+      {/* Reminder SMS confirm — shows the exact composed message before it is
+          queued. The message comes FROM the backend (composed from the live
+          ledger), so what the operator confirms is what the tenant receives. */}
+      <ReminderModal
+        request={reminder}
+        busy={reminderBusy}
+        onClose={() => { if (!reminderBusy) setReminder(null); }}
+        onDone={(msg) => { setReminder(null); refresh(); toast('success', msg); }}
+        onError={(msg) => toast('error', msg)}
+        setBusy={setReminderBusy}
       />
 
       <DataRequestLetterModal letter={letter} onClose={() => setLetter(null)} tenantEmail={detail?.email ?? null} />
@@ -623,6 +643,121 @@ function TransferModal({ tenant, onClose, onDone }: { tenant: Tenant | null; onC
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
         <Button onClick={doTransfer}>Transfer</Button>
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------- ReminderModal
+// One dialog, three channels — the templates the operator picked from the
+// Tenants row actions, composed from the live ledger:
+//   SMS — queued as PENDING, sent from SMS Notifications (or auto-send)
+//   WhatsApp — opens a wa.me click-to-chat with the text pre-filled; nothing
+//     is sent until the operator presses send in WhatsApp itself
+//   Email — the formal statement breakdown queued as a PENDING email
+function ReminderModal({ request, busy, onClose, onDone, onError, setBusy }: {
+  request: { tenant: Tenant; kind: 'BALANCE_DUE' | 'OVERDUE' } | null;
+  busy: boolean;
+  onClose: () => void;
+  onDone: (msg: string) => void;
+  onError: (msg: string) => void;
+  setBusy: (b: boolean) => void;
+}) {
+  const [channel, setChannel] = useState<'SMS' | 'WHATSAPP' | 'EMAIL'>('SMS');
+  const [preview, setPreview] = useState<{ message: string; whatsappUrl: string | null } | null>(null);
+
+  // Re-compose whenever the tenant/kind/channel changes. The backend queues
+  // immediately for SMS/EMAIL (the modal is the review surface — the queued
+  // row stays the source of truth and can be inspected in the history pages);
+  // WhatsApp only composes, sending happens in WhatsApp itself.
+  useEffect(() => {
+    setPreview(null);
+    if (!request) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.post<{ data: { smsId: number | null; emailId: number | null; whatsappUrl: string | null; message: string; autoSend: boolean } }>(
+          `/api/tenants/${request.tenant.id}/sms-reminder`,
+          { kind: request.kind, channel },
+        );
+        if (cancelled) return;
+        setPreview({ message: res.data.message, whatsappUrl: res.data.whatsappUrl });
+      } catch (err) {
+        if (!cancelled) onError((err as Error).message);
+        if (!cancelled) onClose();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [request, channel]); // eslint-disable-line react-hooks/exhaustive-deps -- onClose/onError are stable UI callbacks; identity changes must not re-queue
+
+  if (!request) return null;
+  const kindLabel = request.kind === 'OVERDUE' ? 'Overdue notice' : 'Statement / balance due';
+
+  return (
+    <Modal open={request !== null} title={`Reminder · ${kindLabel}`} onClose={onClose}>
+      <p className="text-sm text-gray-600">
+        To <span className="font-semibold">{request.tenant.full_name}</span> — composed from the live ledger.
+      </p>
+
+      {/* Channel picker */}
+      <div role="tablist" aria-label="Reminder channel" className="mt-3 grid grid-cols-3 gap-2 rounded-xl bg-gray-100 p-1">
+        {([['SMS', 'SMS'], ['WHATSAPP', 'WhatsApp'], ['EMAIL', 'Email']] as const).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={channel === value}
+            onClick={() => setChannel(value)}
+            className={`min-h-[38px] rounded-lg px-2 text-sm font-semibold transition-colors ${
+              channel === value ? 'bg-brand-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {preview === null ? (
+        <div className="mt-3 flex items-center gap-2 rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
+          <Loader2 size={15} className="animate-spin" aria-hidden /> Composing from the ledger…
+        </div>
+      ) : (
+        <div className="mt-3 rounded-lg bg-gray-50 p-4 text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">{preview.message}</div>
+      )}
+
+      <p className="mt-3 text-xs text-gray-500">
+        {channel === 'SMS' && 'Queued as PENDING — send it from SMS Notifications (auto-sends when that setting is on).'}
+        {channel === 'WHATSAPP' && 'Nothing is sent yet — the button opens WhatsApp with this text pre-filled for you to review and send.'}
+        {channel === 'EMAIL' && 'The formal statement is queued as PENDING — send it from Tenant Email (or it sends when the email pipeline is live).'}
+      </p>
+
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="secondary" onClick={onClose} disabled={busy}>Close</Button>
+        {channel === 'WHATSAPP' && preview?.whatsappUrl ? (
+          <Button
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              window.open(preview.whatsappUrl ?? undefined, '_blank', 'noopener');
+              onDone(`WhatsApp opened for ${request.tenant.full_name} — review and press send.`);
+              setBusy(false);
+            }}
+          >
+            <MessageSquare size={15} strokeWidth={2} aria-hidden /> Open WhatsApp
+          </Button>
+        ) : (
+          <Button
+            disabled={busy || preview === null}
+            onClick={() => {
+              setBusy(true);
+              onDone(`${channel === 'EMAIL' ? 'Statement email' : 'Reminder SMS'} for ${request.tenant.full_name} queued.`);
+              setBusy(false);
+            }}
+          >
+            {busy ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <MessageSquare size={15} strokeWidth={2} aria-hidden />}
+            Done
+          </Button>
+        )}
       </div>
     </Modal>
   );
