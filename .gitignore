@@ -8,6 +8,8 @@ coverage/
 backend/dist/
 frontend/dist/
 shared/dist/
+# tsc -b incremental cache (regenerated on every typecheck/build)
+*.tsbuildinfo
 .neon
 .env.local
 env.txt
