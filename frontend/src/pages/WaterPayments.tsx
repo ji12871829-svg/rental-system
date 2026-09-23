@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Download, Plus } from 'lucide-react';
 import { Button, EmptyState, Field, Modal, PageHeader, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
-import { api, authenticatedFetch, qs } from '../lib/api';
+import { api, authenticatedFetch, apiUrl, qs } from '../lib/api';
 import { MONTHS, formatDate, methodLabel, money } from '../lib/format';
 import { reportingYearOptions, useReportingYear } from '../lib/useReportingYear';
 
@@ -50,7 +50,7 @@ export default function WaterPayments() {
     if (exportYear !== null && exportYear !== '') params.set('year', String(exportYear));
     if (monthFilter) params.set('month', monthFilter);
     const query = params.toString();
-    return `${import.meta.env.VITE_API_URL ?? ''}/api/water/payments/export${query ? `?${query}` : ''}`;
+    return `${apiUrl('/api/water/payments/export')}${query ? `?${query}` : ''}`;
   }, [yearFilter, monthFilter, reportingYear]);
 
   return (

@@ -19,7 +19,10 @@ services:
     # Build the frontend first (outputs frontend/dist), then compile the API.
     # --include=dev on BOTH installs: TypeScript must be installed to build (Render
     # defaults NODE_ENV=production, which would skip devDependencies otherwise).
-    buildCommand: cd frontend && npm ci --include=dev && npm run build && cd ../backend && npm ci --include=dev && npm run build
+    # Build shared/ first explicitly: its file: deps run `prepare` on install,
+    # but a guaranteed pre-build keeps the type contract independent of the
+    # installing npm version's prepare behavior.
+    buildCommand: npm run build --prefix shared && cd frontend && npm ci --include=dev && npm run build && cd ../backend && npm ci --include=dev && npm run build
     startCommand: npm run start --prefix backend
     healthCheckPath: /api/health
     autoDeploy: true

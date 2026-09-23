@@ -1,6 +1,7 @@
 import { query, queryOne, withTransaction } from '../config/db';
 import { paginate } from './paginate';
 import { MONTH_NAMES, type Pagination } from '../types';
+import type { WaterSummaryRow } from '@rpms/shared';
 import { balanceDue, computeWaterBill, paymentStatus, waterCollectionRate, waterSurplusDeficit } from '../utils/businessRules';
 import { conflict, notFound, unprocessable } from '../utils/httpError';
 import { n, round2 } from '../utils/money';
@@ -386,7 +387,7 @@ export async function createWaterPayment(input: WaterPaymentInput, userId: numbe
       client
     );
     await client.query('UPDATE water_payments SET receipt_number = $1 WHERE id = $2', [receipt.receipt_number, payment.id]);
-    preparedSmsId = await prepareForReceipt(receipt as any, client);
+    preparedSmsId = await prepareForReceipt(receipt, client);
 
     await logAudit({
       userId,
@@ -534,7 +535,7 @@ export async function deletePurchase(id: number, userId: number): Promise<void> 
 // Summaries (spec §19, §22, §24, §47)
 // ---------------------------------------------------------------------------
 
-export async function waterSummary(year?: number): Promise<unknown> {
+export async function waterSummary(year?: number): Promise<WaterSummaryRow> {
   const settings = await getSettings();
   const targetYear = year ?? settings.reporting_year;
 
@@ -565,7 +566,31 @@ export async function waterSummary(year?: number): Promise<unknown> {
   };
 }
 
-export async function monthlyWaterSummary(year?: number): Promise<unknown[]> {
+// One month of the water summary — shared by the dashboard, the monthly
+// report PDF and the combined rent+water summary.
+export interface WaterMonthlySummaryRow {
+  month: number;
+  monthName: string;
+  waterBilled: number;
+  waterCollected: number;
+  waterOutstanding: number;
+  waterPurchased: number;
+  waterSupplyCost: number;
+  surplusDeficit: number;
+  collectionRate: number;
+  currency: string;
+}
+
+export interface OutstandingWaterRow {
+  unitId: number;
+  unitNumber: string;
+  tenantName: string | null;
+  waterBilled: number;
+  waterPaid: number;
+  waterOutstanding: number;
+}
+
+export async function monthlyWaterSummary(year?: number): Promise<WaterMonthlySummaryRow[]> {
   const settings = await getSettings();
   const targetYear = year ?? settings.reporting_year;
 
@@ -630,10 +655,13 @@ export async function monthlyWaterSummary(year?: number): Promise<unknown[]> {
 }
 
 // Outstanding water by unit — used by the arrears and dashboard charts.
-export async function outstandingWaterByUnit(year?: number): Promise<unknown[]> {
+export async function outstandingWaterByUnit(year?: number): Promise<OutstandingWaterRow[]> {
   const settings = await getSettings();
   const targetYear = year ?? settings.reporting_year;
-  const rows = await query(
+  const rows = await query<{
+    id: number; unit_number: string; tenant_name: string | null;
+    billed: string; paid: string;
+  }>(
     `SELECT u.id, u.unit_number, t.full_name AS tenant_name,
             COALESCE(b.billed, 0) AS billed, COALESCE(p.paid, 0) AS paid
      FROM units u
@@ -646,7 +674,7 @@ export async function outstandingWaterByUnit(year?: number): Promise<unknown[]> 
      ORDER BY (COALESCE(b.billed, 0) - COALESCE(p.paid, 0)) DESC`,
     [targetYear]
   );
-  return rows.map((r: any) => ({
+  return rows.map((r) => ({
     unitId: r.id,
     unitNumber: r.unit_number,
     tenantName: r.tenant_name,

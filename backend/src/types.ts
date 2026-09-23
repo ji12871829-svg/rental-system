@@ -1,8 +1,19 @@
 // Shared domain types.
+//
+// Cross-boundary shapes (roles, payment statuses, the API envelope and the
+// dashboard payload) live in @rpms/shared and are re-exported here, so the
+// backend keeps ONE import path while the frontend imports the package
+// directly. A change there breaks both sides' typechecks — drift becomes a
+// compile error instead of a runtime surprise.
+import { type Role } from '@rpms/shared';
 
-export type Role = 'ADMIN' | 'PROPERTY_MANAGER' | 'STAFF';
-export type PaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID' | 'OVERPAID';
-export type ReceiptType = 'RENT' | 'WATER' | 'COMBINED';
+export {
+  type DashboardData,
+  type Pagination,
+  type PaymentStatus,
+  type ReceiptType,
+  type Role,
+} from '@rpms/shared';
 
 export interface AuthUser {
   userId: number;
@@ -17,13 +28,6 @@ export interface SettingsRow {
   currency: string;
   water_rate: string;
   retention_years: number;
-}
-
-export interface Pagination {
-  page: number;
-  limit: number;
-  total: number;
-  totalPages: number;
 }
 
 export const MONTH_NAMES = [

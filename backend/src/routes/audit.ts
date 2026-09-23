@@ -1,15 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { adminOnly, requireAuth } from '../middleware/auth';
+import { listQuerySchema as baseListQuerySchema } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
 import { listAuditLogs } from '../services/auditService';
 
 const router = Router();
 router.use(requireAuth, adminOnly);
 
-const querySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(20),
+const querySchema = baseListQuerySchema.extend({
   entity: z.string().optional(),
   action: z.string().optional(),
   userId: z.coerce.number().int().positive().optional(),

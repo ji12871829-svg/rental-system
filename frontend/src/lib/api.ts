@@ -3,11 +3,19 @@
 
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined) || '';
 
-interface ApiError {
-  error: string;
-  message: string;
-  details?: Record<string, unknown>;
+/**
+ * Absolute URL for a backend path (CSV/PDF exports open outside the axios
+ * client, so they need the full origin-prefixed path).
+ */
+import type { ApiErrorBody } from '@rpms/shared';
+
+export function apiUrl(path: string): string {
+  return `${API_URL}${path}`;
 }
+
+// The error envelope is the shared contract from @rpms/shared — the same
+// shape backend/src/utils/httpError.ts throws and errorHandler.ts serializes.
+type ApiError = ApiErrorBody;
 
 function getCsrfToken(): string | null {
   const cookie = document.cookie.split('; ').find((entry) => entry.startsWith('rpms_csrf='));

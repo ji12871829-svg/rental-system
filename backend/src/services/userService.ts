@@ -35,9 +35,17 @@ export async function createUser(input: UserInput, userId: number): Promise<unkn
   return inserted[0];
 }
 
+export interface UserUpdateInput {
+  name?: string;
+  phone?: string;
+  role?: Role;
+  status?: 'ACTIVE' | 'INACTIVE';
+  password?: string;
+}
+
 export async function updateUser(
   id: number,
-  input: { name?: string; phone?: string; role?: Role; status?: 'ACTIVE' | 'INACTIVE'; password?: string },
+  input: UserUpdateInput,
   userId: number
 ): Promise<unknown> {
   const existing = await queryOne<{ id: number; role: Role; email: string }>('SELECT id, role, email FROM users WHERE id = $1', [id]);

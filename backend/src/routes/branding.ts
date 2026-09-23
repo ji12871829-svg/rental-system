@@ -10,6 +10,7 @@ import {
   toView,
   updateBranding,
   uploadLogo,
+  type BrandingInput,
 } from '../services/brandingService';
 
 const router = Router();
@@ -48,7 +49,7 @@ const updateSchema = z.object({
 });
 
 router.put('/', requireAuth, managerOrAdmin, validateBody(updateSchema), asyncHandler(async (req, res) => {
-  const row = await updateBranding(req.body as any, req.user!.userId);
+  const row = await updateBranding(req.body as BrandingInput, req.user!.userId);
   res.json({ data: toView(row) });
 }));
 

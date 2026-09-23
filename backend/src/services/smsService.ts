@@ -19,7 +19,9 @@ import {
   type DeliveryOutcome,
 } from './smsProvider';
 
-interface ReceiptLike {
+// Structural superset of ReceiptRow (receiptService) — any created receipt
+// satisfies it, so payment transactions can pass their receipt straight in.
+export interface ReceiptLike {
   id: number;
   receipt_number: string;
   receipt_type: 'RENT' | 'WATER' | 'COMBINED';

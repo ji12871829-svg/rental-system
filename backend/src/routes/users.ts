@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { adminOnly, requireAuth } from '../middleware/auth';
 import { validateBody, validateParams } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
-import { createUser, deleteUser, listUsers, updateUser } from '../services/userService';
+import { createUser, deleteUser, listUsers, updateUser, type UserInput, type UserUpdateInput } from '../services/userService';
 
 const router = Router();
 router.use(requireAuth, adminOnly);
@@ -32,12 +32,12 @@ router.get('/', asyncHandler(async (_req, res) => {
 }));
 
 router.post('/', validateBody(createSchema), asyncHandler(async (req, res) => {
-  const row = await createUser(req.body as any, req.user!.userId);
+  const row = await createUser(req.body as UserInput, req.user!.userId);
   res.status(201).json({ data: row });
 }));
 
 router.put('/:id', validateParams(paramsSchema), validateBody(updateSchema), asyncHandler(async (req, res) => {
-  const row = await updateUser(Number(req.params.id), req.body as any, req.user!.userId);
+  const row = await updateUser(Number(req.params.id), req.body as UserUpdateInput, req.user!.userId);
   res.json({ data: row });
 }));
 

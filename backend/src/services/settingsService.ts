@@ -17,8 +17,15 @@ export async function getSettings(): Promise<SettingsRow> {
   return row;
 }
 
+export interface SettingsInput {
+  reportingYear?: number;
+  currency?: string;
+  waterRate?: number;
+  retentionYears?: number;
+}
+
 export async function updateSettings(
-  input: { reportingYear?: number; currency?: string; waterRate?: number; retentionYears?: number },
+  input: SettingsInput,
   userId: number
 ): Promise<SettingsRow> {
   const before = await getSettings();

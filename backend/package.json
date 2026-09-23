@@ -17,6 +17,7 @@
     "test:integration": "cross-env NODE_ENV=test jest --runInBand --testPathPattern tests/integration"
   },
   "dependencies": {
+    "@rpms/shared": "file:../shared",
     "@clerk/express": "^2.1.69",
     "bcryptjs": "^2.4.3",
     "cookie": "^0.7.2",

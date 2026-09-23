@@ -1,18 +1,16 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { adminOnly, requireAuth } from '../middleware/auth';
-import { validateBody, validateParams } from '../middleware/validate';
+import { validateBody, validateParams, listQuerySchema as baseListQuerySchema } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
-import { createRentPayment, deleteRentPayment, listRentPayments, monthlyRentSummary, rentPaymentsCsv } from '../services/rentService';
+import { createRentPayment, deleteRentPayment, listRentPayments, monthlyRentSummary, rentPaymentsCsv, type RentPaymentInput } from '../services/rentService';
 import { getSettings } from '../services/settingsService';
 import { initiateTenantStkPush } from '../services/mpesaService';
 
 const router = Router();
 router.use(requireAuth);
 
-const listQuerySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(20),
+const listQuerySchema = baseListQuerySchema.extend({
   month: z.coerce.number().int().min(1).max(12).optional(),
   year: z.coerce.number().int().min(2000).max(2100).optional(),
   unitId: z.coerce.number().int().positive().optional(),
@@ -48,7 +46,7 @@ const createSchema = z.object({
 });
 
 router.post('/payments', validateBody(createSchema), asyncHandler(async (req, res) => {
-  const result = await createRentPayment(req.body as any, req.user!.userId);
+  const result = await createRentPayment(req.body as RentPaymentInput, req.user!.userId);
   res.status(201).json({ data: result });
 }));
 

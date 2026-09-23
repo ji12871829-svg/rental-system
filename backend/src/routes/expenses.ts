@@ -1,17 +1,15 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { managerOrAdmin, requireAuth } from '../middleware/auth';
-import { validateBody, validateParams } from '../middleware/validate';
+import { validateBody, validateParams, listQuerySchema as baseListQuerySchema } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
 import { getSettings } from '../services/settingsService';
-import { createExpense, deleteExpense, expenseSummary, listExpenses, updateExpense } from '../services/expenseService';
+import { createExpense, deleteExpense, expenseSummary, listExpenses, updateExpense, type ExpenseInput } from '../services/expenseService';
 
 const router = Router();
 router.use(requireAuth);
 
-const listQuerySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(20),
+const listQuerySchema = baseListQuerySchema.extend({
   year: z.coerce.number().int().min(2000).max(2100).optional(),
   month: z.coerce.number().int().min(1).max(12).optional(),
   category: z.string().optional(),
@@ -35,14 +33,14 @@ const createSchema = z.object({
 });
 
 router.post('/', managerOrAdmin, validateBody(createSchema), asyncHandler(async (req, res) => {
-  const row = await createExpense(req.body as any, req.user!.userId);
+  const row = await createExpense(req.body as ExpenseInput, req.user!.userId);
   res.status(201).json({ data: row });
 }));
 
 const paramsSchema = z.object({ id: z.coerce.number().int().positive() });
 
 router.put('/:id', managerOrAdmin, validateParams(paramsSchema), validateBody(createSchema.partial()), asyncHandler(async (req, res) => {
-  const row = await updateExpense(Number(req.params.id), req.body as any, req.user!.userId);
+  const row = await updateExpense(Number(req.params.id), req.body as Partial<ExpenseInput>, req.user!.userId);
   res.json({ data: row });
 }));
 

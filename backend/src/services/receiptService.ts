@@ -6,6 +6,11 @@ import { balanceDue, formatReceiptNumber, receiptPrefixFor } from '../utils/busi
 import { n } from '../utils/money';
 import { getBusinessIdentity } from './brandingService';
 import { mergePdfBytes, receiptPdfBytes } from '../utils/receiptPdf';
+import type { ReceiptDocument } from '../utils/receiptDocument';
+
+// A full receipt row joined with tenant/unit/property/currency — exactly what
+// getReceiptById SELECTs, and what the PDF renderers consume.
+export type ReceiptDetail = ReceiptRow & Omit<ReceiptDocument, keyof ReceiptRow>;
 
 export interface ReceiptInput {
   type: ReceiptType;
@@ -117,7 +122,7 @@ export async function listReceipts(filters: ReceiptFilters): Promise<{ rows: unk
   });
 }
 
-export async function getReceiptById(id: number): Promise<unknown> {
+export async function getReceiptById(id: number): Promise<ReceiptDetail> {
   const row = await queryOne(
     `SELECT r.*, t.full_name AS tenant_name, t.phone_number, u.unit_number, u.unit_type,
             p.name AS property_name, p.address AS property_address, s.currency
@@ -156,7 +161,7 @@ export async function bulkReceiptsPdf(
   const identity = await getBusinessIdentity();
   const pdfs: Uint8Array[] = [];
   for (const id of ids) {
-    const receipt = (await getReceiptById(id)) as any;
+    const receipt = await getReceiptById(id);
     pdfs.push(await receiptPdfBytes(receipt, identity));
   }
   return { bytes: await mergePdfBytes(pdfs), count: ids.length };

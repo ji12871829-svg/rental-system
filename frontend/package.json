@@ -10,6 +10,7 @@
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@rpms/shared": "file:../shared",
     "@clerk/react": "^6.16.1",
     "lucide-react": "^1.41.0",
     "react": "^18.3.1",

@@ -1,33 +1,25 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { adminOnly, requireAuth } from '../middleware/auth';
-import { validateBody, validateParams } from '../middleware/validate';
+import { listQuerySchema, monthYearQuery, validateBody, validateParams } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
 import { getSettings } from '../services/settingsService';
 import {
   createPurchase, createReading, createWaterPayment, deletePurchase, deleteReading,
   deleteWaterPayment, listPurchases, listReadings, listWaterPayments,
   monthlyWaterSummary, outstandingWaterByUnit, updatePurchase, updateReading, waterPaymentsCsv, waterSummary,
+  type PurchaseInput, type ReadingInput, type WaterPaymentInput,
 } from '../services/waterService';
 
 const router = Router();
 router.use(requireAuth);
 
-const paginationQuery = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(20),
-});
-
-const monthYearQuery = z.object({
-  month: z.coerce.number().int().min(1).max(12).optional(),
-  year: z.coerce.number().int().min(2000).max(2100).optional(),
-});
-
 // --- Readings ---------------------------------------------------------------
 router.get('/readings', asyncHandler(async (req, res) => {
-  const q = { ...paginationQuery.parse(req.query), ...monthYearQuery.parse(req.query) } as any;
-  const q2 = z.object({ unitId: z.coerce.number().int().positive().optional(), q: z.string().optional() }).parse(req.query);
-  const result = await listReadings({ page: q.page, limit: q.limit, month: q.month, year: q.year, unitId: q2.unitId, q: q2.q });
+  const q = listQuerySchema.merge(monthYearQuery)
+    .extend({ unitId: z.coerce.number().int().positive().optional(), q: z.string().optional() })
+    .parse(req.query);
+  const result = await listReadings({ page: q.page, limit: q.limit, month: q.month, year: q.year, unitId: q.unitId, q: q.q });
   res.json({ data: result.rows, pagination: result.pagination });
 }));
 
@@ -42,7 +34,7 @@ const readingSchema = z.object({
 });
 
 router.post('/readings', validateBody(readingSchema), asyncHandler(async (req, res) => {
-  const result = await createReading(req.body as any, req.user!.userId);
+  const result = await createReading(req.body as ReadingInput, req.user!.userId);
   res.status(201).json({ data: result });
 }));
 
@@ -55,7 +47,7 @@ const readingUpdateSchema = z.object({
 });
 
 router.put('/readings/:id', validateParams(paramsSchema), validateBody(readingUpdateSchema), asyncHandler(async (req, res) => {
-  const row = await updateReading(Number(req.params.id), req.body as any, req.user!.userId);
+  const row = await updateReading(Number(req.params.id), req.body as { currentReading?: number; readingDate?: string; notes?: string }, req.user!.userId);
   res.json({ data: row });
 }));
 
@@ -66,9 +58,10 @@ router.delete('/readings/:id', adminOnly, validateParams(paramsSchema), asyncHan
 
 // --- Water payments ---------------------------------------------------------
 router.get('/payments', asyncHandler(async (req, res) => {
-  const q = { ...paginationQuery.parse(req.query), ...monthYearQuery.parse(req.query) } as any;
-  const q2 = z.object({ unitId: z.coerce.number().int().positive().optional(), tenantId: z.coerce.number().int().positive().optional(), q: z.string().optional() }).parse(req.query);
-  const result = await listWaterPayments({ page: q.page, limit: q.limit, month: q.month, year: q.year, unitId: q2.unitId, tenantId: q2.tenantId, q: q2.q });
+  const q = listQuerySchema.merge(monthYearQuery)
+    .extend({ unitId: z.coerce.number().int().positive().optional(), tenantId: z.coerce.number().int().positive().optional(), q: z.string().optional() })
+    .parse(req.query);
+  const result = await listWaterPayments({ page: q.page, limit: q.limit, month: q.month, year: q.year, unitId: q.unitId, tenantId: q.tenantId, q: q.q });
   res.json({ data: result.rows, pagination: result.pagination });
 }));
 
@@ -92,7 +85,7 @@ const waterPaymentSchema = z.object({
 });
 
 router.post('/payments', validateBody(waterPaymentSchema), asyncHandler(async (req, res) => {
-  const result = await createWaterPayment(req.body as any, req.user!.userId);
+  const result = await createWaterPayment(req.body as WaterPaymentInput, req.user!.userId);
   res.status(201).json({ data: result });
 }));
 
@@ -103,7 +96,7 @@ router.delete('/payments/:id', adminOnly, validateParams(paramsSchema), asyncHan
 
 // --- Water purchases --------------------------------------------------------
 router.get('/purchases', asyncHandler(async (req, res) => {
-  const q = { ...paginationQuery.parse(req.query), ...monthYearQuery.parse(req.query) } as any;
+  const q = listQuerySchema.merge(monthYearQuery).parse(req.query);
   const result = await listPurchases({ page: q.page, limit: q.limit, year: q.year, month: q.month });
   res.json({ data: result.rows, pagination: result.pagination });
 }));
@@ -120,12 +113,12 @@ const purchaseSchema = z.object({
 });
 
 router.post('/purchases', validateBody(purchaseSchema), asyncHandler(async (req, res) => {
-  const row = await createPurchase(req.body as any, req.user!.userId);
+  const row = await createPurchase(req.body as PurchaseInput, req.user!.userId);
   res.status(201).json({ data: row });
 }));
 
 router.put('/purchases/:id', validateParams(paramsSchema), validateBody(purchaseSchema.partial()), asyncHandler(async (req, res) => {
-  const row = await updatePurchase(Number(req.params.id), req.body as any, req.user!.userId);
+  const row = await updatePurchase(Number(req.params.id), req.body as Partial<PurchaseInput>, req.user!.userId);
   res.json({ data: row });
 }));
 

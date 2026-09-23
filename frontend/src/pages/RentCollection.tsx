@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button, EmptyState, Field, PageHeader, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useShake, useToast } from '../components/ui';
-import { api, authenticatedFetch, qs } from '../lib/api';
+import { api, authenticatedFetch, apiUrl, qs } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { MONTHS, formatDate, methodLabel, money } from '../lib/format';
 import { reportingYearOptions, useReportingYear } from '../lib/useReportingYear';
@@ -113,7 +113,7 @@ export default function RentCollection() {
     if (exportYear !== null && exportYear !== '') params.set('year', String(exportYear));
     if (monthFilter) params.set('month', monthFilter);
     const query = params.toString();
-    return `${import.meta.env.VITE_API_URL ?? ''}/api/rent/payments/export${query ? `?${query}` : ''}`;
+    return `${apiUrl('/api/rent/payments/export')}${query ? `?${query}` : ''}`;
   }, [yearFilter, monthFilter, reportingYear]);
 
   useEffect(() => {

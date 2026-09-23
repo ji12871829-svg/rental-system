@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { managerOrAdmin, requireAuth } from '../middleware/auth';
 import { validateBody } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
-import { getSettings, updateSettings } from '../services/settingsService';
+import { getSettings, updateSettings, type SettingsInput } from '../services/settingsService';
 
 const router = Router();
 router.use(requireAuth);
@@ -21,7 +21,7 @@ const updateSchema = z.object({
 });
 
 router.put('/', managerOrAdmin, validateBody(updateSchema), asyncHandler(async (req, res) => {
-  const settings = await updateSettings(req.body as any, req.user!.userId);
+  const settings = await updateSettings(req.body as SettingsInput, req.user!.userId);
   res.json({ data: settings });
 }));
 

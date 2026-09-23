@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Download, Mail, Plus } from 'lucide-react';
 import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
-import { api, authenticatedFetch, qs } from '../lib/api';
+import { api, authenticatedFetch, apiUrl, qs } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { branding, receiptFooterLines } from '../lib/branding';
 import { MONTHS, formatDate, money } from '../lib/format';
@@ -186,7 +186,7 @@ export default function Receipts() {
         {/* Bulk export: every receipt of the chosen month merged into one PDF. */}
         {monthFilter && (
           <a
-            href={`${import.meta.env.VITE_API_URL ?? ''}/api/receipts/export.pdf?month=${monthFilter}&year=${yearFilter || now.getFullYear()}`}
+            href={apiUrl(`/api/receipts/export.pdf?month=${monthFilter}&year=${yearFilter || now.getFullYear()}`)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-50 active:scale-[0.98]"
             onClick={(e) => {
               e.preventDefault();

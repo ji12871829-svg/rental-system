@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { adminOnly, managerOrAdmin, requireAuth } from '../middleware/auth';
-import { validateBody, validateParams, validateQuery } from '../middleware/validate';
+import { validateBody, validateParams, validateQuery, listQuerySchema as baseListQuerySchema } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
 import { getSettings } from '../services/settingsService';
-import { createTenant, deleteTenant, getTenant, listTenants, moveOutTenant, transferTenant, updateTenant } from '../services/tenantService';
+import { createTenant, deleteTenant, getTenant, listTenants, moveOutTenant, transferTenant, updateTenant, type TenantInput } from '../services/tenantService';
 import { disablePortalAccess, getPortalAccess, issuePortalAccess } from '../services/tenantPortalService';
 import {
   buildDataRequestLetter,
@@ -18,8 +18,7 @@ import { renderDataLetterEmail, renderDataLetterPdf, dataEnclosureName, dataLett
 const router = Router();
 router.use(requireAuth);
 
-const listQuerySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
+const listQuerySchema = baseListQuerySchema.extend({
   limit: z.coerce.number().int().positive().max(100).default(50),
   status: z.enum(['ACTIVE', 'MOVED_OUT']).optional(),
   unitId: z.coerce.number().int().positive().optional(),
@@ -43,7 +42,7 @@ const createSchema = z.object({
 });
 
 router.post('/', managerOrAdmin, validateBody(createSchema), asyncHandler(async (req, res) => {
-  const row = await createTenant(req.body as any, req.user!.userId);
+  const row = await createTenant(req.body as TenantInput, req.user!.userId);
   res.status(201).json({ data: row });
 }));
 
@@ -66,19 +65,19 @@ const updateSchema = z.object({
 });
 
 router.put('/:id', managerOrAdmin, validateParams(paramsSchema), validateBody(updateSchema), asyncHandler(async (req, res) => {
-  const row = await updateTenant(Number(req.params.id), req.body as any, req.user!.userId);
+  const row = await updateTenant(Number(req.params.id), req.body as Partial<TenantInput>, req.user!.userId);
   res.json({ data: row });
 }));
 
 const transferSchema = z.object({ newUnitId: z.number().int().positive() });
 router.post('/:id/transfer', managerOrAdmin, validateParams(paramsSchema), validateBody(transferSchema), asyncHandler(async (req, res) => {
-  const row = await transferTenant(Number(req.params.id), (req.body as any).newUnitId, req.user!.userId);
+  const row = await transferTenant(Number(req.params.id), (req.body as { newUnitId: number }).newUnitId, req.user!.userId);
   res.json({ data: row });
 }));
 
 const moveOutSchema = z.object({ moveOutDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) });
 router.post('/:id/move-out', managerOrAdmin, validateParams(paramsSchema), validateBody(moveOutSchema), asyncHandler(async (req, res) => {
-  const row = await moveOutTenant(Number(req.params.id), (req.body as any).moveOutDate, req.user!.userId);
+  const row = await moveOutTenant(Number(req.params.id), (req.body as { moveOutDate: string }).moveOutDate, req.user!.userId);
   res.json({ data: row });
 }));
 

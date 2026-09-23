@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { managerOrAdmin, requireAuth } from '../middleware/auth';
-import { validateBody, validateParams, validateQuery } from '../middleware/validate';
+import { validateBody, validateParams, validateQuery, listQuerySchema as baseListQuerySchema } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
 import { bulkReceiptsPdf, generateCombinedReceipt, getReceiptById, listReceipts } from '../services/receiptService';
 import { prepareForReceipt, sendEmailNotification } from '../services/emailService';
@@ -11,9 +11,7 @@ import { getBusinessIdentity } from '../services/brandingService';
 const router = Router();
 router.use(requireAuth);
 
-const listQuerySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(20),
+const listQuerySchema = baseListQuerySchema.extend({
   receiptType: z.enum(['RENT', 'WATER', 'COMBINED']).optional(),
   tenantId: z.coerce.number().int().positive().optional(),
   unitId: z.coerce.number().int().positive().optional(),
@@ -56,7 +54,7 @@ router.get('/:id', validateParams(paramsSchema), asyncHandler(async (req, res) =
 
 // PDF download — generated server-side with pdf-lib (no headless browser).
 router.get('/:id/pdf', validateParams(paramsSchema), asyncHandler(async (req, res) => {
-  const receipt = await getReceiptById(Number(req.params.id)) as any;
+  const receipt = await getReceiptById(Number(req.params.id));
   const bytes = await receiptPdfBytes(receipt, await getBusinessIdentity());
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${receipt.receipt_number}.pdf"`);
@@ -71,7 +69,7 @@ const generateSchema = z.object({
 });
 
 router.post('/generate', validateBody(generateSchema), asyncHandler(async (req, res) => {
-  const row = await generateCombinedReceipt(req.body as any);
+  const row = await generateCombinedReceipt(req.body as { tenantId: number; billingMonth: number; billingYear: number });
   res.status(201).json({ data: row });
 }));
 

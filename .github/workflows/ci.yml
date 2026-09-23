@@ -179,8 +179,8 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci --include=dev
-      - name: Lint backend, frontend and scripts (oxlint)
-        run: npx oxlint backend/src backend/tests frontend/src scripts --config=.oxlintrc.json
+      - name: Lint backend, frontend, shared and scripts (oxlint)
+        run: npx oxlint shared backend/src backend/tests frontend/src scripts --config=.oxlintrc.json
 
   # Secret scanner: blocks on credentials committed in any reachable commit.
   # Gitleaks is installed from its official GitHub release pinned by version

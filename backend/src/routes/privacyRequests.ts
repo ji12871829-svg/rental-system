@@ -1,15 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { adminOnly, requireAuth } from '../middleware/auth';
+import { listQuerySchema as baseListQuerySchema } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
 import { listPrivacyRequests } from '../services/privacyService';
 
 const router = Router();
 router.use(requireAuth);
 
-const listQuerySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(20),
+const listQuerySchema = baseListQuerySchema.extend({
   type: z.enum(['EXPORT_JSON', 'EXPORT_CSV', 'ERASURE']).optional(),
   outcome: z.enum(['COMPLETED', 'FAILED', 'REFUSED']).optional(),
   tenantId: z.coerce.number().int().positive().optional(),

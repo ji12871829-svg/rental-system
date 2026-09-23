@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { managerOrAdmin, requireAuth } from '../middleware/auth';
-import { validateBody, validateParams } from '../middleware/validate';
+import { validateBody, validateParams, listQuerySchema as baseListQuerySchema } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
 import { applyDeliveryReport, getSmsBalance, listSms, sendSmsNotification, sendTestSms } from '../services/smsService';
 import { getSmsConfig } from '../services/smsProvider';
@@ -30,9 +30,7 @@ router.post('/delivery-reports', asyncHandler(async (req, res) => {
 
 router.use(requireAuth);
 
-const listQuerySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(20),
+const listQuerySchema = baseListQuerySchema.extend({
   status: z.enum(['PENDING', 'SENT', 'FAILED']).optional(),
   tenantId: z.coerce.number().int().positive().optional(),
   q: z.string().optional(),

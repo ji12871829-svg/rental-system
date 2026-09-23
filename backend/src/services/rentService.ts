@@ -161,7 +161,7 @@ export async function createRentPayment(input: RentPaymentInput, userId: number 
     );
     receiptId = receipt.id;
     await client.query('UPDATE rent_payments SET receipt_number = $1 WHERE id = $2', [receipt.receipt_number, payment.id]);
-    preparedSmsId = await prepareForReceipt(receipt as any, client);
+    preparedSmsId = await prepareForReceipt(receipt, client);
 
     const settings = await getSettings();
     await logAudit({
@@ -253,7 +253,23 @@ export async function rentPaymentsCsv(filters: { year?: number; month?: number }
 // Monthly rent summary for the reporting year (spec §27). Expected rent comes
 // from unit monthly_rent and occupancy by tenant move-in/move-out dates —
 // never from hard-coded totals.
-export async function monthlyRentSummary(year: number): Promise<unknown[]> {
+// One month of the rent collection summary — the shared shape consumed by
+// the dashboard, the monthly report PDF and the combined rent+water summary.
+export interface RentMonthlySummaryRow {
+  month: number;
+  monthName: string;
+  expectedRent: number;
+  rentCollected: number;
+  rentOutstanding: number;
+  collectionPercentage: number;
+  paidTenants: number;
+  partialTenants: number;
+  unpaidTenants: number;
+  occupiedUnits: number;
+  vacantUnits: number;
+}
+
+export async function monthlyRentSummary(year: number): Promise<RentMonthlySummaryRow[]> {
   const settings = await getSettings();
   const targetYear = year ?? settings.reporting_year;
   const rows = await query<{

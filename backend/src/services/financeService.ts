@@ -1,11 +1,12 @@
 import { query, queryOne } from '../config/db';
-import { MONTH_NAMES } from '../types';
+import { MONTH_NAMES, type DashboardData } from '../types';
+import type { WaterSummaryRow } from '@rpms/shared';
 import { balanceDue, paymentStatus, rentCollectionRate } from '../utils/businessRules';
 import { notFound } from '../utils/httpError';
 import { monthlyReportPdfBytes } from '../utils/monthlyReportPdf';
 import { arrearsReportPdfBytes } from '../utils/arrearsReportPdf';
 import { n, round2 } from '../utils/money';
-import { tenantStatementPdfBytes } from '../utils/tenantStatementPdf';
+import { tenantStatementPdfBytes, type StatementPdfData, type StatementPdfMonthRow } from '../utils/tenantStatementPdf';
 import { getSmsBalance } from './smsService';
 
 // Shape of the Dashboard's compact messaging-health strip (SMS + email).
@@ -39,7 +40,9 @@ function currentMonthForYear(year: number): number {
 // ---------------------------------------------------------------------------
 // Dashboard (spec §30–§32)
 // ---------------------------------------------------------------------------
-export async function dashboard(year?: number): Promise<unknown> {
+// Return type = the shared contract: if the payload ever stops matching
+// DashboardData, BOTH apps fail their typechecks — drift cannot ship.
+export async function dashboard(year?: number): Promise<DashboardData> {
   const settings = await getSettings();
   const targetYear = year ?? settings.reporting_year;
   const currentMonth = currentMonthForYear(targetYear);
@@ -65,11 +68,7 @@ export async function dashboard(year?: number): Promise<unknown> {
   const rentCollected = n((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(amount), 0)::text AS v FROM rent_payments WHERE billing_year = $1`, [targetYear]
   ))?.v);
-  const water = (await waterSummary(targetYear)) as {
-    waterBilled: number; waterCollected: number; waterOutstanding: number;
-    waterPurchased: number; waterSupplyCost: number; collectionRate: number;
-    surplusDeficit: number;
-  };
+  const water: WaterSummaryRow = await waterSummary(targetYear);
   const totalExpenses = n((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(amount), 0)::text AS v FROM expenses WHERE EXTRACT(YEAR FROM expense_date)::int = $1`, [targetYear]
   ))?.v);
@@ -99,7 +98,7 @@ export async function dashboard(year?: number): Promise<unknown> {
      FROM generate_series(1, 12) AS m`,
     [targetYear]
   );
-  const rentMonthlySummary = (await monthlyRentSummary(targetYear)) as any[];
+  const rentMonthlySummary = await monthlyRentSummary(targetYear);
 
   const rentByMethod = await query<{ method: string; total: string }>(
     `SELECT payment_method AS method, SUM(amount)::text AS total
@@ -127,8 +126,8 @@ export async function dashboard(year?: number): Promise<unknown> {
     [targetYear, currentMonth]
   );
 
-  const monthlyWater = (await monthlyWaterSummary(targetYear)) as any[];
-  const outstandingWater = (await outstandingWaterByUnit(targetYear)) as any[];
+  const monthlyWater = await monthlyWaterSummary(targetYear);
+  const outstandingWater = await outstandingWaterByUnit(targetYear);
   // Compact SMS health for the Dashboard's SMS strip (balance + this month's
   // counts). Composed here so the page needs one request.
   const [sms, email] = await Promise.all([dashboardSmsHealth(), dashboardEmailHealth()]);
@@ -397,12 +396,12 @@ export async function tenantLedger(tenantId: number, year?: number): Promise<unk
   });
 
   const totals = {
-    rentPaid: round2(rows.reduce((s, r: any) => s + r.rentPaid, 0)),
-    waterPaid: round2(rows.reduce((s, r: any) => s + r.waterPaid, 0)),
-    totalPaid: round2(rows.reduce((s, r: any) => s + r.totalPaid, 0)),
-    rentBalance: round2(rows.reduce((s, r: any) => s + r.rentBalance, 0)),
-    waterBalance: round2(rows.reduce((s, r: any) => s + r.waterBalance, 0)),
-    totalBalance: round2(rows.reduce((s, r: any) => s + r.totalBalance, 0)),
+    rentPaid: round2(rows.reduce((s, r) => s + r.rentPaid, 0)),
+    waterPaid: round2(rows.reduce((s, r) => s + r.waterPaid, 0)),
+    totalPaid: round2(rows.reduce((s, r) => s + r.totalPaid, 0)),
+    rentBalance: round2(rows.reduce((s, r) => s + r.rentBalance, 0)),
+    waterBalance: round2(rows.reduce((s, r) => s + r.waterBalance, 0)),
+    totalBalance: round2(rows.reduce((s, r) => s + r.totalBalance, 0)),
   };
 
   return {
@@ -418,14 +417,37 @@ export async function tenantLedger(tenantId: number, year?: number): Promise<unk
 // ---------------------------------------------------------------------------
 // Combined monthly summary (rent + water per month)
 // ---------------------------------------------------------------------------
-export async function combinedMonthlySummary(year?: number): Promise<unknown[]> {
+// One month of the combined rent+water summary — everything the Monthly
+// Summary page and the monthly report PDF render.
+export interface CombinedMonthlySummaryRow {
+  month: number;
+  monthName: string;
+  expectedRent: number;
+  rentCollected: number;
+  rentOutstanding: number;
+  waterBilled: number;
+  waterCollected: number;
+  waterOutstanding: number;
+  totalDue: number;
+  totalCollected: number;
+  totalOutstanding: number;
+  collectionPercentage: number;
+  paidTenants: number;
+  partialTenants: number;
+  unpaidTenants: number;
+  occupiedUnits: number;
+  vacantUnits: number;
+  currency: string;
+}
+
+export async function combinedMonthlySummary(year?: number): Promise<CombinedMonthlySummaryRow[]> {
   const settings = await getSettings();
   const targetYear = year ?? settings.reporting_year;
-  const rent = (await monthlyRentSummary(targetYear)) as any[];
-  const water = (await monthlyWaterSummary(targetYear)) as any[];
+  const rent = await monthlyRentSummary(targetYear);
+  const water = await monthlyWaterSummary(targetYear);
 
   return rent.map((r, i) => {
-    const w = water[i] as any;
+    const w = water[i];
     return {
       month: r.month,
       monthName: r.monthName,
@@ -457,7 +479,7 @@ export async function monthlyReportPdf(year: number): Promise<{ bytes: Uint8Arra
     getBusinessIdentity(),
   ]);
   const bytes = await monthlyReportPdfBytes(
-    { year, rows: rows as any, generatedAt: new Date() },
+    { year, rows, generatedAt: new Date() },
     identity
   );
   return { bytes, year };
@@ -478,8 +500,8 @@ export async function tenantStatementPdf(
     unit: { unitNumber: string } | null;
     reportingYear: number;
     currency: string;
-    months: any[];
-    totals: any;
+    months: StatementPdfMonthRow[];
+    totals: StatementPdfData['totals'];
   };
   const bytes = await tenantStatementPdfBytes(
     {
@@ -488,13 +510,13 @@ export async function tenantStatementPdf(
       unitLabel: data.unit?.unitNumber ?? null,
       year: data.reportingYear,
       currency: data.currency,
-      months: data.months as any,
+      months: data.months,
       totals: data.totals,
       generatedAt: new Date(),
     },
     identity
   );
-  return { bytes, year: data.reportingYear, tenantName: data.tenant.fullName, tenantEmail: (ledger as any).tenant?.email ?? null };
+  return { bytes, year: data.reportingYear, tenantName: data.tenant.fullName, tenantEmail: (ledger as { tenant: { email: string | null } }).tenant?.email ?? null };
 }
 
 // Dashboard SMS health: the wallet balance (live Africa's Talking only —

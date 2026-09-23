@@ -1,15 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { adminOnly, managerOrAdmin, requireAuth } from '../middleware/auth';
-import { validateBody, validateParams } from '../middleware/validate';
+import { validateBody, validateParams, listQuerySchema as baseListQuerySchema } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
-import { createUnit, deleteUnit, getUnit, listUnits, unitFinancialHistory, updateUnit } from '../services/unitService';
+import { createUnit, deleteUnit, getUnit, listUnits, unitFinancialHistory, updateUnit, type UnitInput } from '../services/unitService';
 
 const router = Router();
 router.use(requireAuth);
 
-const listQuerySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
+const listQuerySchema = baseListQuerySchema.extend({
   limit: z.coerce.number().int().positive().max(100).default(50),
   floorId: z.coerce.number().int().positive().optional(),
   occupancyStatus: z.enum(['OCCUPIED', 'VACANT']).optional(),
@@ -40,7 +39,7 @@ const createSchema = z.object({
 });
 
 router.post('/', managerOrAdmin, validateBody(createSchema), asyncHandler(async (req, res) => {
-  const row = await createUnit(req.body as any, req.user!.userId);
+  const row = await createUnit(req.body as UnitInput, req.user!.userId);
   res.status(201).json({ data: row });
 }));
 
@@ -66,7 +65,7 @@ const updateSchema = z.object({
 });
 
 router.put('/:id', managerOrAdmin, validateParams(paramsSchema), validateBody(updateSchema), asyncHandler(async (req, res) => {
-  const row = await updateUnit(Number(req.params.id), req.body as any, req.user!.userId);
+  const row = await updateUnit(Number(req.params.id), req.body as Partial<UnitInput>, req.user!.userId);
   res.json({ data: row });
 }));
 

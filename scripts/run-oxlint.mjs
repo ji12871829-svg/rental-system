@@ -16,7 +16,7 @@ import path from 'node:path';
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2).length
   ? process.argv.slice(2)
-  : ['backend/src', 'backend/tests', 'frontend/src', 'scripts', '--config=.oxlintrc.json'];
+  : ['shared', 'backend/src', 'backend/tests', 'frontend/src', 'scripts', '--config=.oxlintrc.json'];
 
 const npm = spawnSync('npx', ['--no-install', 'oxlint', ...args], {
   stdio: 'inherit',

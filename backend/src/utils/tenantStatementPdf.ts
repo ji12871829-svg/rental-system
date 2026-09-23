@@ -67,7 +67,9 @@ const HEADERS: Record<ColKey, string> = {
   totalBal: 'Total Bal.',
 };
 
-interface StatementPdfMonthRow {
+// One month row of the tenant statement — produced by financeService.tenantLedger
+// and rendered 1:1 by the PDF below.
+export interface StatementPdfMonthRow {
   month: number;
   monthName: string;
   unit: string | null;
