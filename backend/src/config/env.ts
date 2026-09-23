@@ -100,6 +100,19 @@ export const env = {
   mpesaCallbackToken: process.env.MPESA_CALLBACK_TOKEN || '',
   mpesaBaseUrl: process.env.MPESA_BASE_URL || 'https://sandbox.safaricom.co.ke',
   mpesaTimeoutMs: Number(process.env.MPESA_TIMEOUT_MS) || 15_000,
+  // --- PayHero (payment collection layer) --------------------------------
+  // With no credentials the poller never starts and nothing else changes —
+  // Daraja/mock flows keep working untouched.
+  payheroApiUsername: process.env.PAYHERO_API_USERNAME || '',
+  payheroApiPassword: process.env.PAYHERO_API_PASSWORD || '',
+  payheroChannelId: process.env.PAYHERO_CHANNEL_ID || '',
+  payheroBaseUrl: process.env.PAYHERO_BASE_URL || '',
+  payheroPollSeconds: Math.max(30, Number(process.env.PAYHERO_POLL_SECONDS) || 60),
+  payheroTimeoutMs: Number(process.env.PAYHERO_TIMEOUT_MS) || 15_000,
+  // Optional public callback URL for tenant-portal STK pushes. PayHero's
+  // callback is an optimization — the poller reconciles pushes regardless —
+  // so the portal STK flow works without it.
+  payheroStkCallbackUrl: process.env.PAYHERO_STK_CALLBACK_URL || '',
 };
 
 if (env.nodeEnv === 'production') {
