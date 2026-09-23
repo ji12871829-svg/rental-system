@@ -8,6 +8,8 @@ import {
   composePortalCredentialsEmail,
   composeStatementEmail,
   composeTestEmail,
+  composeUnmatchedPaymentEmail,
+  composeStaleUnmatchedPaymentEmail,
   escapeHtml,
 } from '../../src/utils/emailTemplates';
 
@@ -17,6 +19,83 @@ describe('emailTemplates', () => {
   describe('escapeHtml', () => {
     it('escapes markup-significant characters', () => {
       expect(escapeHtml(`<b>&"'</b>`)).toBe('&lt;b&gt;&amp;&quot;&#39;&lt;/b&gt;');
+    });
+  });
+
+  describe('composeUnmatchedPaymentEmail', () => {
+    const base = {
+      transactionId: 'SMK12345',
+      amount: 3500,
+      accountReference: 'NO-SUCH-UNIT',
+      senderPhone: '0706719042' as string | null,
+      payDate: '2026-09-23',
+      payMonthLabel: 'September 2026',
+      currency: 'KSh',
+      reason: 'No active tenant matched unit reference NO-SUCH-UNIT.',
+      identity,
+    };
+
+    it('renders UNMATCHED wording with the held-money framing', () => {
+      const c = composeUnmatchedPaymentEmail({ ...base, status: 'UNMATCHED' });
+      expect(c.subject).toContain('Unmatched M-Pesa payment');
+      expect(c.subject).toContain('KSh 3,500');
+      expect(c.text).toContain('Transaction: SMK12345');
+      expect(c.text).toContain('KSh 3,500 (September 2026)');
+      expect(c.text).toContain('Account reference: NO-SUCH-UNIT');
+      expect(c.text).toContain('Sender phone: 0706719042');
+      expect(c.text).toMatch(/held/i);
+      expect(c.text).toContain('M-Pesa Review');
+      expect(c.text).toContain('Test Estates · Reg. No. REG-001');
+      expect(c.html).toContain('Unmatched M-Pesa payment');
+    });
+
+    it('renders AMBIGUOUS wording for multi-tenant matches', () => {
+      const c = composeUnmatchedPaymentEmail({ ...base, status: 'AMBIGUOUS' });
+      expect(c.subject).toContain('Ambiguous M-Pesa payment');
+      expect(c.text).toMatch(/matched more than one tenant/i);
+    });
+
+    it('renders em-dashes for missing phone and omits the reason row when null', () => {
+      const c = composeUnmatchedPaymentEmail({ ...base, senderPhone: null, reason: null, status: 'UNMATCHED' });
+      expect(c.text).toContain('Sender phone: (not provided)');
+      expect(c.text).not.toContain('Reason:');
+    });
+  });
+
+  describe('composeStaleUnmatchedPaymentEmail', () => {
+    const base = {
+      status: 'UNMATCHED' as const,
+      transactionId: 'SMK99999',
+      amount: 7500,
+      accountReference: 'WRONG-REF',
+      senderPhone: '0700000000' as string | null,
+      arrivedAtLabel: '14:05, 23 September 2026',
+      ageMinutes: 75,
+      currency: 'KSh',
+      reason: 'No active tenant matched unit reference WRONG-REF.',
+      identity,
+    };
+
+    it('shows the queue age in subject and body with still-held framing', () => {
+      const c = composeStaleUnmatchedPaymentEmail(base);
+      expect(c.subject).toContain('STILL UNRESOLVED');
+      expect(c.subject).toContain('KSh 7,500');
+      expect(c.subject).toContain('1 h 15 min');
+      expect(c.text).toContain('waiting in the M-Pesa Review queue for 1 h 15 min');
+      expect(c.text).toContain('Waiting since: 14:05, 23 September 2026 (1 h 15 min)');
+      expect(c.text).toContain("still held");
+      expect(c.text).toContain('Test Estates · Reg. No. REG-001');
+    });
+
+    it('renders minutes-only age under one hour', () => {
+      const c = composeStaleUnmatchedPaymentEmail({ ...base, ageMinutes: 45 });
+      expect(c.subject).toContain('45 min in queue');
+    });
+
+    it('renders AMBIGUOUS escalation wording', () => {
+      const c = composeStaleUnmatchedPaymentEmail({ ...base, status: 'AMBIGUOUS' });
+      expect(c.subject).toContain('ambiguous');
+      expect(c.text).toMatch(/matched more than one tenant/i);
     });
   });
 
@@ -124,5 +203,55 @@ describe('emailTemplates', () => {
       expect(live.text).toContain('brevo, live');
       expect(mock.text).toContain('mock, simulated');
     });
+  });
+});
+
+// --- Rent statement & invoice (per-month formal breakdown) --------------------
+import { composeRentStatementEmail } from '../../src/utils/emailTemplates';
+
+describe('composeRentStatementEmail', () => {
+  const input = {
+    tenantName: 'Jane Wanjiku',
+    unitNumber: 'B4',
+    monthName: 'September',
+    year: 2026,
+    previousBalance: 1500,
+    currentRent: 9000,
+    utilitiesAmount: 350,
+    totalDue: 10850,
+    currency: 'KSh',
+    accountNumber: 'Unit B4',
+    paymentMethod: 'M-Pesa PayBill 247252',
+    identity: { name: 'Olbano Plaza', regNo: 'BN-2026' },
+  };
+
+  it('uses the formal subject with month and unit', () => {
+    const email = composeRentStatementEmail(input);
+    expect(email.subject).toBe('Rent Statement & Invoice for September 2026 - Unit B4');
+  });
+
+  it('renders the four-line breakdown in html and text', () => {
+    const email = composeRentStatementEmail(input);
+    expect(email.html).toContain('Previous Balance:');
+    expect(email.html).toContain('Current Rent:');
+    expect(email.html).toContain('Utilities/Other (water):');
+    expect(email.html).toContain('Total Amount Due:');
+    expect(email.html).toContain('KSh 10850');
+    expect(email.text).toContain('Previous Balance: 1500');
+    expect(email.text).toContain('Total Amount Due: 10850');
+    expect(email.text).toContain('Dear Jane Wanjiku,');
+    expect(email.text).toContain('Olbano Plaza · Reg. No. BN-2026');
+  });
+
+  it('escapes tenant-provided names in the html body', () => {
+    const email = composeRentStatementEmail({ ...input, tenantName: 'Eve <script>alert(1)</script>' });
+    expect(email.html).not.toContain('<script>');
+    expect(email.html).toContain('&lt;script&gt;');
+  });
+
+  it('includes the pay instruction and already-paid waiver', () => {
+    const email = composeRentStatementEmail(input);
+    expect(email.html).toContain('Account <strong>Unit B4</strong> via M-Pesa PayBill 247252');
+    expect(email.text).toContain('If you have already paid, please disregard this statement.');
   });
 });

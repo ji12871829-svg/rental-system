@@ -38,7 +38,9 @@ import {
   composePortalCredentialsEmail,
   composeStaffRequestEmail,
   composeStatementEmail,
+  composeStaleUnmatchedPaymentEmail,
   composeTestEmail,
+  composeUnmatchedPaymentEmail,
 } from '../utils/emailTemplates';
 import { receiptPdfBytes } from '../utils/receiptPdf';
 
@@ -394,6 +396,65 @@ export interface PreparedStaffRequestEmail {
   status: 'PENDING' | 'SENT' | 'FAILED';
 }
 
+// Creates a PENDING email alerting the operator that an incoming M-Pesa
+// payment could not be matched (or matched ambiguously) and is being HELD for
+// review. Same operational-mail shape as prepareForStaffRequest: recipient is
+// the business branding general email, no tenant_id, and when that address is
+// unset the alert is skipped silently (the review page is still the source of
+// truth — the email is a convenience, not a dependency).
+export async function prepareForUnmatchedPayment(opts: {
+  status: 'UNMATCHED' | 'AMBIGUOUS';
+  transactionId: string;
+  amount: number;
+  accountReference: string;
+  senderPhone: string | null;
+  payDate: string;
+  payMonthLabel: string;
+  currency: string;
+  reason: string | null;
+}): Promise<{ id: number; email_address: string } | null> {
+  const identity = await getBusinessIdentity();
+  const to = identity.email?.trim() ?? '';
+  if (!to || !isValidEmail(to)) return null;
+
+  const composed = composeUnmatchedPaymentEmail({ ...opts, identity });
+  const row = await queueEmail({
+    to,
+    subject: composed.subject,
+    html: composed.html,
+    text: composed.text,
+  });
+  return { id: row.id, email_address: row.email_address };
+}
+
+// Escalation twin of prepareForUnmatchedPayment: a payment that has been in
+// the review queue for over an hour. Same recipient rules; the composer
+// renders the "still waiting" urgency framing.
+export async function prepareForStaleUnmatchedPayment(opts: {
+  status: 'UNMATCHED' | 'AMBIGUOUS';
+  transactionId: string;
+  amount: number;
+  accountReference: string;
+  senderPhone: string | null;
+  arrivedAtLabel: string;
+  ageMinutes: number;
+  currency: string;
+  reason: string | null;
+}): Promise<{ id: number; email_address: string } | null> {
+  const identity = await getBusinessIdentity();
+  const to = identity.email?.trim() ?? '';
+  if (!to || !isValidEmail(to)) return null;
+
+  const composed = composeStaleUnmatchedPaymentEmail({ ...opts, identity });
+  const row = await queueEmail({
+    to,
+    subject: composed.subject,
+    html: composed.html,
+    text: composed.text,
+  });
+  return { id: row.id, email_address: row.email_address };
+}
+
 // Creates a PENDING email notifying the operator that a public landlord/agent
 // sign-up (POST /api/auth/register) created an inactive staff account. The
 // recipient is the business branding general email — the same operator
@@ -618,3 +679,11 @@ export async function listEmails(filters: EmailFilters): Promise<{ rows: EmailRo
 }
 
 
+
+// Narrow public bridge for cross-service queueing (the reminder flow in
+// smsService composes the formal statement and queues it here). Same
+// validation + persistence path as every kind adapter — just exported so a
+// sibling service can reach it without duplicating queue logic.
+export async function queueReminderEmail(input: QueueEmailInput): Promise<EmailRow> {
+  return queueEmail(input);
+}

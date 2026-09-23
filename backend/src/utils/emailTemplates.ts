@@ -160,6 +160,57 @@ and closes with your year balance.</p>
   return { subject, html, text };
 }
 
+// --- Rent statement & invoice (per month, formal breakdown) ---------------------
+// The screenshot's "Email Templates (Detailed & Formal)" monthly statement:
+// subject "Rent Statement & Invoice for {Month} - Unit {Unit_Number}", then a
+// Previous / Current / Utilities / Total breakdown. Water is the utilities
+// line (the only utility RPMS meters). The PDF statement for the whole year
+// remains a separate kind — this one is a single month's invoice-style view.
+export function composeRentStatementEmail(input: {
+  tenantName: string;
+  unitNumber: string;
+  monthName: string;
+  year: number;
+  previousBalance: number;
+  currentRent: number;
+  utilitiesAmount: number;
+  totalDue: number;
+  currency: string;
+  accountNumber: string;
+  paymentMethod: string;
+  identity: IdentityFields;
+}): ComposedEmail {
+  const { tenantName, unitNumber, monthName, year, previousBalance, currentRent, utilitiesAmount, totalDue, currency, accountNumber, paymentMethod } = input;
+  const subject = `Rent Statement & Invoice for ${monthName} ${year} - Unit ${unitNumber}`;
+  const line = (label: string, value: string) =>
+    `<tr><td style="padding:6px 0;color:#374151">${label}</td><td style="padding:6px 0;text-align:right;font-weight:bold">${escapeHtml(value)}</td></tr>`;
+  const rows =
+    line('Previous Balance:', `${currency} ${previousBalance}`) +
+    line('Current Rent:', `${currency} ${currentRent}`) +
+    line('Utilities/Other (water):', `${currency} ${utilitiesAmount}`) +
+    line('Total Amount Due:', `${currency} ${totalDue}`);
+  const bodyHtml = `
+<p>Dear ${escapeHtml(tenantName)},</p>
+<p>Please find attached your breakdown statement for <strong>${escapeHtml(monthName)} ${year}</strong> regarding <strong>Unit ${escapeHtml(unitNumber)}</strong>.</p>
+<table style="margin:12px 0;border-collapse:collapse;width:100%">${rows}</table>
+<p>Please make payment to Account <strong>${escapeHtml(accountNumber)}</strong> via ${escapeHtml(paymentMethod)}. If you have already paid, please disregard this statement.</p>`;
+  const text = [
+    `Dear ${tenantName},`,
+    '',
+    `Please find attached your breakdown statement for ${monthName} ${year} regarding Unit ${unitNumber}.`,
+    '',
+    `Previous Balance: ${previousBalance}`,
+    `Current Rent: ${currentRent}`,
+    `Utilities/Other (water): ${utilitiesAmount}`,
+    `Total Amount Due: ${totalDue}`,
+    '',
+    `Please make payment to Account ${accountNumber} via ${paymentMethod}. If you have already paid, please disregard this statement.`,
+    '',
+    textSignOff(input.identity),
+  ].join('\n');
+  return { subject, html: frame(bodyHtml, input.identity), text };
+}
+
 // --- Tenant campaign (one template, many tenants) --------------------------------
 
 export function composeCampaignEmail(input: { tenantName: string; unitNumber: string | null; subject: string; message: string }): ComposedEmail & { personalSubject: string } {
@@ -211,6 +262,137 @@ export function composeStaffRequestEmail(input: {
 <p style="margin:0 0 16px">Someone has requested a landlord/agent account through the public sign-up form. The account is created <strong>inactive</strong> and cannot sign in until it is activated.</p>
 <table style="width:100%;border-collapse:collapse;margin:0 0 16px">${contactRows}</table>
 <p style="margin:0;color:#6b7280;font-size:14px">Review and activate it in the app under <strong>Users</strong>.</p>`,
+    input.identity,
+  );
+  return { subject, html, text };
+}
+
+// --- Unmatched payment (operator alert) -------------------------------------------
+
+// An M-Pesa payment that could not be matched to a unit/tenant. Money is being
+// HELD, not lost — staff resolve it on the M-Pesa Review page. The composer
+// renders both UNMATCHED and AMBIGUOUS states; status is shown verbatim so the
+// wording always agrees with what the review page says.
+export function composeUnmatchedPaymentEmail(input: {
+  status: 'UNMATCHED' | 'AMBIGUOUS';
+  transactionId: string;
+  amount: number;
+  accountReference: string;
+  senderPhone: string | null;
+  payDate: string;          // ISO date the money arrived (Kenya calendar date)
+  payMonthLabel: string;    // e.g. "September 2026" — the month it lands on if posted
+  currency: string;
+  reason: string | null;
+  identity: IdentityFields;
+}): ComposedEmail {
+  const subject = `${input.status === 'AMBIGUOUS' ? 'Ambiguous' : 'Unmatched'} M-Pesa payment — ${input.currency} ${input.amount.toLocaleString('en-KE')} needs review`;
+  const amountCell = `${escapeHtml(input.currency)} ${escapeHtml(input.amount.toLocaleString('en-KE'))}`;
+  const rows: Array<[string, string]> = [
+    ['Transaction', input.transactionId],
+    ['Amount', `${amountCell} · ${escapeHtml(input.payMonthLabel)}`],
+    ['Account reference', input.accountReference || '—'],
+    ['Sender phone', input.senderPhone?.trim() || '—'],
+    ['Status', input.status],
+  ];
+  if (input.reason) rows.push(['Reason', input.reason]);
+  const contactRows = rows
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;color:#374151">${escapeHtml(label)}</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;font-weight:600">${escapeHtml(value)}</td></tr>`,
+    )
+    .join('');
+  const text = [
+    input.status === 'AMBIGUOUS'
+      ? 'An M-Pesa payment matched more than one tenant and needs review.'
+      : 'An M-Pesa payment could not be matched to any unit or tenant.',
+    '',
+    `Transaction: ${input.transactionId}`,
+    `Amount: ${input.currency} ${input.amount.toLocaleString('en-KE')} (${input.payMonthLabel})`,
+    `Account reference: ${input.accountReference || '(empty)'}`,
+    `Sender phone: ${input.senderPhone?.trim() || '(not provided)'}`,
+    `Status: ${input.status}`,
+    input.reason ? `Reason: ${input.reason}` : '',
+    '',
+    `The money is held in the M-Pesa Review queue — nothing is posted to any`,
+    `tenant's ledger until staff assign it. Resolve it in the app under`,
+    `M-Pesa Review.`,
+    '',
+    textSignOff(input.identity),
+  ]
+    .filter((line) => line !== '')
+    .join('\n');
+  const html = frame(
+    `<p style="margin:0 0 12px;font-weight:600">${input.status === 'AMBIGUOUS' ? 'Ambiguous M-Pesa payment' : 'Unmatched M-Pesa payment'}</p>
+<p style="margin:0 0 16px">An M-Pesa payment${input.status === 'AMBIGUOUS' ? ' matched more than one tenant' : ' could not be matched to any unit or tenant'}. The money is <strong>held</strong> — nothing is posted to any tenant's ledger until staff assign it on the <strong>M-Pesa Review</strong> page.</p>
+<table style="width:100%;border-collapse:collapse;margin:0 0 16px">${contactRows}</table>
+<p style="margin:0;color:#6b7280;font-size:14px">Resolve it in the app under <strong>M-Pesa Review</strong>.</p>`,
+    input.identity,
+  );
+  return { subject, html, text };
+}
+
+// --- Stale unmatched payment (escalation alert) ------------------------------------
+
+// Follow-up escalation: a payment that has been sitting in the review queue
+// for over an hour. Distinguishable from the instant alert by subject and
+// framing ("still waiting" vs "needs review") so a busy inbox shows the
+// urgency without opening the message.
+export function composeStaleUnmatchedPaymentEmail(input: {
+  status: 'UNMATCHED' | 'AMBIGUOUS';
+  transactionId: string;
+  amount: number;
+  accountReference: string;
+  senderPhone: string | null;
+  arrivedAtLabel: string;   // e.g. "14:05, 23 September 2026" (Nairobi time)
+  ageMinutes: number;
+  currency: string;
+  reason: string | null;
+  identity: IdentityFields;
+}): ComposedEmail {
+  const ageHours = Math.floor(input.ageMinutes / 60);
+  const ageLabel = ageHours >= 1 ? `${ageHours} h ${input.ageMinutes % 60} min` : `${input.ageMinutes} min`;
+  const subject = `STILL UNRESOLVED: ${input.status === 'AMBIGUOUS' ? 'ambiguous' : 'unmatched'} M-Pesa payment of ${input.currency} ${input.amount.toLocaleString('en-KE')} (${ageLabel} in queue)`;
+  const rows: Array<[string, string]> = [
+    ['Transaction', input.transactionId],
+    ['Amount', `${escapeHtml(input.currency)} ${escapeHtml(input.amount.toLocaleString('en-KE'))}`],
+    ['Account reference', input.accountReference || '—'],
+    ['Sender phone', input.senderPhone?.trim() || '—'],
+    ['Status', input.status],
+    ['Waiting since', `${escapeHtml(input.arrivedAtLabel)} (${ageLabel})`],
+  ];
+  if (input.reason) rows.push(['Reason', input.reason]);
+  const contactRows = rows
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;color:#374151">${escapeHtml(label)}</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;font-weight:600">${escapeHtml(value)}</td></tr>`,
+    )
+    .join('');
+  const text = [
+    `A payment has been waiting in the M-Pesa Review queue for ${ageLabel}.`,
+    input.status === 'AMBIGUOUS'
+      ? 'It matched more than one tenant and still needs a staff decision.'
+      : 'It still has not been matched to any unit or tenant.',
+    '',
+    `Transaction: ${input.transactionId}`,
+    `Amount: ${input.currency} ${input.amount.toLocaleString('en-KE')}`,
+    `Account reference: ${input.accountReference || '(empty)'}`,
+    `Sender phone: ${input.senderPhone?.trim() || '(not provided)'}`,
+    `Status: ${input.status}`,
+    `Waiting since: ${input.arrivedAtLabel} (${ageLabel})`,
+    input.reason ? `Reason: ${input.reason}` : '',
+    '',
+    `The tenant's money is still held — nothing is posted to any ledger.`,
+    `Resolve it in the app under M-Pesa Review.`,
+    '',
+    textSignOff(input.identity),
+  ]
+    .filter((line) => line !== '')
+    .join('\n');
+  const html = frame(
+    `<p style="margin:0 0 12px;font-weight:600;color:#b91c1c">M-Pesa payment still unresolved after ${escapeHtml(ageLabel)}</p>
+<p style="margin:0 0 16px">A payment has been waiting in the <strong>M-Pesa Review</strong> queue for <strong>${escapeHtml(ageLabel)}</strong>. The tenant's money is <strong>still held</strong> — nothing is posted to any ledger until staff assign it.</p>
+<table style="width:100%;border-collapse:collapse;margin:0 0 16px">${contactRows}</table>
+<p style="margin:0;color:#6b7280;font-size:14px">Resolve it in the app under <strong>M-Pesa Review</strong>.</p>`,
     input.identity,
   );
   return { subject, html, text };
