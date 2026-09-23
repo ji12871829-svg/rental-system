@@ -13,6 +13,7 @@ import {
   exportTenantPersonalDataCsv,
 } from '../services/privacyService';
 import { prepareForDataRequestLetter, prepareForPortalCredentials, sendEmailNotification } from '../services/emailService';
+import { autoSendEnabled, dispatchAutoSend, prepareReminder } from '../services/smsService';
 import { renderDataLetterEmail, renderDataLetterPdf, dataEnclosureName, dataLetterPdfName } from '../utils/dataRequestLetter';
 
 const router = Router();
@@ -84,6 +85,45 @@ router.post('/:id/move-out', managerOrAdmin, validateParams(paramsSchema), valid
 router.delete('/:id', adminOnly, validateParams(paramsSchema), asyncHandler(async (req, res) => {
   await deleteTenant(Number(req.params.id), req.user!.userId);
   res.status(204).end();
+}));
+
+// --- Reminder messages (manager/admin) ----------------------------------------
+// Queue/compose one of the reminder templates for this tenant on a chosen
+// channel, composed from the live ledger:
+//   SMS — PENDING sms_notifications row (manual send or auto-send pipeline)
+//   WHATSAPP — no queue, no send: a wa.me click-to-chat URL the operator
+//     reviews and sends from WhatsApp itself (no provider, no cost)
+//   EMAIL — PENDING email_notifications row with the formal statement breakdown
+// 202: accepted (queued or composed), not yet delivered.
+const reminderSchema = z.object({
+  kind: z.enum(['BALANCE_DUE', 'OVERDUE']),
+  channel: z.enum(['SMS', 'WHATSAPP', 'EMAIL']).default('SMS'),
+});
+
+router.post('/:id/sms-reminder', managerOrAdmin, validateParams(paramsSchema), validateBody(reminderSchema), asyncHandler(async (req, res) => {
+  const { kind, channel } = (req.body as { kind: 'BALANCE_DUE' | 'OVERDUE'; channel: 'SMS' | 'WHATSAPP' | 'EMAIL' });
+  const result = await prepareReminder(Number(req.params.id), kind, channel, {
+    userId: req.user!.userId,
+  });
+  if (!result) {
+    res.status(409).json({
+      error: 'TENANT_NO_CONTACT',
+      message: channel === 'EMAIL'
+        ? 'This tenant has no email address on file — add one, then queue the statement.'
+        : 'This tenant has no phone number on file — add one, then queue the reminder.',
+    });
+    return;
+  }
+  dispatchAutoSend(result.smsId);
+  res.status(202).json({
+    data: {
+      smsId: result.smsId,
+      emailId: result.emailId,
+      whatsappUrl: result.whatsappUrl,
+      message: result.message,
+      autoSend: autoSendEnabled(),
+    },
+  });
 }));
 
 // --- Tenant portal access (manager/admin) ------------------------------------

@@ -28,6 +28,13 @@ export interface SettingsRow {
   currency: string;
   water_rate: string;
   retention_years: number;
+  // Property-owner communication (owner remittance templates). NULL until
+  // the operator fills them in Settings — owner channels without a contact
+  // point are simply not offered.
+  owner_name: string | null;
+  owner_email: string | null;
+  owner_phone: string | null;
+  management_fee_percent: string | null;
 }
 
 export const MONTH_NAMES = [

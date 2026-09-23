@@ -22,6 +22,11 @@ export interface SettingsInput {
   currency?: string;
   waterRate?: number;
   retentionYears?: number;
+  // Property-owner communication (owner remittance templates).
+  ownerName?: string | null;
+  ownerEmail?: string | null;
+  ownerPhone?: string | null;
+  managementFeePercent?: number | null;
 }
 
 export async function updateSettings(
@@ -35,7 +40,14 @@ export async function updateSettings(
        SET reporting_year = COALESCE($1, reporting_year),
            currency       = COALESCE($2, currency),
            water_rate     = COALESCE($3, water_rate),
-           retention_years = COALESCE($4, retention_years)
+           retention_years = COALESCE($4, retention_years),
+           -- Owner fields: explicit null clears, omitted keeps (COALESCE
+           -- pattern applied only when the key was present is handled by the
+           -- route normalizing undefined → keep, null → clear).
+           owner_name            = COALESCE($5, owner_name),
+           owner_email           = COALESCE($6, owner_email),
+           owner_phone           = COALESCE($7, owner_phone),
+           management_fee_percent = COALESCE($8, management_fee_percent)
        WHERE id = 1
        RETURNING *`,
       [
@@ -43,6 +55,10 @@ export async function updateSettings(
         input.currency ?? null,
         input.waterRate ?? null,
         input.retentionYears ?? null,
+        input.ownerName ?? null,
+        input.ownerEmail ?? null,
+        input.ownerPhone ?? null,
+        input.managementFeePercent ?? null,
       ]
     );
     return res.rows[0] as SettingsRow;

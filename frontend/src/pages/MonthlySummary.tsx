@@ -1,9 +1,9 @@
-import { useState } from 'react';
-import { Download, Mail } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Banknote, Download, Loader2, Mail, MessageSquare } from 'lucide-react';
 import {
   Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from '../components/charts';
-import { KpiCard, PageHeader, Select, SkeletonTable, useFetch, useToast } from '../components/ui';
+import { Button, KpiCard, Modal, PageHeader, Select, SkeletonTable, useFetch, useToast } from '../components/ui';
 import { api, authenticatedFetch } from '../lib/api';
 import { MONTHS, money, number } from '../lib/format';
 import { useQueryParam } from '../lib/useQueryParam';
@@ -138,6 +138,63 @@ export default function MonthlySummary() {
       .finally(() => setEmailing(false));
   };
 
+  // --- Owner remittance (the landlord communication templates) ----------------
+  // Defaults to the viewed month when one is filtered, else the current month.
+  const ownerMonth = monthFilter ? Number(monthFilter) : Math.min(now.getMonth() + 1, 12);
+  const [ownerOpen, setOwnerOpen] = useState(false);
+  const [ownerChannel, setOwnerChannel] = useState<'SMS' | 'WHATSAPP' | 'EMAIL'>('WHATSAPP');
+  const [ownerPreview, setOwnerPreview] = useState<{
+    figures: {
+      ownerName: string | null; propertyName: string; monthName: string; year: number;
+      currency: string; totalCollected: number; managementFeePercent: number | null;
+      managementFee: number; expensesTotal: number; netPayable: number; occupancyPercent: number;
+    } | null;
+    message: string | null;
+    whatsappUrl: string | null;
+  } | null>(null);
+  const [ownerBusy, setOwnerBusy] = useState(false);
+
+  useEffect(() => {
+    if (!ownerOpen) { setOwnerPreview(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const fig = await api.get<{ data: NonNullable<typeof ownerPreview>['figures'] }>(
+          `/api/reports/owner-remittance?month=${ownerMonth}&year=${year}`,
+        ).then((r) => r.data);
+        const res = await api.post<{ data: { message: string; whatsappUrl: string | null } }>(
+          '/api/reports/owner-remittance',
+          { month: ownerMonth, channel: ownerChannel },
+        );
+        if (cancelled) return;
+        setOwnerPreview({ figures: fig, message: res.data.message, whatsappUrl: res.data.whatsappUrl });
+      } catch (err) {
+        if (!cancelled) toast('error', (err as Error).message);
+        if (!cancelled) setOwnerOpen(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [ownerOpen, ownerMonth, ownerChannel, year]); // eslint-disable-line react-hooks/exhaustive-deps -- toast is a stable provider callback
+
+  const sendOwnerRemittance = (channel: 'SMS' | 'WHATSAPP' | 'EMAIL') => {
+    setOwnerBusy(true);
+    api
+      .post<{ data: { whatsappUrl: string | null; status?: string } }>('/api/reports/owner-remittance', { month: ownerMonth, channel })
+      .then(({ data }) => {
+        if (data.whatsappUrl) {
+          window.open(data.whatsappUrl, '_blank', 'noopener');
+          toast('success', 'WhatsApp opened — review and press send.');
+        } else if (channel === 'EMAIL') {
+          toast('success', `Owner statement emailed (${data.status ?? 'SENT'}).`);
+        } else {
+          toast('success', 'Owner remittance queued.');
+        }
+        setOwnerOpen(false);
+      })
+      .catch((err) => toast('error', (err as Error).message))
+      .finally(() => setOwnerBusy(false));
+  };
+
   return (
     <div>
       <PageHeader
@@ -178,6 +235,10 @@ export default function MonthlySummary() {
         >
           <Mail size={15} strokeWidth={1.75} aria-hidden /> {emailing ? 'Sending…' : 'Email Report'}
         </button>
+        {/* Owner remittance — the landlord's monthly statement, 3 channels. */}
+        <Button onClick={() => setOwnerOpen(true)}>
+          <Banknote size={15} strokeWidth={1.75} aria-hidden /> Send to Owner…
+        </Button>
       </div>
 
       <div className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -268,6 +329,58 @@ export default function MonthlySummary() {
       </div>
       )}
       {rows.length === 0 && <SkeletonTable cols={13} rows={12} />}
+
+      {/* Owner remittance modal — the landlord communication templates. */}
+      <Modal open={ownerOpen} title={`Owner remittance · ${MONTHS[ownerMonth - 1]} ${year}`} onClose={() => { if (!ownerBusy) setOwnerOpen(false); }}>
+        {!ownerPreview ? (
+          <div className="flex items-center gap-2 p-4 text-sm text-gray-500">
+            <Loader2 size={15} className="animate-spin" aria-hidden /> Preparing the remittance figures…
+          </div>
+        ) : (
+          <div className="space-y-4 text-sm">
+            {ownerPreview.figures && (
+              <div className="grid grid-cols-2 gap-3 rounded-lg bg-gray-50 p-4">
+                <div><div className="text-xs text-gray-500">Total collected</div><div className="text-lg font-bold text-gray-900">{money(ownerPreview.figures.totalCollected)}</div></div>
+                <div><div className="text-xs text-gray-500">Occupancy</div><div className="text-lg font-bold text-gray-900">{number(ownerPreview.figures.occupancyPercent)}%</div></div>
+                {ownerPreview.figures.managementFeePercent !== null && (
+                  <div><div className="text-xs text-gray-500">Management fee ({number(ownerPreview.figures.managementFeePercent)}%)</div><div className="text-lg font-bold text-gray-900">−{money(ownerPreview.figures.managementFee)}</div></div>
+                )}
+                <div><div className="text-xs text-gray-500">Expenses this month</div><div className="text-lg font-bold text-gray-900">−{money(ownerPreview.figures.expensesTotal)}</div></div>
+                <div className="col-span-2 border-t border-gray-200 pt-2"><div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Net remittance to owner</div><div className="text-2xl font-bold text-emerald-700">{money(ownerPreview.figures.netPayable)}</div></div>
+              </div>
+            )}
+
+            <div role="tablist" aria-label="Owner channel" className="grid grid-cols-3 gap-2 rounded-xl bg-gray-100 p-1">
+              {([['SMS', 'SMS'], ['WHATSAPP', 'WhatsApp'], ['EMAIL', 'Email']] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={ownerChannel === value}
+                  onClick={() => setOwnerChannel(value)}
+                  className={`min-h-[38px] rounded-lg px-2 text-sm font-semibold transition-colors ${
+                    ownerChannel === value ? 'bg-brand-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {ownerPreview.message && (
+              <div className="rounded-lg bg-gray-50 p-4 text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">{ownerPreview.message}</div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setOwnerOpen(false)} disabled={ownerBusy}>Cancel</Button>
+              <Button onClick={() => sendOwnerRemittance(ownerChannel)} disabled={ownerBusy}>
+                {ownerBusy ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <MessageSquare size={15} strokeWidth={2} aria-hidden />}
+                {ownerChannel === 'WHATSAPP' ? 'Open WhatsApp' : ownerChannel === 'EMAIL' ? 'Email owner now' : 'Queue SMS'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

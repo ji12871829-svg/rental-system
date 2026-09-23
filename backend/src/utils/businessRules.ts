@@ -186,3 +186,97 @@ export function combinedReceiptMessage(opts: {
   }
   return withIdentity(`PAYMENT RECEIPT: Dear ${tenantName}, ${currency} ${totalPaid} received for Unit ${unitNumber} for ${monthName} ${year} rent. Outstanding balance: ${currency} ${balance}. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
 }
+
+// --- Tenant reminder templates ----------------------------------------------
+// Staff-initiated statements/overdue notices (SMS page + Tenants page actions).
+// Same 2-segment GSM-7 budget and identity-line budgeting as the receipts.
+
+// "Monthly Rent & Balance Due": a month's statement. Sent any time; when the
+// month is still current the wording stays neutral ("is ready"), and the
+// balance is the figure the ledger shows for that month.
+export function monthlyBalanceDueMessage(opts: {
+  tenantName: string;
+  unitNumber: string;
+  monthName: string;
+  year: number;
+  totalDue: number;
+  accountNumber: string;
+  paymentMethod: string;
+  currency: string;
+  businessIdentity?: string | string[];
+}): string {
+  const { tenantName, unitNumber, monthName, year, totalDue, accountNumber, paymentMethod, currency } = opts;
+  return withIdentity(
+    `Dear ${tenantName}, your statement for ${monthName} ${year} for Unit ${unitNumber} is ready. Total Due: ${currency} ${totalDue}. Account: ${accountNumber}. Pay via ${paymentMethod}.`,
+    opts.businessIdentity,
+  );
+}
+
+// "Overdue Notice": firmer tone for a past-due balance. Amount_Due is what is
+// owed NOW; Total_Balance is the full-year position so the tenant sees both.
+export function overdueNoticeMessage(opts: {
+  tenantName: string;
+  unitNumber: string;
+  amountDue: number;
+  totalBalance: number;
+  currency: string;
+  businessIdentity?: string | string[];
+}): string {
+  const { tenantName, unitNumber, amountDue, totalBalance, currency } = opts;
+  return withIdentity(
+    `Hi ${tenantName}, Unit ${unitNumber} has an overdue balance of ${currency} ${amountDue}. Please clear this immediately to avoid late fees. Total Balance: ${currency} ${totalBalance}.`,
+    opts.businessIdentity,
+  );
+}
+
+// --- WhatsApp templates (informal & action-oriented) -------------------------
+// The same three messages as the SMS reminders but in a friendlier voice with
+// emoji. These are NOT sent through an API — the operator opens a WhatsApp
+// click-to-chat (wa.me) link with the composed text pre-filled, so the text
+// never leaves the system unencrypted and there is no provider cost.
+
+// WhatsApp statement: current rent, previous balance and the total due, with
+// an "ignore if already paid" line to cut back-and-forth.
+export function whatsappBalanceDueMessage(opts: {
+  tenantName: string;
+  unitNumber: string;
+  monthName: string;
+  year: number;
+  currentRent: number;
+  previousBalance: number;
+  totalDue: number;
+  accountNumber: string;
+  paymentMethod: string;
+  currency: string;
+}): string {
+  const { tenantName, unitNumber, monthName, year, currentRent, previousBalance, totalDue, accountNumber, paymentMethod, currency } = opts;
+  return `Hello ${tenantName}, 🌟 Your rent statement for ${monthName} ${year} is ready for Unit ${unitNumber}. 💰 Current Rent: ${currency} ${currentRent} ➕ Previous Balance: ${currency} ${previousBalance} 🧾 Total Due: ${currency} ${totalDue}. Please make payment to Account ${accountNumber} via ${paymentMethod}. If you have already paid, please ignore this message. Thank you!`;
+}
+
+// WhatsApp overdue notice: softer than SMS but still firm, with a chat link.
+export function whatsappOverdueMessage(opts: {
+  tenantName: string;
+  unitNumber: string;
+  amountDue: number;
+  supportPhone: string | null;
+  currency: string;
+}): string {
+  const { tenantName, unitNumber, amountDue, supportPhone, currency } = opts;
+  const chat = supportPhone
+    ? ` Click here to chat with support if you have any questions: https://wa.me/${supportPhone.replace(/\D/g, '')}.`
+    : '';
+  return `Dear ${tenantName}, this is a reminder that your account for Unit ${unitNumber} has an outstanding balance of ${currency} ${amountDue}. Please settle this today to maintain a clear ledger.${chat}`;
+}
+
+// WhatsApp payment confirmation: warm thank-you with the updated balance.
+export function whatsappPaymentConfirmationMessage(opts: {
+  tenantName: string;
+  amountPaid: number;
+  paymentDate: string;
+  unitNumber: string;
+  newBalance: number;
+  currency: string;
+}): string {
+  const { tenantName, amountPaid, paymentDate, unitNumber, newBalance, currency } = opts;
+  return `Thank you, ${tenantName}! 🎉 We received your payment of ${currency} ${amountPaid} on ${paymentDate} for Unit ${unitNumber}. Your updated account balance is ${currency} ${newBalance}. Have a great day!`;
+}

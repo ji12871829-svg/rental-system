@@ -2,11 +2,14 @@ import { poolExec, query, queryOne, type SqlExec } from '../config/db';
 import { paginate } from './paginate';
 import { env, isTest } from '../config/env';
 import { MONTH_NAMES, type Pagination } from '../types';
-import { combinedReceiptMessage, rentReceiptMessage, waterReceiptMessage } from '../utils/businessRules';
+import { balanceDue, combinedReceiptMessage, monthlyBalanceDueMessage, overdueNoticeMessage, rentReceiptMessage, waterReceiptMessage, whatsappBalanceDueMessage, whatsappOverdueMessage } from '../utils/businessRules';
 import { badRequest, notFound } from '../utils/httpError';
 import { logAudit } from './auditService';
-import { n } from '../utils/money';
-import { getBusinessIdentity, type BusinessIdentity } from './brandingService';
+import { n, round2 } from '../utils/money';
+import { getBusinessIdentity, getPaybillInstructions, type BusinessIdentity } from './brandingService';
+import { getSettings } from './settingsService';
+import { composeRentStatementEmail } from '../utils/emailTemplates';
+import { queueReminderEmail } from './emailService';
 import {
   africasTalkingBalance,
   evaluateBalance,
@@ -164,6 +167,258 @@ export function dispatchAutoSend(
 // SMS (queued-but-manual vs auto-sent vs not queued at all).
 export function autoSendEnabled(): boolean {
   return env.smsAutoSend && !isTest;
+}
+
+// --- Staff reminder SMS (statement / overdue notice) -------------------------
+// Composes the reminder templates (businessRules) from the tenant's LIVE
+// ledger figures — the same move-in-aware expected-rent math the tenant
+// detail view uses — and queues a PENDING sms_notifications row for the
+// manual send from the SMS history page (or auto-send when enabled).
+// Reminder templates reference a paybill/account line when branding has one.
+// The shared figures every reminder channel composes from. previousRent
+// (YTD expected minus THIS month's expected) drives the statement's
+// "Previous Balance" line; currentRent is this month's rent.
+interface ReminderFigures {
+  tenantName: string;
+  phoneNumber: string | null;
+  email: string | null;
+  unitNumber: string;
+  monthName: string;
+  year: number;
+  currency: string;
+  currentRent: number;
+  previousRentBalance: number;
+  waterBalance: number;
+  rentBalance: number;
+  combinedBalance: number;
+  paymentMethod: string;
+  accountNumber: string;
+  identityName: string | null;
+}
+
+async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures> {
+  const tenant = await queryOne<{
+    full_name: string;
+    phone_number: string | null;
+    email: string | null;
+    unit_number: string | null;
+    move_in_date: string;
+    move_out_date: string | null;
+  }>(
+    `SELECT t.full_name, t.phone_number, t.email, u.unit_number, t.move_in_date, t.move_out_date
+     FROM tenants t
+     LEFT JOIN units u ON u.id = t.unit_id
+     WHERE t.id = $1`,
+    [tenantId],
+  );
+  if (!tenant) throw notFound('Tenant not found.');
+
+  const settings = await getSettings();
+  const year = settings.reporting_year;
+  const month = new Date().getUTCMonth() + 1;
+  const monthName = MONTH_NAMES[month - 1];
+
+  // Move-in-aware expected rent YTD — mirrors tenantService.getTenant (spec §46).
+  const rentExpectedYtd = n((await queryOne<{ v: string }>(
+    `SELECT COALESCE(SUM(u.monthly_rent * occ.months), 0)::text AS v
+     FROM tenants t
+     JOIN units u ON u.id = t.unit_id
+     JOIN LATERAL (
+       SELECT COUNT(*)::int AS months
+       FROM generate_series(1, $3::int) AS mm
+       WHERE t.move_in_date <= (DATE ($2::text || '-01-01') + mm * INTERVAL '1 month' - INTERVAL '1 day')
+         AND (t.move_out_date IS NULL OR t.move_out_date >= (DATE ($2::text || '-01-01') + (mm - 1) * INTERVAL '1 month'))
+     ) occ ON TRUE
+     WHERE t.id = $1`,
+    [tenantId, year, month],
+  ))?.v);
+  // This month's expected rent alone (for the statement's Current Rent line).
+  const currentRent = n((await queryOne<{ v: string }>(
+    `SELECT COALESCE(u.monthly_rent, 0)::text AS v
+     FROM tenants t LEFT JOIN units u ON u.id = t.unit_id WHERE t.id = $1`,
+    [tenantId],
+  ))?.v);
+  const rentPaid = n((await queryOne<{ v: string }>(
+    `SELECT COALESCE(SUM(amount), 0)::text AS v FROM rent_payments WHERE tenant_id = $1 AND billing_year = $2`,
+    [tenantId, year],
+  ))?.v);
+  const waterBilled = n((await queryOne<{ v: string }>(
+    `SELECT COALESCE(SUM(wmr.water_bill), 0)::text AS v
+     FROM water_meter_readings wmr JOIN tenants t ON t.unit_id = wmr.unit_id
+     WHERE t.id = $1 AND wmr.billing_year = $2`,
+    [tenantId, year],
+  ))?.v);
+  const waterPaid = n((await queryOne<{ v: string }>(
+    `SELECT COALESCE(SUM(amount), 0)::text AS v FROM water_payments WHERE tenant_id = $1 AND billing_year = $2`,
+    [tenantId, year],
+  ))?.v);
+
+  const rentBalance = balanceDue(rentExpectedYtd, rentPaid);
+  const waterBalance = balanceDue(waterBilled, waterPaid);
+  const combinedBalance = round2(rentBalance + waterBalance);
+  // Previous balance = everything before this month: YTD expected minus this
+  // month's rent, minus payments (floored at 0 — an overpaid tenant has no
+  // "previous balance" to show).
+  const previousRentBalance = Math.max(round2(rentBalance - Math.min(currentRent, rentBalance)), 0);
+
+  const identity = await getBusinessIdentity();
+  // Payment channel line: the reconciled paybill number when branding has
+  // one, otherwise a generic instruction.
+  const paybill = await getPaybillInstructions();
+  const paymentMethod = paybill.enabled && paybill.number
+    ? `M-Pesa PayBill ${paybill.number}`
+    : 'M-Pesa or at the office';
+  const accountNumber = `Unit ${tenant.unit_number ?? tenantId}`;
+
+  return {
+    tenantName: tenant.full_name,
+    phoneNumber: tenant.phone_number,
+    email: tenant.email,
+    unitNumber: tenant.unit_number ?? String(tenantId),
+    monthName,
+    year,
+    currency: settings.currency,
+    currentRent,
+    previousRentBalance,
+    waterBalance,
+    rentBalance,
+    combinedBalance,
+    paymentMethod,
+    accountNumber,
+    identityName: identity.name,
+  };
+}
+
+export type ReminderKind = 'BALANCE_DUE' | 'OVERDUE';
+export type ReminderChannel = 'SMS' | 'WHATSAPP' | 'EMAIL';
+export interface ReminderResult {
+  message: string;
+  smsId: number | null;
+  emailId: number | null;
+  /** WhatsApp click-to-chat URL (wa.me) the operator opens — not queued. */
+  whatsappUrl: string | null;
+}
+
+// Queue/compose a tenant reminder on the chosen channel.
+//  * SMS — PENDING sms_notifications row (manual send or auto-send).
+//  * WHATSAPP — nothing is queued or sent: returns a wa.me click-to-chat URL
+//    with the text pre-filled. The operator reviews it in WhatsApp before
+//    pressing send; there is no provider cost and no unreviewed outbound.
+//  * EMAIL — PENDING email_notifications row (formal statement breakdown).
+// Returns null (SMS/EMAIL) when the tenant lacks the channel's contact point.
+export async function prepareReminder(
+  tenantId: number,
+  kind: ReminderKind,
+  channel: ReminderChannel,
+  opts: { userId?: number | null } = {},
+): Promise<ReminderResult | null> {
+  const f = await gatherReminderFigures(tenantId);
+  const identity = { name: f.identityName, regNo: null };
+
+  if (channel === 'WHATSAPP') {
+    const text = kind === 'BALANCE_DUE'
+      ? whatsappBalanceDueMessage({
+          tenantName: f.tenantName,
+          unitNumber: f.unitNumber,
+          monthName: f.monthName,
+          year: f.year,
+          currentRent: f.currentRent,
+          previousBalance: f.previousRentBalance,
+          totalDue: Math.max(f.combinedBalance, 0),
+          accountNumber: f.accountNumber,
+          paymentMethod: f.paymentMethod,
+          currency: f.currency,
+        })
+      : whatsappOverdueMessage({
+          tenantName: f.tenantName,
+          unitNumber: f.unitNumber,
+          amountDue: Math.max(f.rentBalance, 0),
+          supportPhone: (await getBusinessIdentity()).phone,
+          currency: f.currency,
+        });
+    if (!f.phoneNumber) return null;
+    const digits = f.phoneNumber.replace(/\D/g, '');
+    // Kenya numbers stored as 07… normalize to 2547… for wa.me.
+    const intl = digits.startsWith('0') ? `254${digits.slice(1)}` : digits;
+    await logAudit({
+      userId: opts.userId ?? null,
+      action: 'REMINDER_WHATSAPP_COMPOSED',
+      entity: 'tenant',
+      entityId: tenantId,
+      newValue: { kind },
+    });
+    return { message: text, smsId: null, emailId: null, whatsappUrl: `https://wa.me/${intl}?text=${encodeURIComponent(text)}` };
+  }
+
+  if (channel === 'EMAIL') {
+    if (!f.email) return null;
+    const composed = composeRentStatementEmail({
+      tenantName: f.tenantName,
+      unitNumber: f.unitNumber,
+      monthName: f.monthName,
+      year: f.year,
+      previousBalance: f.previousRentBalance,
+      currentRent: f.currentRent,
+      utilitiesAmount: Math.max(f.waterBalance, 0),
+      totalDue: Math.max(f.combinedBalance, 0),
+      currency: f.currency,
+      accountNumber: f.accountNumber,
+      paymentMethod: f.paymentMethod,
+      identity,
+    });
+    const emailRow = await queueReminderEmail({
+      to: f.email,
+      subject: composed.subject,
+      html: composed.html,
+      text: composed.text,
+      tenantId,
+    });
+    await logAudit({
+      userId: opts.userId ?? null,
+      action: 'REMINDER_EMAIL_QUEUED',
+      entity: 'tenant',
+      entityId: tenantId,
+      newValue: { kind, emailId: emailRow.id },
+    });
+    return { message: composed.text, smsId: null, emailId: emailRow.id, whatsappUrl: null };
+  }
+
+  // SMS (default)
+  if (!f.phoneNumber) return null;
+  const message = kind === 'BALANCE_DUE'
+    ? monthlyBalanceDueMessage({
+        tenantName: f.tenantName,
+        unitNumber: f.unitNumber,
+        monthName: f.monthName,
+        year: f.year,
+        totalDue: Math.max(f.combinedBalance, 0),
+        accountNumber: f.accountNumber,
+        paymentMethod: f.paymentMethod,
+        currency: f.currency,
+        businessIdentity: f.identityName ?? undefined,
+      })
+    : overdueNoticeMessage({
+        tenantName: f.tenantName,
+        unitNumber: f.unitNumber,
+        amountDue: Math.max(f.rentBalance, 0),
+        totalBalance: Math.max(f.combinedBalance, 0),
+        currency: f.currency,
+        businessIdentity: f.identityName ?? undefined,
+      });
+  const inserted = await queryOne<{ id: number }>(
+    `INSERT INTO sms_notifications (tenant_id, phone_number, message, status)
+     VALUES ($1, $2, $3, 'PENDING')
+     RETURNING id`,
+    [tenantId, f.phoneNumber, message],
+  );
+  await logAudit({
+    userId: opts.userId ?? null,
+    action: 'SMS_REMINDER_QUEUED',
+    entity: 'tenant',
+    entityId: tenantId,
+    newValue: { kind, smsId: inserted?.id ?? null },
+  });
+  return { message, smsId: inserted?.id ?? null, emailId: null, whatsappUrl: null };
 }
 
 export interface SmsFilters {
