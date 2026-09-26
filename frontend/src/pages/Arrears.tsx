@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download } from 'lucide-react';
 import { Button, EmptyState, KpiCard, PageHeader, Select, SkeletonTable, StatusBadge, useFetch, useToast } from '../components/ui';
-import { api, authenticatedFetch } from '../lib/api';
+import { api } from '../lib/api';
+import { downloadBlob } from '../lib/download';
 import { money } from '../lib/format';
 import { useQueryParam } from '../lib/useQueryParam';
 
@@ -50,21 +51,7 @@ export default function Arrears() {
   const [downloading, setDownloading] = useState(false);
   const downloadReport = () => {
     setDownloading(true);
-    authenticatedFetch(`/api/reports/arrears.pdf?year=${year}`)
-      .then(async (r) => {
-        if (!r.ok) {
-          const body = await r.json().catch(() => null);
-          throw new Error(body?.message ?? `Report download failed (${r.status}).`);
-        }
-        return r.blob();
-      })
-      .then((blob) => {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `arrears-report-${year}.pdf`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-      })
+    downloadBlob(`/api/reports/arrears.pdf?year=${year}`, `arrears-report-${year}.pdf`, (status) => `Report download failed (${status}).`)
       .catch((err) => toast('error', (err as Error).message))
       .finally(() => setDownloading(false));
   };

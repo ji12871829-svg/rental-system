@@ -2,7 +2,7 @@ import { query, queryOne } from '../config/db';
 import { paginate } from './paginate';
 import type { Pagination } from '../types';
 import { conflict, notFound } from '../utils/httpError';
-import { n, round2 } from '../utils/money';
+import { toNumber, round2 } from '../utils/money';
 import { logAudit } from './auditService';
 
 export interface UnitInput {
@@ -122,7 +122,7 @@ export async function updateUnit(id: number, input: Partial<UnitInput>, userId: 
     action: 'UNIT_UPDATED',
     entity: 'units',
     entityId: id,
-    oldValue: { monthlyRent: n(existing.monthly_rent), waterEnabled: existing.water_enabled, occupancyStatus: existing.occupancy_status },
+    oldValue: { monthlyRent: toNumber(existing.monthly_rent), waterEnabled: existing.water_enabled, occupancyStatus: existing.occupancy_status },
     newValue: { monthlyRent: input.monthlyRent, waterEnabled: input.waterEnabled, occupancyStatus: input.occupancyStatus },
   });
   return updated[0];
@@ -150,13 +150,13 @@ export async function unitFinancialHistory(id: number): Promise<unknown> {
   const unit = await queryOne<{ id: number; unit_number: string }>('SELECT id, unit_number FROM units WHERE id = $1', [id]);
   if (!unit) throw notFound('Unit not found.');
 
-  const rentCollected = n((await queryOne<{ v: string }>(
+  const rentCollected = toNumber((await queryOne<{ v: string }>(
     'SELECT COALESCE(SUM(amount), 0)::text AS v FROM rent_payments WHERE unit_id = $1', [id]
   ))?.v);
-  const waterBilled = n((await queryOne<{ v: string }>(
+  const waterBilled = toNumber((await queryOne<{ v: string }>(
     'SELECT COALESCE(SUM(water_bill), 0)::text AS v FROM water_meter_readings WHERE unit_id = $1', [id]
   ))?.v);
-  const waterCollected = n((await queryOne<{ v: string }>(
+  const waterCollected = toNumber((await queryOne<{ v: string }>(
     'SELECT COALESCE(SUM(amount), 0)::text AS v FROM water_payments WHERE unit_id = $1', [id]
   ))?.v);
 

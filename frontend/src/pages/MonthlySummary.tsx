@@ -4,7 +4,8 @@ import {
   Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from '../components/charts';
 import { Button, KpiCard, Modal, PageHeader, Select, SkeletonTable, useFetch, useToast } from '../components/ui';
-import { api, authenticatedFetch } from '../lib/api';
+import { api } from '../lib/api';
+import { downloadBlob } from '../lib/download';
 import { MONTHS, money, number } from '../lib/format';
 import { useQueryParam } from '../lib/useQueryParam';
 
@@ -97,21 +98,7 @@ export default function MonthlySummary() {
   const [downloading, setDownloading] = useState(false);
   const downloadReport = () => {
     setDownloading(true);
-    authenticatedFetch(`/api/reports/monthly.pdf?year=${year}`)
-      .then(async (r) => {
-        if (!r.ok) {
-          const body = await r.json().catch(() => null);
-          throw new Error(body?.message ?? `Report download failed (${r.status}).`);
-        }
-        return r.blob();
-      })
-      .then((blob) => {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `financial-report-${year}.pdf`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-      })
+    downloadBlob(`/api/reports/monthly.pdf?year=${year}`, `financial-report-${year}.pdf`, (status) => `Report download failed (${status}).`)
       .catch((err) => toast('error', (err as Error).message))
       .finally(() => setDownloading(false));
   };

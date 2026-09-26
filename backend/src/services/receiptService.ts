@@ -3,7 +3,7 @@ import { paginate } from './paginate';
 import type { Pagination, ReceiptType } from '../types';
 import { notFound } from '../utils/httpError';
 import { balanceDue, formatReceiptNumber, receiptPrefixFor } from '../utils/businessRules';
-import { n } from '../utils/money';
+import { toNumber } from '../utils/money';
 import { getBusinessIdentity } from './brandingService';
 import { mergePdfBytes, receiptPdfBytes } from '../utils/receiptPdf';
 import type { ReceiptDocument } from '../utils/receiptDocument';
@@ -53,7 +53,7 @@ export async function createReceipt(input: ReceiptInput, exec: SqlExec = poolExe
   const prefix = receiptPrefixFor(input.type);
   const seq = await nextSequence(prefix, input.billingYear, exec);
   const receiptNumber = formatReceiptNumber(prefix, input.billingYear, seq);
-  const total = n(input.rentAmount) + n(input.waterAmount);
+  const total = toNumber(input.rentAmount) + toNumber(input.waterAmount);
   const res = await exec.query(
     `INSERT INTO receipts
        (receipt_number, receipt_type, tenant_id, unit_id, payment_date,
@@ -199,8 +199,8 @@ export async function generateCombinedReceipt(input: {
        FROM water_payments WHERE tenant_id = $1 AND billing_month = $2 AND billing_year = $3`,
       [input.tenantId, input.billingMonth, input.billingYear]
     );
-    const rentPaid = n(rentRes.rows[0]?.paid);
-    const waterPaid = n(waterRes.rows[0]?.paid);
+    const rentPaid = toNumber(rentRes.rows[0]?.paid);
+    const waterPaid = toNumber(waterRes.rows[0]?.paid);
     const unitId = rentRes.rows[0]?.unit_id ?? tenant.unit_id;
 
     const unitRes = await client.query('SELECT monthly_rent FROM units WHERE id = $1', [unitId]);
@@ -209,8 +209,8 @@ export async function generateCombinedReceipt(input: {
        WHERE unit_id = $1 AND billing_month = $2 AND billing_year = $3`,
       [unitId, input.billingMonth, input.billingYear]
     );
-    const expectedRent = n(unitRes.rows[0]?.monthly_rent);
-    const waterBill = n(waterBillRes.rows[0]?.bill);
+    const expectedRent = toNumber(unitRes.rows[0]?.monthly_rent);
+    const waterBill = toNumber(waterBillRes.rows[0]?.bill);
     const totalBalance = balanceDue(expectedRent + waterBill, rentPaid + waterPaid);
 
     const seq = await nextSequence('RWC', input.billingYear, client);
@@ -250,16 +250,16 @@ export async function backfillReceipts(): Promise<number> {
        FROM rent_payments GROUP BY tenant_id, billing_month, billing_year`
     );
     const rentPaidByKey = new Map(
-      rentPaidRows.rows.map((r: any) => [r.tenant_id + ":" + r.billing_month + ":" + r.billing_year, n(r.paid)])
+      rentPaidRows.rows.map((r: any) => [r.tenant_id + ":" + r.billing_month + ":" + r.billing_year, toNumber(r.paid)])
     );
     for (const p of rentPayments.rows) {
       const paid = rentPaidByKey.get(p.tenant_id + ":" + p.billing_month + ":" + p.billing_year) ?? 0;
-      const balance = balanceDue(n(p.monthly_rent), paid);
+      const balance = balanceDue(toNumber(p.monthly_rent), paid);
       const receipt = await createReceipt(
         {
           type: 'RENT', tenantId: p.tenant_id, unitId: p.unit_id,
           paymentDate: p.payment_date, billingMonth: p.billing_month, billingYear: p.billing_year,
-          rentAmount: n(p.amount), waterAmount: 0, balance,
+          rentAmount: toNumber(p.amount), waterAmount: 0, balance,
         },
         client
       );
@@ -279,14 +279,14 @@ export async function backfillReceipts(): Promise<number> {
        FROM water_meter_readings GROUP BY unit_id, billing_month, billing_year`
     );
     const waterBillByKey = new Map(
-      waterBillRows.rows.map((r: any) => [r.unit_id + ":" + r.billing_month + ":" + r.billing_year, n(r.bill)])
+      waterBillRows.rows.map((r: any) => [r.unit_id + ":" + r.billing_month + ":" + r.billing_year, toNumber(r.bill)])
     );
     const waterPaidRows = await client.query(
       `SELECT tenant_id, billing_month, billing_year, COALESCE(SUM(amount), 0) AS paid
        FROM water_payments GROUP BY tenant_id, billing_month, billing_year`
     );
     const waterPaidByKey = new Map(
-      waterPaidRows.rows.map((r: any) => [r.tenant_id + ":" + r.billing_month + ":" + r.billing_year, n(r.paid)])
+      waterPaidRows.rows.map((r: any) => [r.tenant_id + ":" + r.billing_month + ":" + r.billing_year, toNumber(r.paid)])
     );
     for (const p of waterPayments.rows) {
       const bill = waterBillByKey.get(p.unit_id + ":" + p.billing_month + ":" + p.billing_year) ?? 0;
@@ -296,7 +296,7 @@ export async function backfillReceipts(): Promise<number> {
         {
           type: 'WATER', tenantId: p.tenant_id, unitId: p.unit_id,
           paymentDate: p.payment_date, billingMonth: p.billing_month, billingYear: p.billing_year,
-          rentAmount: 0, waterAmount: n(p.amount), balance,
+          rentAmount: 0, waterAmount: toNumber(p.amount), balance,
         },
         client
       );

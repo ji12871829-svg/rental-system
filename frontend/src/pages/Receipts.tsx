@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Download, Mail, Plus } from 'lucide-react';
 import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { api, authenticatedFetch, apiUrl, qs } from '../lib/api';
+import { downloadBlob } from '../lib/download';
 import { useAuth } from '../lib/auth';
 import { branding, receiptFooterLines } from '../lib/branding';
 import { MONTHS, formatDate, money } from '../lib/format';
@@ -190,22 +191,11 @@ export default function Receipts() {
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-50 active:scale-[0.98]"
             onClick={(e) => {
               e.preventDefault();
-              authenticatedFetch(`/api/receipts/export.pdf?month=${monthFilter}&year=${yearFilter || now.getFullYear()}`)
-                .then(async (r) => {
-                  if (!r.ok) {
-                    const body = await r.json().catch(() => null);
-                    throw new Error(body?.message ?? `Export failed (${r.status}).`);
-                  }
-                  return r.blob();
-                })
-                .then((blob) => {
-                  const a = document.createElement('a');
-                  a.href = URL.createObjectURL(blob);
-                  a.download = `receipts-${yearFilter || now.getFullYear()}-${String(monthFilter).padStart(2, '0')}.pdf`;
-                  a.click();
-                  URL.revokeObjectURL(a.href);
-                })
-                .catch((err) => toast('error', (err as Error).message));
+              downloadBlob(
+                `/api/receipts/export.pdf?month=${monthFilter}&year=${yearFilter || now.getFullYear()}`,
+                `receipts-${yearFilter || now.getFullYear()}-${String(monthFilter).padStart(2, '0')}.pdf`,
+                (status) => `Export failed (${status}).`,
+              ).catch((err) => toast('error', (err as Error).message));
             }}
           >
             <Download size={15} strokeWidth={1.75} aria-hidden /> Download all (PDF)

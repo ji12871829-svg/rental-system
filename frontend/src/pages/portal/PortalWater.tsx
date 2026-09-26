@@ -1,5 +1,5 @@
 import { PageHeader, SkeletonTable, useFetch } from '../../components/ui';
-import { money } from '../../lib/format';
+import { money, monthLabel } from '../../lib/format';
 import { portalApi } from '../../lib/portalApi';
 
 // Shape produced by getPortalWaterReadings.
@@ -13,8 +13,6 @@ interface PortalWaterReading {
   water_rate: number;
   water_bill: number;
 }
-
-const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export default function PortalWater() {
   const { data, loading, error } = useFetch(
@@ -53,7 +51,7 @@ export default function PortalWater() {
               <tbody>
                 {readings.map((r, i) => (
                   <tr key={`${r.billing_year}-${r.billing_month}-${i}`} className="border-b border-gray-100 last:border-0">
-                    <td className="px-4 py-2.5 font-medium text-gray-900">{MONTHS[r.billing_month]} {r.billing_year}</td>
+                    <td className="px-4 py-2.5 font-medium text-gray-900">{monthLabel(r.billing_month)} {r.billing_year}</td>
                     <td className="px-4 py-2.5 text-gray-600">{r.reading_date?.slice(0, 10) ?? '—'}</td>
                     <td className="px-4 py-2.5 text-gray-600">{r.previous_reading ?? '—'}</td>
                     <td className="px-4 py-2.5 text-gray-600">{r.current_reading}</td>

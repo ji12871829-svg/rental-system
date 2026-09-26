@@ -4,7 +4,7 @@ import { MONTH_NAMES, type Pagination } from '../types';
 import type { WaterSummaryRow } from '@rpms/shared';
 import { balanceDue, computeWaterBill, paymentStatus, waterCollectionRate, waterSurplusDeficit } from '../utils/businessRules';
 import { conflict, notFound, unprocessable } from '../utils/httpError';
-import { n, round2 } from '../utils/money';
+import { toNumber, round2 } from '../utils/money';
 import { csvCell } from '../utils/csv';
 import { logAudit } from './auditService';
 import { createReceipt } from './receiptService';
@@ -51,7 +51,7 @@ export async function listReadings(filters: ReadingFilters): Promise<{ rows: unk
      FROM water_payments
      GROUP BY tenant_id, billing_month, billing_year`
   );
-  const paidByKey = new Map(paidRows.map((r) => [r.tenant_id + ":" + r.billing_month + ":" + r.billing_year, n(r.paid)]));
+  const paidByKey = new Map(paidRows.map((r) => [r.tenant_id + ":" + r.billing_month + ":" + r.billing_year, toNumber(r.paid)]));
 
   const { rows, pagination } = await paginate<Record<string, unknown>>({
     selectSql: `wmr.*, t.full_name AS tenant_name, u.unit_number, u.unit_type`,
@@ -67,7 +67,7 @@ export async function listReadings(filters: ReadingFilters): Promise<{ rows: unk
 
   const enriched = rows.map((row: any) => {
     const paid = paidByKey.get(row.tenant_id + ":" + row.billing_month + ":" + row.billing_year) ?? 0;
-    const bill = n(row.water_bill);
+    const bill = toNumber(row.water_bill);
     return Object.assign({}, row, {
       totalWaterPaid: round2(paid),
       waterBalance: balanceDue(bill, paid),
@@ -108,7 +108,7 @@ async function assertWaterEnabled(unitId: number): Promise<{ unit_number: string
 export async function createReading(input: ReadingInput, userId: number): Promise<unknown> {
   const { unit_number, tenant_id } = await assertWaterEnabled(input.unitId);
   const settings = await getSettings();
-  const waterRate = n(settings.water_rate);
+  const waterRate = toNumber(settings.water_rate);
 
   // Automatic previous reading: the most recent reading for the unit whose
   // reading_date precedes this one (chronological history).
@@ -122,7 +122,7 @@ export async function createReading(input: ReadingInput, userId: number): Promis
   const previousOverride = input.previousReading;
   const previous = previousOverride !== undefined
     ? previousOverride
-    : previousRow ? n(previousRow.current_reading) : null;
+    : previousRow ? toNumber(previousRow.current_reading) : null;
 
   const result = computeWaterBill(previous, input.currentReading, waterRate);
   if (!result.ok) throw unprocessable(result.error);
@@ -176,7 +176,7 @@ export async function updateReading(id: number, input: { currentReading?: number
 
   // Recompute consumption + bill; the previous reading stays fixed (it is
   // the historical reading the current one is measured against).
-  const r = computeWaterBill(n(existing.previous_reading), input.currentReading, n(settings.water_rate));
+  const r = computeWaterBill(toNumber(existing.previous_reading), input.currentReading, toNumber(settings.water_rate));
   if (!r.ok) throw unprocessable(r.error);
   const updated = await query(
     `UPDATE water_meter_readings
@@ -244,8 +244,8 @@ export async function waterPaymentsCsv(filters: { year?: number; month?: number 
   );
   const header = 'payment_date,billing_month,billing_year,tenant,unit,amount,payment_method,bill,total_paid,balance,status,receipt_number';
   const lines = rows.map((r: any) => {
-    const bill = n(r.water_bill);
-    const paid = round2(n(r.total_paid));
+    const bill = toNumber(r.water_bill);
+    const paid = round2(toNumber(r.total_paid));
     return [
       r.payment_date, r.billing_month, r.billing_year, r.full_name, r.unit_number,
       r.amount, r.payment_method, bill, paid, balanceDue(bill, paid), paymentStatus(bill, paid),
@@ -292,8 +292,8 @@ export async function listWaterPayments(filters: WaterPaymentFilters): Promise<{
      FROM water_payments
      GROUP BY tenant_id, billing_month, billing_year`
   );
-  const billByKey = new Map(billRows.map((r) => [r.unit_id + ":" + r.billing_month + ":" + r.billing_year, n(r.bill)]));
-  const paidByKey = new Map(paidRows.map((r) => [r.tenant_id + ":" + r.billing_month + ":" + r.billing_year, n(r.paid)]));
+  const billByKey = new Map(billRows.map((r) => [r.unit_id + ":" + r.billing_month + ":" + r.billing_year, toNumber(r.bill)]));
+  const paidByKey = new Map(paidRows.map((r) => [r.tenant_id + ":" + r.billing_month + ":" + r.billing_year, toNumber(r.paid)]));
 
   const { rows, pagination } = await paginate<Record<string, unknown>>({
     selectSql: `wp.*, t.full_name AS tenant_name, u.unit_number`,
@@ -368,8 +368,8 @@ export async function createWaterPayment(input: WaterPaymentInput, userId: numbe
        WHERE tenant_id = $1 AND billing_month = $2 AND billing_year = $3`,
       [input.tenantId, input.billingMonth, input.billingYear]
     );
-    const bill = n(billRes.rows[0].bill);
-    const paid = n(paidRes.rows[0].paid);
+    const bill = toNumber(billRes.rows[0].bill);
+    const paid = toNumber(paidRes.rows[0].paid);
     const balance = balanceDue(bill, paid);
 
     const receipt = await createReceipt(
@@ -500,8 +500,8 @@ export async function createPurchase(input: PurchaseInput, userId: number): Prom
 export async function updatePurchase(id: number, input: Partial<PurchaseInput>, userId: number): Promise<unknown> {
   const existing = await queryOne<{ id: number }>('SELECT id FROM water_purchases WHERE id = $1', [id]);
   if (!existing) throw notFound('Water purchase not found.');
-  const qty = input.quantity ?? n((await queryOne<{ quantity: string }>('SELECT quantity FROM water_purchases WHERE id = $1', [id]))?.quantity);
-  const cost = input.costPerUnit ?? n((await queryOne<{ cost_per_unit: string }>('SELECT cost_per_unit FROM water_purchases WHERE id = $1', [id]))?.cost_per_unit);
+  const qty = input.quantity ?? toNumber((await queryOne<{ quantity: string }>('SELECT quantity FROM water_purchases WHERE id = $1', [id]))?.quantity);
+  const cost = input.costPerUnit ?? toNumber((await queryOne<{ cost_per_unit: string }>('SELECT cost_per_unit FROM water_purchases WHERE id = $1', [id]))?.cost_per_unit);
   const totalCost = round2(qty * cost);
   const updated = await query(
     `UPDATE water_purchases
@@ -539,16 +539,16 @@ export async function waterSummary(year?: number): Promise<WaterSummaryRow> {
   const settings = await getSettings();
   const targetYear = year ?? settings.reporting_year;
 
-  const billed = n((await queryOne<{ v: string }>(
+  const billed = toNumber((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(water_bill), 0)::text AS v FROM water_meter_readings WHERE billing_year = $1`, [targetYear]
   ))?.v);
-  const collected = n((await queryOne<{ v: string }>(
+  const collected = toNumber((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(amount), 0)::text AS v FROM water_payments WHERE billing_year = $1`, [targetYear]
   ))?.v);
-  const purchasedQty = n((await queryOne<{ v: string }>(
+  const purchasedQty = toNumber((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(quantity), 0)::text AS v FROM water_purchases WHERE EXTRACT(YEAR FROM purchase_date)::int = $1`, [targetYear]
   ))?.v);
-  const supplyCost = n((await queryOne<{ v: string }>(
+  const supplyCost = toNumber((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(total_cost), 0)::text AS v FROM water_purchases WHERE EXTRACT(YEAR FROM purchase_date)::int = $1`, [targetYear]
   ))?.v);
 
@@ -634,10 +634,10 @@ export async function monthlyWaterSummary(year?: number): Promise<WaterMonthlySu
   );
 
   return rows.map((row) => {
-    const billed = n(row.billed);
-    const collected = n(row.collected);
-    const supplyCost = n(row.supply_cost);
-    const purchased = n(row.purchased);
+    const billed = toNumber(row.billed);
+    const collected = toNumber(row.collected);
+    const supplyCost = toNumber(row.supply_cost);
+    const purchased = toNumber(row.purchased);
 
     return {
       month: row.month,
@@ -678,8 +678,8 @@ export async function outstandingWaterByUnit(year?: number): Promise<Outstanding
     unitId: r.id,
     unitNumber: r.unit_number,
     tenantName: r.tenant_name,
-    waterBilled: n(r.billed),
-    waterPaid: n(r.paid),
-    waterOutstanding: balanceDue(n(r.billed), n(r.paid)),
+    waterBilled: toNumber(r.billed),
+    waterPaid: toNumber(r.paid),
+    waterOutstanding: balanceDue(toNumber(r.billed), toNumber(r.paid)),
   }));
 }

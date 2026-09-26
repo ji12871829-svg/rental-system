@@ -1,84 +1,32 @@
-// Tenant portal API client — mirrors lib/api.ts but targets /api/portal with
-// portal-specific session handling: an expired tenant session redirects to
-// the portal login (never the staff login), and the portal cookie is what
-// authenticates, with the CSRF double-submit cookie for unsafe methods.
+// Tenant portal API client — targets /api/portal with portal-specific session
+// handling. The request engine is shared (lib/httpClient.ts); the portal's
+// configuration differs in three ways that matter: its CSRF double-submit
+// cookie is `rpms_portal_csrf` (NOT the staff app's `rpms_csrf` — sharing one
+// name let each login invalidate the other app's open session), it refreshes
+// and redirects through its own endpoints, and it treats 403 (CSRF mismatch
+// after cookies were rotated or cleared) the same as 401: you no longer have
+// a usable session.
+import { createHttpClient, readCsrfToken } from './httpClient';
 
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined) || '';
 
-interface ApiError {
-  error: string;
-  message: string;
-  details?: Record<string, unknown>;
-}
-
-function getCsrfToken(): string | null {
-  // The portal pairs with its own csrf cookie (rpms_portal_csrf), NOT the
-  // staff app's rpms_csrf — sharing one name let each login invalidate the
-  // other app's open session.
-  const cookie = document.cookie.split('; ').find((entry) => entry.startsWith('rpms_portal_csrf='));
-  return cookie ? decodeURIComponent(cookie.slice('rpms_portal_csrf='.length)) : null;
-}
-
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  return requestWithRetry<T>(path, options, false);
-}
-
-async function requestWithRetry<T>(path: string, options: RequestInit, retried: boolean): Promise<T> {
-  const method = options.method?.toUpperCase() ?? 'GET';
-  const csrfToken = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) ? getCsrfToken() : null;
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    credentials: 'include',
-    headers: Object.assign(
-      { 'Content-Type': 'application/json' },
-      csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
-      options.headers,
-    ),
-  });
-
-  // Parse error bodies once, up front.
-  let body: ApiError | undefined;
-  if (!res.ok) {
-    try {
-      body = (await res.json()) as ApiError;
-    } catch {
-      // non-JSON error body
-    }
-  }
-
-  // 401 (stale/missing session) and 403 (CSRF mismatch after cookies were
-  // rotated or cleared) both mean "you no longer have a usable session" —
-  // bounce to the portal login. The login request itself is exempt so a
-  // wrong password shows an inline error instead of redirecting, and /me is
-  // exempt so the shell treats "not signed in" as a normal state.
-  if (
-    res.status === 401 ||
-    (res.status === 403 && !path.startsWith('/api/portal/login'))
-  ) {
-    if (!retried && !path.startsWith('/api/portal/login') && !path.startsWith('/api/portal/me')) {
-      const refreshed = await fetch(`${API_URL}/api/portal/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-      }).then((response) => response.ok).catch(() => false);
-      if (refreshed) return requestWithRetry<T>(path, options, true);
-    }
-    if (!path.startsWith('/api/portal/login') && !path.startsWith('/api/portal/me')) {
-      window.location.href = '/portal/login';
-      throw new Error('Portal session expired. Please sign in again.');
-    }
-    throw new Error(body?.message ?? 'Sign in failed. Please try again.');
-  }
-
-  if (!res.ok) {
-    const err = new Error(body?.message ?? `Request failed (${res.status}).`) as Error & { code?: string; status: number };
-    (err as { code?: string }).code = body?.error;
-    (err as { status: number }).status = res.status;
-    throw err;
-  }
-
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
-}
+const { request } = createHttpClient({
+  baseUrl: API_URL,
+  csrfCookieName: 'rpms_portal_csrf',
+  refreshPath: `${API_URL}/api/portal/refresh`,
+  loginRedirect: '/portal/login',
+  isSessionLost: (status, path) => status === 401 || (status === 403 && !path.startsWith('/api/portal/login')),
+  // The login request itself is exempt so a wrong password shows an inline
+  // error instead of redirecting.
+  errorPaths: ['/api/portal/login'],
+  signInFailedMessage: 'Sign in failed. Please try again.',
+  sessionExpiredMessage: 'Portal session expired. Please sign in again.',
+  // /me is exempt so the shell treats "not signed in" as a normal state.
+  sessionExemptPaths: ['/api/portal/login', '/api/portal/me'],
+  // An exempt-path 401/403 (e.g. /me while signed out) reports the parsed
+  // body message, not the generic expired-session line.
+  exemptUsesParsedMessage: true,
+});
 
 export const portalApi = {
   get: <T>(path: string) => request<T>(path),
@@ -87,7 +35,7 @@ export const portalApi = {
 };
 
 export async function portalStatementDownload(): Promise<void> {
-  const csrfToken = getCsrfToken();
+  const csrfToken = readCsrfToken('rpms_portal_csrf');
   const res = await fetch(`${API_URL}/api/portal/statement.pdf`, {
     credentials: 'include',
     headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : undefined,

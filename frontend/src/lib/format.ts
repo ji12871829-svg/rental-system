@@ -3,6 +3,16 @@ export const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
+/**
+ * 1-indexed month label (month 1 = January; anything else → '').
+ * Mirrors the backend's MONTH_NAMES ordering; the blank 0 case preserves the
+ * portal pages' local `MONTHS` arrays (which kept an empty first slot so
+ * billing_month could index directly).
+ */
+export function monthLabel(month: number | null | undefined): string {
+  return MONTHS[(month ?? 0) - 1] ?? '';
+}
+
 export function money(value: number | string | null | undefined, currency = 'KSh'): string {
   const n = Number(value ?? 0);
   return `${currency} ${n.toLocaleString('en-KE', { maximumFractionDigits: 2 })}`;

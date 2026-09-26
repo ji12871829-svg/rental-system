@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Download, Mail } from 'lucide-react';
 import { EmptyState, KpiCard, PageHeader, Select, SkeletonTable, StatusBadge, useFetch, useToast } from '../components/ui';
-import { api, authenticatedFetch } from '../lib/api';
+import { api } from '../lib/api';
+import { downloadBlob } from '../lib/download';
 import { money } from '../lib/format';
 import { useQueryParam } from '../lib/useQueryParam';
 
@@ -58,21 +59,11 @@ export default function TenantLedger() {
   const downloadStatement = () => {
     if (!tenantId) return;
     setDownloading(true);
-    authenticatedFetch(`/api/reports/tenant/${tenantId}/statement.pdf?year=${year}`)
-      .then(async (r) => {
-        if (!r.ok) {
-          const body = await r.json().catch(() => null);
-          throw new Error(body?.message ?? `Statement download failed (${r.status}).`);
-        }
-        return r.blob();
-      })
-      .then((blob) => {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `statement-${(data?.tenant.fullName ?? 'tenant').replace(/[^a-z0-9]+/gi, '-')}-${year}.pdf`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-      })
+    downloadBlob(
+      `/api/reports/tenant/${tenantId}/statement.pdf?year=${year}`,
+      `statement-${(data?.tenant.fullName ?? 'tenant').replace(/[^a-z0-9]+/gi, '-')}-${year}.pdf`,
+      (status) => `Statement download failed (${status}).`,
+    )
       .catch((err) => toast('error', (err as Error).message))
       .finally(() => setDownloading(false));
   };

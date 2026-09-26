@@ -3,7 +3,7 @@ import { paginate } from './paginate';
 import type { Pagination } from '../types';
 import { balanceDue } from '../utils/businessRules';
 import { conflict, notFound, unprocessable } from '../utils/httpError';
-import { n, round2 } from '../utils/money';
+import { toNumber, round2 } from '../utils/money';
 import { logAudit } from './auditService';
 
 export interface TenantInput {
@@ -92,10 +92,10 @@ export async function getTenant(id: number, reportingYear: number): Promise<unkn
   // the SAME move-in-aware YTD expected rent the dashboard uses — comparing
   // one month's rent against a year of payments showed three months paid as
   // a large negative ("overpaid") balance.
-  const rentPaid = n((await queryOne<{ v: string }>(
+  const rentPaid = toNumber((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(amount), 0)::text AS v FROM rent_payments WHERE tenant_id = $1 AND billing_year = $2`, [id, reportingYear]
   ))?.v);
-  const rentExpectedYtd = n((await queryOne<{ v: string }>(
+  const rentExpectedYtd = toNumber((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(u.monthly_rent * occ.months), 0)::text AS v
      FROM tenants t
      JOIN units u ON u.id = t.unit_id
@@ -108,12 +108,12 @@ export async function getTenant(id: number, reportingYear: number): Promise<unkn
      WHERE t.id = $1`,
     [id, reportingYear, currentReportingMonth(reportingYear)]
   ))?.v);
-  const waterBilled = n((await queryOne<{ v: string }>(
+  const waterBilled = toNumber((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(wmr.water_bill), 0)::text AS v
      FROM water_meter_readings wmr JOIN tenants t ON t.unit_id = wmr.unit_id
      WHERE t.id = $1 AND wmr.billing_year = $2`, [id, reportingYear]
   ))?.v);
-  const waterPaid = n((await queryOne<{ v: string }>(
+  const waterPaid = toNumber((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(amount), 0)::text AS v FROM water_payments WHERE tenant_id = $1 AND billing_year = $2`, [id, reportingYear]
   ))?.v);
 

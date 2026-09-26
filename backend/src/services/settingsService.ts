@@ -1,6 +1,6 @@
 import { query, queryOne, withTransaction } from '../config/db';
 import type { SettingsRow } from '../types';
-import { n } from '../utils/money';
+import { toNumber } from '../utils/money';
 import { logAudit } from './auditService';
 
 // The one and only source of truth for reporting_year / currency / water_rate.
@@ -72,13 +72,13 @@ export async function updateSettings(
     oldValue: {
       reportingYear: before.reporting_year,
       currency: before.currency,
-      waterRate: n(before.water_rate),
+      waterRate: toNumber(before.water_rate),
       retentionYears: before.retention_years,
     },
     newValue: {
       reportingYear: updated.reporting_year,
       currency: updated.currency,
-      waterRate: n(updated.water_rate),
+      waterRate: toNumber(updated.water_rate),
       retentionYears: updated.retention_years,
     },
   });

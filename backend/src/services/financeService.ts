@@ -5,7 +5,7 @@ import { balanceDue, paymentStatus, rentCollectionRate } from '../utils/business
 import { notFound } from '../utils/httpError';
 import { monthlyReportPdfBytes } from '../utils/monthlyReportPdf';
 import { arrearsReportPdfBytes } from '../utils/arrearsReportPdf';
-import { n, round2 } from '../utils/money';
+import { toNumber, round2 } from '../utils/money';
 import { tenantStatementPdfBytes, type StatementPdfData, type StatementPdfMonthRow } from '../utils/tenantStatementPdf';
 import { getSmsBalance } from './smsService';
 
@@ -57,7 +57,7 @@ export async function dashboard(year?: number): Promise<DashboardData> {
   const vacant = totalUnits - occupied;
 
   // Expected rent for the current month (occupied units).
-  const expectedRentThisMonth = n((await queryOne<{ v: string }>(
+  const expectedRentThisMonth = toNumber((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(u.monthly_rent), 0)::text AS v
      FROM units u JOIN tenants t ON t.unit_id = u.id AND t.status = 'ACTIVE'
      WHERE t.move_in_date <= (DATE ($1::text || '-01-01') + $2 * INTERVAL '1 month' - INTERVAL '1 day')
@@ -65,16 +65,16 @@ export async function dashboard(year?: number): Promise<DashboardData> {
     [targetYear, currentMonth]
   ))?.v);
 
-  const rentCollected = n((await queryOne<{ v: string }>(
+  const rentCollected = toNumber((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(amount), 0)::text AS v FROM rent_payments WHERE billing_year = $1`, [targetYear]
   ))?.v);
   const water: WaterSummaryRow = await waterSummary(targetYear);
-  const totalExpenses = n((await queryOne<{ v: string }>(
+  const totalExpenses = toNumber((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(amount), 0)::text AS v FROM expenses WHERE EXTRACT(YEAR FROM expense_date)::int = $1`, [targetYear]
   ))?.v);
 
   // Expected rent for the whole year-to-date (for YTD collection rate).
-  const expectedRentYtd = n((await queryOne<{ v: string }>(
+  const expectedRentYtd = toNumber((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(u.monthly_rent * m.months), 0)::text AS v
      FROM units u
      JOIN tenants t ON t.unit_id = u.id AND t.status = 'ACTIVE'
@@ -173,13 +173,13 @@ export async function dashboard(year?: number): Promise<DashboardData> {
       netIncome: round2(totalCollected - totalExpenses),
     },
     charts: {
-      monthlyRentCollected: monthlyRent.map((r) => ({ month: r.month, collected: n(r.collected) })),
+      monthlyRentCollected: monthlyRent.map((r) => ({ month: r.month, collected: toNumber(r.collected) })),
       expectedVsCollected: rentMonthlySummary.map((r) => ({
         month: r.month, expected: r.expectedRent, collected: r.rentCollected,
       })),
       occupiedVsVacant: { occupied, vacant },
-      rentByPaymentMethod: rentByMethod.map((r) => ({ method: r.method, total: n(r.total) })),
-      outstandingRentByUnit: outstandingRentByUnit.map((r) => ({ unitNumber: r.unit_number, outstanding: n(r.outstanding) })),
+      rentByPaymentMethod: rentByMethod.map((r) => ({ method: r.method, total: toNumber(r.total) })),
+      outstandingRentByUnit: outstandingRentByUnit.map((r) => ({ unitNumber: r.unit_number, outstanding: toNumber(r.outstanding) })),
       monthlyWaterBilledVsCollected: monthlyWater.map((r) => ({
         month: r.month, billed: r.waterBilled, collected: r.waterCollected,
       })),
@@ -214,14 +214,14 @@ export async function arrears(year?: number): Promise<unknown[]> {
   );
 
   return Promise.all(occupiedUnits.map(async (u) => {
-    const expectedRent = n(u.monthly_rent);
+    const expectedRent = toNumber(u.monthly_rent);
 
     // Rent: expected YTD (from move-in) vs paid YTD.
-    const rentPaid = n((await queryOne<{ v: string }>(
+    const rentPaid = toNumber((await queryOne<{ v: string }>(
       `SELECT COALESCE(SUM(amount), 0)::text AS v FROM rent_payments
        WHERE tenant_id = $1 AND billing_year = $2`, [u.tenant_id, targetYear]
     ))?.v);
-    const rentExpectedYtd = n((await queryOne<{ v: string }>(
+    const rentExpectedYtd = toNumber((await queryOne<{ v: string }>(
       `SELECT COALESCE(SUM(amount), 0)::text AS v FROM (
          SELECT u2.monthly_rent AS amount
          FROM tenants t2
@@ -235,12 +235,12 @@ export async function arrears(year?: number): Promise<unknown[]> {
     const rentBalance = balanceDue(rentExpectedYtd, rentPaid);
 
     // Water: billed vs paid YTD for the unit/tenant.
-    const waterBilled = n((await queryOne<{ v: string }>(
+    const waterBilled = toNumber((await queryOne<{ v: string }>(
       `SELECT COALESCE(SUM(water_bill), 0)::text AS v FROM water_meter_readings
        WHERE unit_id = $1 AND billing_year = $2 AND billing_month <= $3`,
       [u.id, targetYear, currentMonth]
     ))?.v);
-    const waterPaid = n((await queryOne<{ v: string }>(
+    const waterPaid = toNumber((await queryOne<{ v: string }>(
       `SELECT COALESCE(SUM(amount), 0)::text AS v FROM water_payments
        WHERE tenant_id = $1 AND billing_year = $2`, [u.tenant_id, targetYear]
     ))?.v);
@@ -365,10 +365,10 @@ export async function tenantLedger(tenantId: number, year?: number): Promise<unk
   );
 
   const rows = ledgerRows.map((row) => {
-    const expectedRent = row.monthly_rent === null ? 0 : n(row.monthly_rent);
-    const rentPaid = n(row.rent_paid);
-    const waterBill = n(row.water_bill);
-    const waterPaid = n(row.water_paid);
+    const expectedRent = row.monthly_rent === null ? 0 : toNumber(row.monthly_rent);
+    const rentPaid = toNumber(row.rent_paid);
+    const waterBill = toNumber(row.water_bill);
+    const waterPaid = toNumber(row.water_paid);
 
     const rentBalance = balanceDue(expectedRent, rentPaid);
     const waterBalance = balanceDue(waterBill, waterPaid);
@@ -381,9 +381,9 @@ export async function tenantLedger(tenantId: number, year?: number): Promise<unk
       monthName: MONTH_NAMES[row.month - 1],
       unit: row.unit_number ?? null,
       expectedRent,
-      previousWaterReading: row.previous_reading === null ? null : n(row.previous_reading),
-      currentWaterReading: row.current_reading === null ? null : n(row.current_reading),
-      waterConsumed: row.consumption === null ? 0 : n(row.consumption),
+      previousWaterReading: row.previous_reading === null ? null : toNumber(row.previous_reading),
+      currentWaterReading: row.current_reading === null ? null : toNumber(row.current_reading),
+      waterConsumed: row.consumption === null ? 0 : toNumber(row.consumption),
       waterBill,
       rentPaid,
       waterPaid,
@@ -406,7 +406,7 @@ export async function tenantLedger(tenantId: number, year?: number): Promise<unk
 
   return {
     tenant: { id: tenant.id, fullName: tenant.full_name, phoneNumber: tenant.phone_number, email: tenant.email },
-    unit: unit ? { id: unit.id, unitNumber: unit.unit_number, monthlyRent: n(unit.monthly_rent), waterEnabled: unit.water_enabled } : null,
+    unit: unit ? { id: unit.id, unitNumber: unit.unit_number, monthlyRent: toNumber(unit.monthly_rent), waterEnabled: unit.water_enabled } : null,
     reportingYear: targetYear,
     currency: settings.currency,
     months: rows,

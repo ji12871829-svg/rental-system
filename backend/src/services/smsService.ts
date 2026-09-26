@@ -5,7 +5,7 @@ import { MONTH_NAMES, type Pagination } from '../types';
 import { balanceDue, combinedReceiptMessage, monthlyBalanceDueMessage, overdueNoticeMessage, rentReceiptMessage, waterReceiptMessage, whatsappBalanceDueMessage, whatsappOverdueMessage } from '../utils/businessRules';
 import { badRequest, notFound } from '../utils/httpError';
 import { logAudit } from './auditService';
-import { n, round2 } from '../utils/money';
+import { toNumber, round2 } from '../utils/money';
 import { getBusinessIdentity, getPaybillInstructions, type BusinessIdentity } from './brandingService';
 import { getSettings } from './settingsService';
 import { composeRentStatementEmail } from '../utils/emailTemplates';
@@ -90,22 +90,22 @@ export function buildMessage(receipt: ReceiptLike, opts: {
     monthName,
     year: receipt.billing_year,
     receiptNumber: receipt.receipt_number,
-    balance: n(receipt.balance),
+    balance: toNumber(receipt.balance),
     currency: opts.currency,
     businessIdentity,
   };
   if (receipt.receipt_type === 'WATER') {
-    return waterReceiptMessage({ ...base, waterPaid: n(receipt.water_amount) });
+    return waterReceiptMessage({ ...base, waterPaid: toNumber(receipt.water_amount) });
   }
   if (receipt.receipt_type === 'COMBINED') {
     return combinedReceiptMessage({
       ...base,
-      rentPaid: n(receipt.rent_amount),
-      waterPaid: n(receipt.water_amount),
-      totalPaid: n(receipt.total_amount),
+      rentPaid: toNumber(receipt.rent_amount),
+      waterPaid: toNumber(receipt.water_amount),
+      totalPaid: toNumber(receipt.total_amount),
     });
   }
-  return rentReceiptMessage({ ...base, rentPaid: n(receipt.rent_amount) });
+  return rentReceiptMessage({ ...base, rentPaid: toNumber(receipt.rent_amount) });
 }
 
 // Creates a PENDING sms_notifications row for a receipt (called inside the
@@ -219,7 +219,7 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
   const monthName = MONTH_NAMES[month - 1];
 
   // Move-in-aware expected rent YTD — mirrors tenantService.getTenant (spec §46).
-  const rentExpectedYtd = n((await queryOne<{ v: string }>(
+  const rentExpectedYtd = toNumber((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(u.monthly_rent * occ.months), 0)::text AS v
      FROM tenants t
      JOIN units u ON u.id = t.unit_id
@@ -233,22 +233,22 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
     [tenantId, year, month],
   ))?.v);
   // This month's expected rent alone (for the statement's Current Rent line).
-  const currentRent = n((await queryOne<{ v: string }>(
+  const currentRent = toNumber((await queryOne<{ v: string }>(
     `SELECT COALESCE(u.monthly_rent, 0)::text AS v
      FROM tenants t LEFT JOIN units u ON u.id = t.unit_id WHERE t.id = $1`,
     [tenantId],
   ))?.v);
-  const rentPaid = n((await queryOne<{ v: string }>(
+  const rentPaid = toNumber((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(amount), 0)::text AS v FROM rent_payments WHERE tenant_id = $1 AND billing_year = $2`,
     [tenantId, year],
   ))?.v);
-  const waterBilled = n((await queryOne<{ v: string }>(
+  const waterBilled = toNumber((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(wmr.water_bill), 0)::text AS v
      FROM water_meter_readings wmr JOIN tenants t ON t.unit_id = wmr.unit_id
      WHERE t.id = $1 AND wmr.billing_year = $2`,
     [tenantId, year],
   ))?.v);
-  const waterPaid = n((await queryOne<{ v: string }>(
+  const waterPaid = toNumber((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(amount), 0)::text AS v FROM water_payments WHERE tenant_id = $1 AND billing_year = $2`,
     [tenantId, year],
   ))?.v);
@@ -299,13 +299,10 @@ export interface ReminderResult {
   whatsappUrl: string | null;
 }
 
-// Queue/compose a tenant reminder on the chosen channel.
-//  * SMS — PENDING sms_notifications row (manual send or auto-send).
-//  * WHATSAPP — nothing is queued or sent: returns a wa.me click-to-chat URL
-//    with the text pre-filled. The operator reviews it in WhatsApp before
-//    pressing send; there is no provider cost and no unreviewed outbound.
-//  * EMAIL — PENDING email_notifications row (formal statement breakdown).
-// Returns null (SMS/EMAIL) when the tenant lacks the channel's contact point.
+// Queue/compose a tenant reminder on the chosen channel. Each channel has
+// its own helper below; this dispatcher resolves the shared figures once and
+// delegates. Returns null (SMS/EMAIL) when the tenant lacks the channel's
+// contact point.
 export async function prepareReminder(
   tenantId: number,
   kind: ReminderKind,
@@ -313,77 +310,102 @@ export async function prepareReminder(
   opts: { userId?: number | null } = {},
 ): Promise<ReminderResult | null> {
   const f = await gatherReminderFigures(tenantId);
-  const identity = { name: f.identityName, regNo: null };
-
-  if (channel === 'WHATSAPP') {
-    const text = kind === 'BALANCE_DUE'
-      ? whatsappBalanceDueMessage({
-          tenantName: f.tenantName,
-          unitNumber: f.unitNumber,
-          monthName: f.monthName,
-          year: f.year,
-          currentRent: f.currentRent,
-          previousBalance: f.previousRentBalance,
-          totalDue: Math.max(f.combinedBalance, 0),
-          accountNumber: f.accountNumber,
-          paymentMethod: f.paymentMethod,
-          currency: f.currency,
-        })
-      : whatsappOverdueMessage({
-          tenantName: f.tenantName,
-          unitNumber: f.unitNumber,
-          amountDue: Math.max(f.rentBalance, 0),
-          supportPhone: (await getBusinessIdentity()).phone,
-          currency: f.currency,
-        });
-    if (!f.phoneNumber) return null;
-    const digits = f.phoneNumber.replace(/\D/g, '');
-    // Kenya numbers stored as 07… normalize to 2547… for wa.me.
-    const intl = digits.startsWith('0') ? `254${digits.slice(1)}` : digits;
-    await logAudit({
-      userId: opts.userId ?? null,
-      action: 'REMINDER_WHATSAPP_COMPOSED',
-      entity: 'tenant',
-      entityId: tenantId,
-      newValue: { kind },
-    });
-    return { message: text, smsId: null, emailId: null, whatsappUrl: `https://wa.me/${intl}?text=${encodeURIComponent(text)}` };
-  }
-
-  if (channel === 'EMAIL') {
-    if (!f.email) return null;
-    const composed = composeRentStatementEmail({
-      tenantName: f.tenantName,
-      unitNumber: f.unitNumber,
-      monthName: f.monthName,
-      year: f.year,
-      previousBalance: f.previousRentBalance,
-      currentRent: f.currentRent,
-      utilitiesAmount: Math.max(f.waterBalance, 0),
-      totalDue: Math.max(f.combinedBalance, 0),
-      currency: f.currency,
-      accountNumber: f.accountNumber,
-      paymentMethod: f.paymentMethod,
-      identity,
-    });
-    const emailRow = await queueReminderEmail({
-      to: f.email,
-      subject: composed.subject,
-      html: composed.html,
-      text: composed.text,
-      tenantId,
-    });
-    await logAudit({
-      userId: opts.userId ?? null,
-      action: 'REMINDER_EMAIL_QUEUED',
-      entity: 'tenant',
-      entityId: tenantId,
-      newValue: { kind, emailId: emailRow.id },
-    });
-    return { message: composed.text, smsId: null, emailId: emailRow.id, whatsappUrl: null };
-  }
-
+  if (channel === 'WHATSAPP') return whatsappReminder(f, kind, tenantId, opts.userId ?? null);
+  if (channel === 'EMAIL') return emailReminder(f, kind, tenantId, opts.userId ?? null);
   // SMS (default)
+  return smsReminder(f, kind, tenantId, opts.userId ?? null);
+}
+
+// WHATSAPP — nothing is queued or sent: returns a wa.me click-to-chat URL
+// with the text pre-filled. The operator reviews it in WhatsApp before
+// pressing send; there is no provider cost and no unreviewed outbound.
+async function whatsappReminder(
+  f: ReminderFigures,
+  kind: ReminderKind,
+  tenantId: number,
+  userId: number | null,
+): Promise<ReminderResult | null> {
+  const text = kind === 'BALANCE_DUE'
+    ? whatsappBalanceDueMessage({
+        tenantName: f.tenantName,
+        unitNumber: f.unitNumber,
+        monthName: f.monthName,
+        year: f.year,
+        currentRent: f.currentRent,
+        previousBalance: f.previousRentBalance,
+        totalDue: Math.max(f.combinedBalance, 0),
+        accountNumber: f.accountNumber,
+        paymentMethod: f.paymentMethod,
+        currency: f.currency,
+      })
+    : whatsappOverdueMessage({
+        tenantName: f.tenantName,
+        unitNumber: f.unitNumber,
+        amountDue: Math.max(f.rentBalance, 0),
+        supportPhone: (await getBusinessIdentity()).phone,
+        currency: f.currency,
+      });
+  if (!f.phoneNumber) return null;
+  const digits = f.phoneNumber.replace(/\D/g, '');
+  // Kenya numbers stored as 07… normalize to 2547… for wa.me.
+  const intl = digits.startsWith('0') ? `254${digits.slice(1)}` : digits;
+  await logAudit({
+    userId,
+    action: 'REMINDER_WHATSAPP_COMPOSED',
+    entity: 'tenant',
+    entityId: tenantId,
+    newValue: { kind },
+  });
+  return { message: text, smsId: null, emailId: null, whatsappUrl: `https://wa.me/${intl}?text=${encodeURIComponent(text)}` };
+}
+
+// EMAIL — PENDING email_notifications row (formal statement breakdown).
+async function emailReminder(
+  f: ReminderFigures,
+  kind: ReminderKind,
+  tenantId: number,
+  userId: number | null,
+): Promise<ReminderResult | null> {
+  if (!f.email) return null;
+  const identity = { name: f.identityName, regNo: null };
+  const composed = composeRentStatementEmail({
+    tenantName: f.tenantName,
+    unitNumber: f.unitNumber,
+    monthName: f.monthName,
+    year: f.year,
+    previousBalance: f.previousRentBalance,
+    currentRent: f.currentRent,
+    utilitiesAmount: Math.max(f.waterBalance, 0),
+    totalDue: Math.max(f.combinedBalance, 0),
+    currency: f.currency,
+    accountNumber: f.accountNumber,
+    paymentMethod: f.paymentMethod,
+    identity,
+  });
+  const emailRow = await queueReminderEmail({
+    to: f.email,
+    subject: composed.subject,
+    html: composed.html,
+    text: composed.text,
+    tenantId,
+  });
+  await logAudit({
+    userId,
+    action: 'REMINDER_EMAIL_QUEUED',
+    entity: 'tenant',
+    entityId: tenantId,
+    newValue: { kind, emailId: emailRow.id },
+  });
+  return { message: composed.text, smsId: null, emailId: emailRow.id, whatsappUrl: null };
+}
+
+// SMS — PENDING sms_notifications row (manual send or auto-send).
+async function smsReminder(
+  f: ReminderFigures,
+  kind: ReminderKind,
+  tenantId: number,
+  userId: number | null,
+): Promise<ReminderResult | null> {
   if (!f.phoneNumber) return null;
   const message = kind === 'BALANCE_DUE'
     ? monthlyBalanceDueMessage({
@@ -412,7 +434,7 @@ export async function prepareReminder(
     [tenantId, f.phoneNumber, message],
   );
   await logAudit({
-    userId: opts.userId ?? null,
+    userId,
     action: 'SMS_REMINDER_QUEUED',
     entity: 'tenant',
     entityId: tenantId,

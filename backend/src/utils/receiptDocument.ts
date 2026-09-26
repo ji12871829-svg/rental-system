@@ -6,7 +6,7 @@
 // Settings edits apply immediately.
 import type { BusinessIdentity } from '../services/brandingService';
 import { MONTH_NAMES } from '../types';
-import { formatMoney, n } from './money';
+import { formatMoney, toNumber } from './money';
 
 export interface ReceiptDocument {
   receipt_number: string;
@@ -58,11 +58,11 @@ export function receiptText(r: ReceiptDocument, identity?: BusinessIdentity): st
     `Billing period: ${MONTH_NAMES[r.billing_month - 1]} ${r.billing_year}`,
     `Payment date: ${fmtDate(r.payment_date)}`,
   ];
-  if (n(r.rent_amount) > 0) lines.push(`Rent paid: ${formatMoney(n(r.rent_amount), r.currency)}`);
-  if (n(r.water_amount) > 0) lines.push(`Water paid: ${formatMoney(n(r.water_amount), r.currency)}`);
+  if (toNumber(r.rent_amount) > 0) lines.push(`Rent paid: ${formatMoney(toNumber(r.rent_amount), r.currency)}`);
+  if (toNumber(r.water_amount) > 0) lines.push(`Water paid: ${formatMoney(toNumber(r.water_amount), r.currency)}`);
   lines.push(
-    `Total paid: ${formatMoney(n(r.total_amount), r.currency)}`,
-    `Balance after payment: ${formatMoney(n(r.balance), r.currency)}`,
+    `Total paid: ${formatMoney(toNumber(r.total_amount), r.currency)}`,
+    `Balance after payment: ${formatMoney(toNumber(r.balance), r.currency)}`,
     '',
     'This receipt is proof of payment. Thank you.'
   );
@@ -111,10 +111,10 @@ export function receiptEmailHtml(r: ReceiptDocument, identity: BusinessIdentity 
       <tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px">Unit</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;text-align:right;font-weight:600">${escapeHtml(r.unit_number)}${r.unit_type ? ` (${escapeHtml(r.unit_type)})` : ''}</td></tr>
       <tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px">Billing period</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;text-align:right;font-weight:600">${MONTH_NAMES[r.billing_month - 1]} ${r.billing_year}</td></tr>
       <tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px">Payment date</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;text-align:right;font-weight:600">${fmtDate(r.payment_date)}</td></tr>
-      ${n(r.rent_amount) > 0 ? `<tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px">Rent paid</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;text-align:right;font-weight:600">${formatMoney(n(r.rent_amount), r.currency)}</td></tr>` : ''}
-      ${n(r.water_amount) > 0 ? `<tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px">Water paid</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;text-align:right;font-weight:600">${formatMoney(n(r.water_amount), r.currency)}</td></tr>` : ''}
-      <tr><td style="padding:8px 0;font-size:16px;font-weight:800;border-top:2px solid #111827">Total paid</td><td style="padding:8px 0;font-size:16px;font-weight:800;border-top:2px solid #111827;text-align:right">${formatMoney(n(r.total_amount), r.currency)}</td></tr>
-      <tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px">Balance after payment</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;text-align:right;font-weight:600">${formatMoney(n(r.balance), r.currency)}</td></tr>
+      ${toNumber(r.rent_amount) > 0 ? `<tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px">Rent paid</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;text-align:right;font-weight:600">${formatMoney(toNumber(r.rent_amount), r.currency)}</td></tr>` : ''}
+      ${toNumber(r.water_amount) > 0 ? `<tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px">Water paid</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;text-align:right;font-weight:600">${formatMoney(toNumber(r.water_amount), r.currency)}</td></tr>` : ''}
+      <tr><td style="padding:8px 0;font-size:16px;font-weight:800;border-top:2px solid #111827">Total paid</td><td style="padding:8px 0;font-size:16px;font-weight:800;border-top:2px solid #111827;text-align:right">${formatMoney(toNumber(r.total_amount), r.currency)}</td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px">Balance after payment</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;text-align:right;font-weight:600">${formatMoney(toNumber(r.balance), r.currency)}</td></tr>
     </table>
     <p style="margin-top:24px;color:#6b7280;font-size:13px">Generated ${r.generated_at ? escapeHtml(fmtDate(r.generated_at)) : escapeHtml(fmtDate(new Date()))} — this receipt is proof of payment. Thank you.</p>
     ${identityFooterHtml(identity)}

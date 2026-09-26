@@ -1,7 +1,8 @@
 // Money helpers. PostgreSQL returns NUMERIC as strings — always normalize
-// through n() before arithmetic so results are JS numbers rounded to cents.
+// through toNumber() before arithmetic so results are JS numbers rounded to
+// cents.
 
-export function n(value: unknown): number {
+export function toNumber(value: unknown): number {
   if (value === null || value === undefined || value === '') return 0;
   const num = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(num) ? num : 0;

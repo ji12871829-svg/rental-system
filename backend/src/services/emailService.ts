@@ -19,7 +19,7 @@
 import { pool, query, queryOne } from '../config/db';
 import { paginate } from './paginate';
 import type { Pagination } from '../types';
-import { getBusinessIdentity } from './brandingService';
+import { getBusinessIdentity, type BusinessIdentity } from './brandingService';
 import { env, isTest } from '../config/env';
 import { getEmailConfig, isValidEmail, sendEmail, type EmailPayload } from './emailProvider';
 import { logAudit } from './auditService';
@@ -117,6 +117,34 @@ function normalizeAttachments(attachments: EmailAttachment[] | undefined): [Emai
   return [attachments?.[0] ?? null, attachments?.[1] ?? null];
 }
 
+// Reads the row's two attachment slots back into payload shape. Rows that
+// predate attachments fall through empty; the caller decides on fallbacks.
+function attachmentsFromRow(row: {
+  attachment_name: string | null;
+  attachment_content: string | null;
+  attachment_content_type: string | null;
+  attachment2_name: string | null;
+  attachment2_content: string | null;
+  attachment2_content_type: string | null;
+}): EmailAttachment[] {
+  const attachments: EmailAttachment[] = [];
+  if (row.attachment_name && row.attachment_content) {
+    attachments.push({
+      filename: row.attachment_name,
+      content: row.attachment_content,
+      contentType: row.attachment_content_type ?? 'application/json',
+    });
+  }
+  if (row.attachment2_name && row.attachment2_content) {
+    attachments.push({
+      filename: row.attachment2_name,
+      content: row.attachment2_content,
+      contentType: row.attachment2_content_type ?? 'application/json',
+    });
+  }
+  return attachments;
+}
+
 // Validates the recipient and creates the PENDING row. The single place where
 // an email enters the queue — kind adapters never write email_notifications
 // themselves.
@@ -183,21 +211,7 @@ export async function sendEmailNotification(id: number): Promise<EmailRow> {
     throw badRequest(`This email was already ${row.status.toLowerCase()} — only pending emails can be sent.`);
   }
 
-  const attachments: { filename: string; content: string; contentType: string }[] = [];
-  if (row.attachment_name && row.attachment_content) {
-    attachments.push({
-      filename: row.attachment_name,
-      content: row.attachment_content,
-      contentType: row.attachment_content_type ?? 'application/json',
-    });
-  }
-  if (row.attachment2_name && row.attachment2_content) {
-    attachments.push({
-      filename: row.attachment2_name,
-      content: row.attachment2_content,
-      contentType: row.attachment2_content_type ?? 'application/json',
-    });
-  }
+  const attachments = attachmentsFromRow(row);
   if (attachments.length === 0 && row.receipt_number) {
     attachments.push({ filename: `${row.receipt_number}.html`, content: row.body_html, contentType: 'text/html' });
   }
@@ -396,6 +410,29 @@ export interface PreparedStaffRequestEmail {
   status: 'PENDING' | 'SENT' | 'FAILED';
 }
 
+// The operator-mail pattern shared by prepareForUnmatchedPayment,
+// prepareForStaleUnmatchedPayment, and prepareForStaffRequest: the recipient
+// is the business branding general email, and when it is unset or invalid the
+// alert is skipped silently (the matching admin page remains the source of
+// truth — the email is a convenience, not a dependency). Composition is
+// delegated to the caller; persistence always funnels through queueEmail.
+async function queueOperatorEmail(
+  compose: (identity: BusinessIdentity) => { subject: string; html: string; text: string }
+): Promise<EmailRow | null> {
+  const identity = await getBusinessIdentity();
+  const to = identity.email?.trim() ?? '';
+  if (!to || !isValidEmail(to)) return null;
+
+  const composed = compose(identity);
+  const row = await queueEmail({
+    to,
+    subject: composed.subject,
+    html: composed.html,
+    text: composed.text,
+  });
+  return row;
+}
+
 // Creates a PENDING email alerting the operator that an incoming M-Pesa
 // payment could not be matched (or matched ambiguously) and is being HELD for
 // review. Same operational-mail shape as prepareForStaffRequest: recipient is
@@ -413,18 +450,10 @@ export async function prepareForUnmatchedPayment(opts: {
   currency: string;
   reason: string | null;
 }): Promise<{ id: number; email_address: string } | null> {
-  const identity = await getBusinessIdentity();
-  const to = identity.email?.trim() ?? '';
-  if (!to || !isValidEmail(to)) return null;
-
-  const composed = composeUnmatchedPaymentEmail({ ...opts, identity });
-  const row = await queueEmail({
-    to,
-    subject: composed.subject,
-    html: composed.html,
-    text: composed.text,
+  return queueOperatorEmail((identity) => {
+    const composed = composeUnmatchedPaymentEmail({ ...opts, identity });
+    return { subject: composed.subject, html: composed.html, text: composed.text };
   });
-  return { id: row.id, email_address: row.email_address };
 }
 
 // Escalation twin of prepareForUnmatchedPayment: a payment that has been in
@@ -441,18 +470,10 @@ export async function prepareForStaleUnmatchedPayment(opts: {
   currency: string;
   reason: string | null;
 }): Promise<{ id: number; email_address: string } | null> {
-  const identity = await getBusinessIdentity();
-  const to = identity.email?.trim() ?? '';
-  if (!to || !isValidEmail(to)) return null;
-
-  const composed = composeStaleUnmatchedPaymentEmail({ ...opts, identity });
-  const row = await queueEmail({
-    to,
-    subject: composed.subject,
-    html: composed.html,
-    text: composed.text,
+  return queueOperatorEmail((identity) => {
+    const composed = composeStaleUnmatchedPaymentEmail({ ...opts, identity });
+    return { subject: composed.subject, html: composed.html, text: composed.text };
   });
-  return { id: row.id, email_address: row.email_address };
 }
 
 // Creates a PENDING email notifying the operator that a public landlord/agent
@@ -466,18 +487,10 @@ export async function prepareForStaffRequest(opts: {
   email: string;
   phone: string | null;
 }): Promise<PreparedStaffRequestEmail | null> {
-  const identity = await getBusinessIdentity();
-  const to = identity.email?.trim() ?? '';
-  if (!to || !isValidEmail(to)) return null;
-
-  const composed = composeStaffRequestEmail({ name: opts.name, email: opts.email, phone: opts.phone, identity });
-  const row = await queueEmail({
-    to,
-    subject: composed.subject,
-    html: composed.html,
-    text: composed.text,
-  });
-  return { id: row.id, email_address: row.email_address, subject: row.subject, status: row.status };
+  const queued = await queueOperatorEmail((identity) =>
+    composeStaffRequestEmail({ name: opts.name, email: opts.email, phone: opts.phone, identity }));
+  if (!queued) return null;
+  return { id: queued.id, email_address: queued.email_address, subject: queued.subject, status: queued.status };
 }
 
 // Creates a PENDING email carrying a tenant's yearly statement PDF. The

@@ -22,6 +22,7 @@ import { getBusinessIdentity, getPaybillInstructions } from './brandingService';
 import { logAudit } from './auditService';
 import { tenantStatementPdf } from './financeService';
 import { conflict, forbidden, notFound, unauthorized } from '../utils/httpError';
+import { kenyaDateParts } from '../utils/kenyaTime';
 
 // Generated when staff issue access without supplying a password. Formatted
 // for reading aloud over the phone: groups, no visually ambiguous characters
@@ -338,25 +339,14 @@ export async function getPortalPaymentTimeline(tenantId: number, limit = 8): Pro
       amount: Number(row.amount),
       stage,
       updatedAt: (row.updated_at ?? row.created_at).toISOString(),
-      payDate: kenyaDay(new Date(row.created_at)),
+      // Kenya-calendar YYYY-MM-DD (same rule the ledger uses).
+      payDate: kenyaDateParts(new Date(row.created_at)).date,
       allocatedMonth: row.billing_month,
       allocatedYear: row.billing_year,
       receiptNumber: row.receipt_number,
       pushExpiresInSeconds: stage === 'CONFIRMING' ? 60 : null,
     };
   });
-}
-
-/** Kenya-calendar YYYY-MM-DD for a timestamp (same rule the ledger uses). */
-function kenyaDay(date: Date): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Africa/Nairobi',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date);
-  const v = Object.fromEntries(parts.filter((p) => p.type !== 'literal').map((p) => [p.type, p.value]));
-  return `${v.year}-${v.month}-${v.day}`;
 }
 
 export async function getPortalWaterReadings(tenantId: number, limit = 12): Promise<unknown[]> {

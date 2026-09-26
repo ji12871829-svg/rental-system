@@ -2,7 +2,7 @@ import { query, queryOne } from '../config/db';
 import { paginate } from './paginate';
 import { MONTH_NAMES, type Pagination } from '../types';
 import { notFound } from '../utils/httpError';
-import { n } from '../utils/money';
+import { toNumber } from '../utils/money';
 import { logAudit } from './auditService';
 
 export interface ExpenseInput {
@@ -99,7 +99,7 @@ export async function deleteExpense(id: number, userId: number): Promise<void> {
 
 export async function expenseSummary(year: number): Promise<unknown> {
   const targetYear = year;
-  const total = n((await queryOne<{ v: string }>(
+  const total = toNumber((await queryOne<{ v: string }>(
     `SELECT COALESCE(SUM(amount), 0)::text AS v FROM expenses WHERE EXTRACT(YEAR FROM expense_date)::int = $1`, [targetYear]
   ))?.v);
   const byCategory = await query<{ category: string; total: string }>(
@@ -117,7 +117,7 @@ export async function expenseSummary(year: number): Promise<unknown> {
   return {
     reportingYear: targetYear,
     totalExpenses: total,
-    byCategory: byCategory.map((r) => ({ category: r.category, total: n(r.total) })),
-    byMonth: byMonth.map((r) => ({ month: r.month, monthName: MONTH_NAMES[r.month - 1], total: n(r.total) })),
+    byCategory: byCategory.map((r) => ({ category: r.category, total: toNumber(r.total) })),
+    byMonth: byMonth.map((r) => ({ month: r.month, monthName: MONTH_NAMES[r.month - 1], total: toNumber(r.total) })),
   };
 }

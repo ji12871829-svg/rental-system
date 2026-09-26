@@ -21,6 +21,7 @@ import { query, queryOne } from '../config/db';
 import { isTest } from '../config/env';
 import { prepareForStaleUnmatchedPayment, sendEmailNotification } from './emailService';
 import { getSettings } from './settingsService';
+import { nairobiTimeLabel } from '../utils/kenyaTime';
 
 export const STALE_THRESHOLD_MINUTES = 60;
 
@@ -34,19 +35,6 @@ interface StaleRow {
   status: 'UNMATCHED' | 'AMBIGUOUS';
   error_message: string | null;
   created_at: Date;
-}
-
-function nairobiTimeLabel(date: Date): string {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Africa/Nairobi',
-    hour: '2-digit',
-    minute: '2-digit',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  }).formatToParts(date);
-  const v = Object.fromEntries(parts.filter((p) => p.type !== 'literal').map((p) => [p.type, p.value]));
-  return `${v.hour}:${v.minute}, ${v.day} ${v.month} ${v.year}`;
 }
 
 /**

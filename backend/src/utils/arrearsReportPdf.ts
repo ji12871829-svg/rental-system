@@ -4,7 +4,7 @@
 // total outstanding, with year totals and the business identity footer.
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import type { BusinessIdentity } from '../services/brandingService';
-import { formatMoney, n } from './money';
+import { formatMoney, toNumber } from './money';
 import { drawLogo, embedLogo } from './pdfLogo';
 import { fmtDate } from './receiptDocument';
 
@@ -115,7 +115,7 @@ export async function arrearsReportPdfBytes(
   const cellText = (r: ArrearsPdfRow, key: string): string => {
     if (key === 'phone') return r.phoneNumber?.trim() || '—';
     if (key === 'monthsInArrears') return String(r.monthsInArrears ?? 0);
-    if (MONEY_KEYS.has(key)) return formatMoney(n((r as unknown as Record<string, number | string>)[key]));
+    if (MONEY_KEYS.has(key)) return formatMoney(toNumber((r as unknown as Record<string, number | string>)[key]));
     return String((r as unknown as Record<string, unknown>)[key] ?? '');
   };
 
@@ -151,9 +151,9 @@ export async function arrearsReportPdfBytes(
   y -= 16;
 
   // --- Rows (sorted by total outstanding desc — worst first) ----------------------
-  const sorted = [...data.rows].sort((a, b) => n(b.totalOutstanding) - n(a.totalOutstanding));
+  const sorted = [...data.rows].sort((a, b) => toNumber(b.totalOutstanding) - toNumber(a.totalOutstanding));
   for (const r of sorted) {
-    const owed = n(r.totalOutstanding) > 0;
+    const owed = toNumber(r.totalOutstanding) > 0;
     const owedColor = owed ? RED : INK;
     for (const c of COLS) {
       const text = cellText(r, c.key);
@@ -202,7 +202,7 @@ export async function arrearsReportPdfBytes(
   y -= 16;
   draw(page, `Totals — ${data.rows.length} occupied units`, { y, size: 9, font: bold });
   const sum = (key: 'rentBalance' | 'waterBalance' | 'totalOutstanding'): number =>
-    data.rows.reduce((s, r) => s + n((r as unknown as Record<string, number | string>)[key]), 0);
+    data.rows.reduce((s, r) => s + toNumber((r as unknown as Record<string, number | string>)[key]), 0);
   const totals: [string, number][] = [
     ['rentBalance', sum('rentBalance')],
     ['waterBalance', sum('waterBalance')],

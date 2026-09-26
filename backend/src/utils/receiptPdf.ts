@@ -19,7 +19,7 @@ export async function mergePdfBytes(pdfs: Uint8Array[]): Promise<Uint8Array> {
 }
 import type { BusinessIdentity } from '../services/brandingService';
 import { MONTH_NAMES } from '../types';
-import { formatMoney, n } from './money';
+import { formatMoney, toNumber } from './money';
 import { drawLogo, embedLogo } from './pdfLogo';
 import { fmtDate, receiptTypeLabel, type ReceiptDocument } from './receiptDocument';
 
@@ -83,7 +83,7 @@ export async function receiptPdfBytes(
     y -= o.step ?? 20;
   };
 
-  const money = (v: string | number): string => formatMoney(n(v), r.currency);
+  const money = (v: string | number): string => formatMoney(toNumber(v), r.currency);
 
   let y = PAGE_H - 56;
 
@@ -117,8 +117,8 @@ export async function receiptPdfBytes(
   y -= 24;
 
   // --- Amounts -------------------------------------------------------------
-  if (n(r.rent_amount) > 0) row('Rent paid', money(r.rent_amount));
-  if (n(r.water_amount) > 0) row('Water paid', money(r.water_amount));
+  if (toNumber(r.rent_amount) > 0) row('Rent paid', money(r.rent_amount));
+  if (toNumber(r.water_amount) > 0) row('Water paid', money(r.water_amount));
 
   page.drawLine({ start: { x: MARGIN, y: y + 14 }, end: { x: MARGIN + W, y: y + 14 }, thickness: 1.5, color: INK });
   row('Total paid', money(r.total_amount), { boldValue: true, step: 24 });

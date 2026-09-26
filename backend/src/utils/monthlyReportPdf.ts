@@ -5,7 +5,7 @@
 // footer, so the document matches what the app displays.
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import type { BusinessIdentity } from '../services/brandingService';
-import { formatMoney, n } from './money';
+import { formatMoney, toNumber } from './money';
 import { drawLogo, embedLogo } from './pdfLogo';
 import { fmtDate } from './receiptDocument';
 
@@ -120,9 +120,9 @@ export async function monthlyReportPdfBytes(
     y: number,
     font: PDFFont = regular
   ) => {
-    const text = formatMoney(n(value));
+    const text = formatMoney(toNumber(value));
     const i = MONEY_COLS.indexOf(key);
-    const color = OUTSTANDING_KEYS.has(key) && n(value) > 0 ? RED : INK;
+    const color = OUTSTANDING_KEYS.has(key) && toNumber(value) > 0 ? RED : INK;
     draw(page, text, { x: rightX(page, text, 8.5, font, moneyColX(i)), y, size: 8.5, font, color });
   };
 
@@ -159,13 +159,13 @@ export async function monthlyReportPdfBytes(
   // --- Monthly rows -------------------------------------------------------------
   const totals = {} as Record<(typeof MONEY_COLS)[number], number>;
   for (const key of MONEY_COLS) {
-    totals[key] = data.rows.reduce((s, r) => s + n(r[key]), 0);
+    totals[key] = data.rows.reduce((s, r) => s + toNumber(r[key]), 0);
   }
 
   for (const r of data.rows) {
     draw(page, r.monthName ?? `Month ${r.month}`, { y, size: 8.5, font: bold });
     MONEY_COLS.forEach((key) => cell(page, key, r[key], y));
-    const pct = `${n(r.collectionPercentage).toLocaleString('en-KE', { maximumFractionDigits: 1 })}%`;
+    const pct = `${toNumber(r.collectionPercentage).toLocaleString('en-KE', { maximumFractionDigits: 1 })}%`;
     draw(page, pct, { x: rightX(page, pct, 8.5, regular, pctX), y, size: 8.5 });
     y -= 18;
   }

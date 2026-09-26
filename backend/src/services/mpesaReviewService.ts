@@ -5,6 +5,7 @@ import { logAudit } from './auditService';
 import { badRequest, notFound } from '../utils/httpError';
 import { normalizePhoneNumber } from './smsProvider';
 import { postRentWithAllocation } from './mpesaService';
+import { kenyaDateParts } from '../utils/kenyaTime';
 
 /**
  * The likely tenant for an unmatched payment, identified by the sender's
@@ -97,12 +98,10 @@ export async function resolveMpesaReviewTransaction(
   if (!tenant || tenant.status !== 'ACTIVE') throw badRequest('Selected tenant is not active.');
   if (kind === 'WATER' && !tenant.water_enabled) throw badRequest('Water billing is disabled for the selected unit.');
 
-  const date = new Date(transaction.transaction_date);
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
-  const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
-  const paymentDate = `${values.year}-${values.month}-${values.day}`;
-  const month = Number(values.month);
-  const year = Number(values.year);
+  const billing = kenyaDateParts(new Date(transaction.transaction_date));
+  const paymentDate = billing.date;
+  const month = billing.month;
+  const year = billing.year;
   let paymentId: number;
   if (kind === 'WATER') {
     const result = await createWaterPayment({ tenantId, paymentDate, billingMonth: month, billingYear: year, amount: Number(transaction.amount), paymentMethod: 'M_PESA', notes: `Manually resolved M-Pesa C2B transaction ${transaction.transaction_id}.` }, userId) as { payment: { id: number } };

@@ -4,7 +4,7 @@ import { MONTH_NAMES, type Pagination } from '../types';
 import { balanceDue, paymentStatus } from '../utils/businessRules';
 import { notFound, unprocessable } from '../utils/httpError';
 import { csvCell } from '../utils/csv';
-import { n, round2 } from '../utils/money';
+import { toNumber, round2 } from '../utils/money';
 import { logAudit } from './auditService';
 import { createReceipt } from './receiptService';
 import { autoSendEnabled, dispatchAutoSend, prepareForReceipt } from './smsService';
@@ -69,7 +69,7 @@ export async function listRentPayments(filters: RentPaymentFilters): Promise<{ r
      FROM rent_payments
      GROUP BY tenant_id, billing_month, billing_year`
   );
-  const paidByKey = new Map(paidRows.map((r) => [r.tenant_id + ":" + r.billing_month + ":" + r.billing_year, n(r.paid)]));
+  const paidByKey = new Map(paidRows.map((r) => [r.tenant_id + ":" + r.billing_month + ":" + r.billing_year, toNumber(r.paid)]));
 
   const { rows, pagination } = await paginate<Record<string, unknown>>({
     selectSql: `rp.*, t.full_name AS tenant_name, t.phone_number, u.unit_number, u.monthly_rent`,
@@ -85,7 +85,7 @@ export async function listRentPayments(filters: RentPaymentFilters): Promise<{ r
 
   const enriched = rows.map((row: any) => {
     const paid = paidByKey.get(row.tenant_id + ":" + row.billing_month + ":" + row.billing_year) ?? 0;
-    const expected = n(row.monthly_rent);
+    const expected = toNumber(row.monthly_rent);
     return Object.assign({}, row, {
       expectedRent: expected,
       totalPaidForMonth: round2(paid),
@@ -116,7 +116,7 @@ export async function createRentPayment(input: RentPaymentInput, userId: number 
     [unitId]
   );
   if (!unit) throw notFound('Unit not found.');
-  const expectedRent = n(unit.monthly_rent);
+  const expectedRent = toNumber(unit.monthly_rent);
 
   // The prepared notification's id escapes the transaction closure so the
   // dispatch can happen strictly after commit.
@@ -142,7 +142,7 @@ export async function createRentPayment(input: RentPaymentInput, userId: number 
        WHERE tenant_id = $1 AND billing_month = $2 AND billing_year = $3`,
       [input.tenantId, input.billingMonth, input.billingYear]
     );
-    const paid = n(totals.rows[0].paid);
+    const paid = toNumber(totals.rows[0].paid);
     const balance = balanceDue(expectedRent, paid);
 
     const receipt = await createReceipt(
@@ -315,8 +315,8 @@ export async function monthlyRentSummary(year: number): Promise<RentMonthlySumma
   const unitCount = Number(totalUnits?.count ?? 0);
 
   return Promise.all(rows.map(async (r) => {
-    const expected = n(r.expected);
-    const collected = n(r.collected);
+    const expected = toNumber(r.expected);
+    const collected = toNumber(r.collected);
     const occupied = Number(r.occupied_units);
 
     // Per-tenant status counts for the month.
@@ -335,7 +335,7 @@ export async function monthlyRentSummary(year: number): Promise<RentMonthlySumma
     let partialTenants = 0;
     let unpaidTenants = 0;
     for (const s of statuses) {
-      const st = paymentStatus(n(s.expected), n(s.paid));
+      const st = paymentStatus(toNumber(s.expected), toNumber(s.paid));
       if (st === 'PAID' || st === 'OVERPAID') paidTenants += 1;
       else if (st === 'PARTIAL') partialTenants += 1;
       else unpaidTenants += 1;

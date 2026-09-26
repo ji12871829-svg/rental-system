@@ -3,7 +3,8 @@ import { KeyRound, Loader2, MessageSquare, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { DataRequestLetterModal, type LetterData } from '../components/DataRequestLetter';
-import { api, authenticatedFetch, qs } from '../lib/api';
+import { api, qs } from '../lib/api';
+import { downloadBlob } from '../lib/download';
 import { useAuth } from '../lib/auth';
 import { money, formatDate } from '../lib/format';
 
@@ -449,19 +450,11 @@ function PrivacyRequestModal({ request, onClose, onDone, onErased, onLetter }: {
         onLetter(res.data);
       } else {
         const params = new URLSearchParams({ requester: requester.trim(), reason: reason.trim() });
-        const res = await authenticatedFetch(
-          `/api/tenants/${request.tenant.id}/data-export${request.action === 'csv' ? '.csv' : ''}?${params}`
+        await downloadBlob(
+          `/api/tenants/${request.tenant.id}/data-export${request.action === 'csv' ? '.csv' : ''}?${params}`,
+          `tenant-${request.tenant.id}-personal-data.${request.action}`,
+          (status) => `Export failed (${status}).`,
         );
-        if (!res.ok) {
-          const body = await res.json().catch(() => null);
-          throw new Error(body?.message ?? `Export failed (${res.status}).`);
-        }
-        const blob = await res.blob();
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `tenant-${request.tenant.id}-personal-data.${request.action}`;
-        a.click();
-        URL.revokeObjectURL(a.href);
         onDone(`Personal data export (${request.action.toUpperCase()}) downloaded and logged in the privacy register.`);
       }
     } catch (err) {

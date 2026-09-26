@@ -13,7 +13,7 @@ import { query } from '../config/db';
 import { MONTH_NAMES } from '../types';
 import { gsm7EffectiveLength, SMS_TWO_SEGMENT_GSM7_LIMIT } from '../utils/businessRules';
 import { notFound } from '../utils/httpError';
-import { n, round2 } from '../utils/money';
+import { toNumber, round2 } from '../utils/money';
 import { getBusinessIdentity } from './brandingService';
 import { monthlyRentSummary } from './rentService';
 import { getSettings } from './settingsService';
@@ -74,9 +74,9 @@ export async function ownerRemittanceFigures(year: number, month: number): Promi
   const rentCollected = round2(r.rentCollected);
   const waterCollected = round2(w?.waterCollected ?? 0);
   const totalCollected = round2(rentCollected + waterCollected);
-  const feePercent = settings.management_fee_percent !== null ? n(settings.management_fee_percent) : null;
+  const feePercent = settings.management_fee_percent !== null ? toNumber(settings.management_fee_percent) : null;
   const managementFee = feePercent !== null ? round2((totalCollected * feePercent) / 100) : 0;
-  const expensesTotal = round2(expenses.reduce((sum, e) => sum + n(e.total), 0));
+  const expensesTotal = round2(expenses.reduce((sum, e) => sum + toNumber(e.total), 0));
   // Net remittance: collections minus the operator's fee minus property
   // expenses the operator covered. Never below zero in the message (an
   // overdrawn month shows 0 and the email breakdown tells the story).
@@ -103,7 +103,7 @@ export async function ownerRemittanceFigures(year: number, month: number): Promi
     managementFeePercent: feePercent,
     managementFee,
     expensesTotal,
-    expensesTop: expenses.slice(0, 4).map((e) => ({ category: e.category, amount: n(e.total) })),
+    expensesTop: expenses.slice(0, 4).map((e) => ({ category: e.category, amount: toNumber(e.total) })),
     netPayable,
     businessName: identity.name,
   };
