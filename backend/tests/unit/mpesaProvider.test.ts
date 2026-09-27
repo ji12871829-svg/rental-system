@@ -53,7 +53,22 @@ describe('M-Pesa provider adapter', () => {
     expect(result.checkoutRequestId).toMatch(/^MOCK-CHECKOUT-/);
   });
 
+  test('accepts a blank account reference (payer skipped the field)', () => {
+    const result = parseC2bCallback({
+      TransID: 'BLK123',
+      TransAmount: '1000',
+      BillRefNumber: '',
+      TransTime: '20260911123045',
+      MSISDN: '0711000002',
+    });
+    expect(result.accountReference).toBe('');
+  });
+
   test('rejects malformed C2B callbacks', () => {
-    expect(() => parseC2bCallback({ TransID: 'QWE123', TransAmount: 4000 })).toThrow('account reference');
+    // A missing account reference is tolerated (blank → phone fallback /
+    // manual review); a missing transaction ID never is.
+    expect(() => parseC2bCallback({ TransAmount: 4000, BillRefNumber: '1', TransTime: '20260911123045' })).toThrow('transaction ID');
+    expect(() => parseC2bCallback({ TransID: 'QWE123', TransAmount: 0, BillRefNumber: '1', TransTime: '20260911123045' })).toThrow('greater than zero');
+    expect(() => parseC2bCallback({ TransID: 'QWE123', TransAmount: 4000, BillRefNumber: '1', TransTime: 'nope' })).toThrow('transaction date');
   });
 });

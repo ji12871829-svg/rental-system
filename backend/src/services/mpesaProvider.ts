@@ -12,9 +12,14 @@ export interface MpesaPaymentInput {
   merchantRequestId?: string;
 }
 
+// A BLANK reference is legal (paybill UIs leave the account field optional and
+// tenants routinely skip it): it parses as RENT with an empty unit, and the
+// pipeline identifies the payer by sender phone or parks the payment for
+// manual review instead of rejecting the money. Only a water-suffixed ref with
+// no unit stays a parse error — a metered-unit payment cannot be guessed.
 export function parsePaybillReference(reference: string): { normalizedUnitNumber: string; kind: 'RENT' | 'WATER' } {
   const normalized = reference.trim().toUpperCase();
-  if (!normalized) throw new Error('M-Pesa account reference is required.');
+  if (!normalized) return { normalizedUnitNumber: '', kind: 'RENT' };
   if (normalized.endsWith('-WATER')) {
     const unit = normalized.slice(0, -'-WATER'.length).trim();
     if (!unit) throw new Error('M-Pesa water reference has no unit number.');
@@ -49,6 +54,12 @@ function requiredString(value: unknown, field: string): string {
   return String(value).trim();
 }
 
+/** Optional string field: trimmed, blank/missing → ''. */
+function optionalString(value: unknown): string {
+  if (typeof value !== 'string' && typeof value !== 'number') return '';
+  return String(value).trim();
+}
+
 function positiveAmount(value: unknown): number {
   const amount = Number(value);
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('M-Pesa callback amount must be greater than zero.');
@@ -69,7 +80,10 @@ export function parseC2bCallback(payload: any): MpesaPaymentInput {
   return {
     transactionId: requiredString(payload?.TransID ?? payload?.TransactionID, 'transaction ID'),
     amount: positiveAmount(payload?.TransAmount ?? payload?.Amount),
-    accountReference: requiredString(payload?.BillRefNumber ?? payload?.AccountReference, 'account reference'),
+    // Blank account reference (payer skipped the paybill field) is accepted:
+    // processPaybillPayment matches by sender phone or parks the row for
+    // manual review. Rejecting here would bounce money the property received.
+    accountReference: optionalString(payload?.BillRefNumber ?? payload?.AccountReference),
     transactionDate: parseTransactionDate(payload?.TransTime ?? payload?.TransactionDate),
     phoneNumber: normalizePhoneNumber(String(payload?.MSISDN ?? payload?.PhoneNumber ?? '')),
     rawPayload: payload,

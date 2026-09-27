@@ -9,11 +9,13 @@ describe('PayBill reference parsing', () => {
     expect(parsePaybillReference('a-204-water')).toEqual({ normalizedUnitNumber: 'A-204', kind: 'WATER' });
   });
 
-  it('rejects an empty water unit', () => {
-    expect(() => parsePaybillReference(' -WATER ')).toThrow('no unit number');
+  it('treats a blank reference as a rent payment with no unit (phone fallback / manual review)', () => {
+    // Tenants routinely leave the paybill account field empty; the money is
+    // still received, so it must not be a parse error.
+    expect(parsePaybillReference('   ')).toEqual({ normalizedUnitNumber: '', kind: 'RENT' });
   });
 
-  it('rejects an empty reference', () => {
-    expect(() => parsePaybillReference('   ')).toThrow('required');
+  it('rejects an empty water unit', () => {
+    expect(() => parsePaybillReference(' -WATER ')).toThrow('no unit number');
   });
 });

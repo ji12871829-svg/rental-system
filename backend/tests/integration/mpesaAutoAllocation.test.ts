@@ -267,4 +267,61 @@ describe('M-Pesa auto-allocation (rent sent without the portal)', () => {
     const stored = await query<{ status: string }>(`SELECT status FROM mpesa_transactions WHERE transaction_id = $1`, [transId]);
     expect(stored[0]?.status).toBe('UNMATCHED');
   });
+
+  it('books a BLANK-reference payment by sender phone (tenant skipped the account field)', async () => {
+    // The old pipeline rejected blank references before they could even be
+    // stored; now the money must land and post against the phone's tenant.
+    const tenantId = await tenantIdForUnit('1');
+    const arrears = await rentArrearsForYear(tenantId, 2026);
+    const oldest = arrears[0];
+    const transId = `BLNK${Date.now()}`;
+    created.push(transId);
+
+    const res = await request(app)
+      .post('/api/mpesa/c2b/confirm')
+      .send(confirmBody(transId, {
+        TransAmount: String(oldest.balance),
+        BillRefNumber: '',
+        MSISDN: '254711000001', // Peter Otieno (unit 1) — unique in the fixture
+      }));
+    expect(res.status).toBe(200);
+    expect(res.body.ResultCode).toBe(0);
+
+    const payments = await paymentsFromTrans(transId);
+    expect(payments).toHaveLength(1);
+    expect(payments[0].billing_month).toBe(oldest.month);
+    expect(payments[0].notes ?? '').toContain('blank');
+    expect(payments[0].notes ?? '').toContain('matched by sender phone number');
+
+    const stored = await query<{ status: string; account_reference: string }>(
+      `SELECT status, account_reference FROM mpesa_transactions WHERE transaction_id = $1`,
+      [transId]
+    );
+    expect(stored[0]?.status).toBe('POSTED');
+    expect(stored[0]?.account_reference).toBe('');
+  });
+
+  it('accepts a blank-reference payment from an unknown phone and parks it for review', async () => {
+    // A blank ref from an unrecognized number must still land (200) as a
+    // visible UNMATCHED row — not a 400 that makes Daraja retry forever while
+    // the payment stays invisible.
+    const transId = `NOID${Date.now()}`;
+    created.push(transId);
+
+    const res = await request(app)
+      .post('/api/mpesa/c2b/confirm')
+      .send(confirmBody(transId, { BillRefNumber: '', MSISDN: '254700000999' }));
+    expect(res.status).toBe(200);
+    expect(res.body.ResultCode).toBe(0);
+    expect(res.body.ResultDesc).toContain('manual review');
+
+    const payments = await paymentsFromTrans(transId);
+    expect(payments).toHaveLength(0);
+    const stored = await query<{ status: string; error_message: string | null }>(
+      `SELECT status, error_message FROM mpesa_transactions WHERE transaction_id = $1`,
+      [transId]
+    );
+    expect(stored[0]?.status).toBe('UNMATCHED');
+    expect(stored[0]?.error_message ?? '').toContain('blank account reference');
+  });
 });

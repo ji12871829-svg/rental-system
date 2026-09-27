@@ -271,17 +271,28 @@ export async function processPaybillPayment(input: MpesaPaymentInput): Promise<{
   if (!stored) throw new Error('Could not store M-Pesa transaction.');
   if (stored.status === 'POSTED') return { status: 'DUPLICATE', tenantId: stored.tenant_id ?? undefined, paymentId: stored.rent_payment_id ?? undefined };
 
-  let tenants = await query<{ id: number; unit_id: number; unit_number: string; status: string; water_enabled: boolean }>(
-    `SELECT t.id, t.unit_id, u.unit_number, t.status, u.water_enabled
-     FROM tenants t JOIN units u ON u.id = t.unit_id
-     WHERE UPPER(TRIM(u.unit_number)) = $1 AND t.status = 'ACTIVE'`,
-    [parsed.normalizedUnitNumber]
-  );
+  // Persist the raw collection BEFORE matching: even when nothing identifies
+  // the payer, the money must land in the review queue. Rejecting here would
+  // make Daraja retry forever while the payment never becomes visible.
+  if (stored.account_reference.trim() !== input.accountReference.trim()) {
+    await query(`UPDATE mpesa_transactions SET account_reference = $2 WHERE id = $1`, [stored.id, input.accountReference.trim()]);
+  }
+
+  const unitMatch = parsed.normalizedUnitNumber
+    ? await query<{ id: number; unit_id: number; unit_number: string; status: string; water_enabled: boolean }>(
+        `SELECT t.id, t.unit_id, u.unit_number, t.status, u.water_enabled
+         FROM tenants t JOIN units u ON u.id = t.unit_id
+         WHERE UPPER(TRIM(u.unit_number)) = $1 AND t.status = 'ACTIVE'`,
+        [parsed.normalizedUnitNumber]
+      )
+    : [];
+  let tenants = unitMatch;
   let provenance = '';
   if (tenants.length === 0 && parsed.kind === 'RENT') {
-    // The reference didn't name a unit — fall back to the sender's phone
-    // number. Rent only: a water payment belongs to a specific metered unit,
-    // so a wrong reference there must go to manual review, not a guess.
+    // The reference named no unit (or the payer left it blank) — fall back to
+    // the sender's phone number. A water-suffixed reference still never
+    // phone-matches: a water payment belongs to a specific metered unit, so a
+    // wrong reference there must go to manual review, not a guess.
     const byPhone = await tenantBySenderPhone(input.phoneNumber);
     if (byPhone) {
       tenants = await query<{ id: number; unit_id: number; unit_number: string; status: string; water_enabled: boolean }>(
@@ -290,11 +301,15 @@ export async function processPaybillPayment(input: MpesaPaymentInput): Promise<{
          WHERE t.id = $1 AND t.status = 'ACTIVE'`,
         [byPhone.id]
       );
-      provenance = ` Account reference "${parsed.normalizedUnitNumber}" did not name a unit; tenant matched by sender phone number.`;
+      provenance = parsed.normalizedUnitNumber
+        ? ` Account reference "${parsed.normalizedUnitNumber}" did not name a unit; tenant matched by sender phone number.`
+        : ' The payer left the account reference blank; tenant matched by sender phone number.';
     }
   }
   if (tenants.length === 0) {
-    const reason = `No active tenant matched unit reference ${parsed.normalizedUnitNumber}.`;
+    const reason = parsed.normalizedUnitNumber
+      ? `No active tenant matched unit reference ${parsed.normalizedUnitNumber}.`
+      : 'No active tenant matched the blank account reference (sender phone not recognized).';
     await query(`UPDATE mpesa_transactions SET status = 'UNMATCHED', error_message = $2 WHERE id = $1`, [stored.id, reason]);
     await notifyOperatorOfUnmatched({
       status: 'UNMATCHED',
@@ -309,7 +324,9 @@ export async function processPaybillPayment(input: MpesaPaymentInput): Promise<{
     return { status: 'UNMATCHED', reason };
   }
   if (tenants.length !== 1) {
-    const reason = `Multiple active tenants matched unit reference ${parsed.normalizedUnitNumber}.`;
+    const reason = parsed.normalizedUnitNumber
+      ? `Multiple active tenants matched unit reference ${parsed.normalizedUnitNumber}.`
+      : 'Multiple active tenants matched the blank account reference by sender phone.';
     await query(`UPDATE mpesa_transactions SET status = 'AMBIGUOUS', error_message = $2 WHERE id = $1`, [stored.id, reason]);
     await notifyOperatorOfUnmatched({
       status: 'AMBIGUOUS',
