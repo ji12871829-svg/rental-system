@@ -13,6 +13,7 @@ import { query } from '../config/db';
 import { MONTH_NAMES } from '../types';
 import { gsm7EffectiveLength, SMS_TWO_SEGMENT_GSM7_LIMIT } from '../utils/businessRules';
 import { notFound } from '../utils/httpError';
+import { escapeHtml as escape } from '../utils/html';
 import { toNumber, round2 } from '../utils/money';
 import { getBusinessIdentity } from './brandingService';
 import { monthlyRentSummary } from './rentService';
@@ -181,12 +182,6 @@ export function composeOwnerRemittanceEmail(f: OwnerRemittanceFigures, periodEnd
   ].join('\n');
 
   return { subject, html: emailFrame(bodyHtml, f.businessName), text };
-}
-
-// Escape helper for the few interpolated strings in the html body (identical
-// rules to emailTemplates.escapeHtml, kept local to avoid widening exports).
-function escape(value: string): string {
-  return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] ?? c));
 }
 
 function emailFrame(bodyHtml: string, businessName: string | null): string {

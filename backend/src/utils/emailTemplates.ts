@@ -9,6 +9,11 @@
 // takes the Business identity fields it needs (name, regNo) as plain strings,
 // so tests can pass a fixed identity. Bodies are a faithful copy of what was
 // sent: the email_notification record stores exactly these strings.
+import { escapeHtml } from './html';
+
+// Re-exported so existing import paths (emailService, unit tests) keep
+// resolving — the implementation lives in utils/html.ts.
+export { escapeHtml };
 
 export interface ComposedEmail {
   subject: string;
@@ -21,10 +26,6 @@ export interface ComposedEmail {
 export interface IdentityFields {
   name: string | null;
   regNo?: string | null;
-}
-
-export function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character] ?? character));
 }
 
 // Shared body frame so every email renders with the same card look and the

@@ -17,8 +17,15 @@ const identity = { name: 'Test Estates', regNo: 'REG-001' };
 
 describe('emailTemplates', () => {
   describe('escapeHtml', () => {
+    // The shared implementation (utils/html.ts) — this module re-exports it,
+    // as do the receipt/branding surfaces; all five entities everywhere.
     it('escapes markup-significant characters', () => {
       expect(escapeHtml(`<b>&"'</b>`)).toBe('&lt;b&gt;&amp;&quot;&#39;&lt;/b&gt;');
+    });
+
+    it('escapes quotes so escaped values are safe inside attributes', () => {
+      expect(escapeHtml('O\'Brien')).toBe('O&#39;Brien');
+      expect(escapeHtml('" onmouseover="alert(1)')).toBe('&quot; onmouseover=&quot;alert(1)');
     });
   });
 

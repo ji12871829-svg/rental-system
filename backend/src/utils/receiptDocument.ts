@@ -6,6 +6,7 @@
 // Settings edits apply immediately.
 import type { BusinessIdentity } from '../services/brandingService';
 import { MONTH_NAMES } from '../types';
+import { escapeHtml } from './html';
 import { formatMoney, toNumber } from './money';
 
 export interface ReceiptDocument {
@@ -25,14 +26,6 @@ export interface ReceiptDocument {
   currency: string;
   property_name?: string | null;
   property_address?: string | null;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 export function receiptTypeLabel(type: ReceiptDocument['receipt_type']): string {

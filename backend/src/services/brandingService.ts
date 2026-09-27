@@ -9,6 +9,7 @@
 import { pool, queryOne } from '../config/db';
 import { env } from '../config/env';
 import { badRequest } from '../utils/httpError';
+import { escapeHtml } from '../utils/html';
 import { logAudit } from './auditService';
 
 export interface BrandingRow {
@@ -189,10 +190,6 @@ export interface BrandingView extends Omit<BrandingRow, 'logo_data'> {
   // The 12 identity fields with filled/missing status for the Settings plate.
   fieldStatus: { label: string; value: string; filled: boolean }[];
   missingCount: number;
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 export function toView(row: BrandingRow): BrandingView {
