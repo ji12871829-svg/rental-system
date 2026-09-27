@@ -1,22 +1,29 @@
-// Jest globalSetup: rebuilds the isolated test database from scratch.
+// Jest globalSetup: build the isolated test template database once.
+//
+// Each jest worker then clones it via WorkerDbEnvironment (see that file for
+// why: parallel workers sharing one database made integration runs flaky).
+// The build below is the old shared-database path, unchanged — schema +
+// sample-data fixture + migrations + users + backfills — just executed
+// against `rpms_test_template` instead of `rpms_test`.
 import bcrypt from 'bcryptjs';
 import fs from 'fs';
 import path from 'path';
 import { Client } from 'pg';
 
-const TEST_DB = 'rpms_test';
+const TEMPLATE_DB = 'rpms_test_template';
 const ADMIN_URL = 'postgres://rms_user:rms_password@localhost:5432/rpms';
 
 export default async function globalSetup(): Promise<void> {
-  // 1. Drop + recreate the test database (FORCE kills lingering connections).
+  // 1. Drop + recreate the template database (FORCE kills lingering
+  //    connections from a crashed prior run).
   const admin = new Client({ connectionString: ADMIN_URL });
   await admin.connect();
-  await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
-  await admin.query(`CREATE DATABASE ${TEST_DB} OWNER rms_user`);
+  await admin.query(`DROP DATABASE IF EXISTS ${TEMPLATE_DB} WITH (FORCE)`);
+  await admin.query(`CREATE DATABASE ${TEMPLATE_DB} OWNER rms_user`);
   await admin.end();
 
   // 2. Point the app's pool at it (env.ts reads this at import time).
-  process.env.DATABASE_URL = `postgres://rms_user:rms_password@localhost:5432/${TEST_DB}`;
+  process.env.DATABASE_URL = `postgres://rms_user:rms_password@localhost:5432/${TEMPLATE_DB}`;
   const { pool } = await import('../../src/config/db');
 
   // 3. Schema + test fixture. The production database/seed.sql is a clean

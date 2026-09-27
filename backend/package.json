@@ -13,6 +13,7 @@
     "db:setup": "tsx src/db/setup.ts",
     "db:reset": "tsx src/db/reset.ts",
     "test": "cross-env NODE_ENV=test jest --runInBand",
+    "test:parallel": "cross-env NODE_ENV=test jest",
     "test:unit": "cross-env NODE_ENV=test jest --runInBand --testPathPattern tests/unit",
     "test:integration": "cross-env NODE_ENV=test jest --runInBand --testPathPattern tests/integration"
   },
@@ -52,7 +53,6 @@
   },
   "jest": {
     "preset": "ts-jest",
-    "testEnvironment": "node",
     "roots": [
       "<rootDir>/tests"
     ],
@@ -60,6 +60,7 @@
     "setupFiles": [
       "<rootDir>/tests/setup-env.ts"
     ],
+    "testEnvironment": "<rootDir>/tests/integration/WorkerDbEnvironment.ts",
     "globalSetup": "<rootDir>/tests/integration/globalSetup.ts",
     "globalTeardown": "<rootDir>/tests/integration/globalTeardown.ts"
   }
