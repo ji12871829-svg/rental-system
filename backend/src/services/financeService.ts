@@ -91,16 +91,10 @@ export async function dashboard(year?: number): Promise<DashboardData> {
   const totalCollected = round2(rentCollected + water.waterCollected);
 
   // Charts
-  // Collected-only series; the "expected" side of the Expected-vs-Collected
-  // chart comes from rentMonthlySummary (monthlyRentSummary), which knows the
-  // occupancy-aware expected rent. An old stub here selected `0 AS expected`
-  // that nothing ever read.
-  const monthlyRent = await query<{ month: number; collected: string }>(
-    `SELECT m.m AS month,
-            COALESCE((SELECT SUM(amount) FROM rent_payments WHERE billing_year = $1 AND billing_month = m.m), 0) AS collected
-     FROM generate_series(1, 12) AS m`,
-    [targetYear]
-  );
+  // The Monthly Rent Collected chart's collected series comes from
+  // rentMonthlySummary (monthlyRentSummary) — the one source for both its
+  // expected and collected bars. (An older collected-only generate_series
+  // query here also had a dead `0 AS expected` stub nobody read.)
   const rentMonthlySummary = await monthlyRentSummary(targetYear);
 
   const rentByMethod = await query<{ method: string; total: string }>(
@@ -176,7 +170,6 @@ export async function dashboard(year?: number): Promise<DashboardData> {
       netIncome: round2(totalCollected - totalExpenses),
     },
     charts: {
-      monthlyRentCollected: monthlyRent.map((r) => ({ month: r.month, collected: toNumber(r.collected) })),
       expectedVsCollected: rentMonthlySummary.map((r) => ({
         month: r.month, expected: r.expectedRent, collected: r.rentCollected,
       })),

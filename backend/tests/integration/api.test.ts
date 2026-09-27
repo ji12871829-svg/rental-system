@@ -446,7 +446,7 @@ describe('Finance', () => {
     expect(typeof d.water.waterBilled).toBe('number');
     expect(d.water.waterOutstanding).toBeGreaterThanOrEqual(0);
     expect(d.combined.totalCollected).toBe(d.property.rentCollected + d.water.waterCollected);
-    expect(Object.keys(d.charts)).toContain('monthlyRentCollected');
+    expect(Object.keys(d.charts)).toContain('expectedVsCollected');
   });
 
   it('computes water surplus/deficit correctly (spec §49)', async () => {

@@ -69,19 +69,10 @@ export function ChartGrid({ charts, currency, reportingYear, water }: {
       <SectionHead label="Charts" caption={<>FY {reportingYear} · click any chart to drill in</>} />
       {chartsReady ? (
       <div key={chartsKey} className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        {/* Single expected-vs-collected rent chart: both series come from
+            monthlyRentSummary (occupancy-aware expected rent), so the
+            collected-only query the old first card used is retired. */}
         <ChartCard title="Monthly Rent Collected" meta={currency} to="/rent">
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={charts.monthlyRentCollected} onBarClick={monthReceipts('RENT')}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={(d: any) => monthLabel(d.month)} />
-              <YAxis />
-              <Tooltip formatter={(v: any) => money(v, currency)} />
-              <Bar dataKey="collected" fill="#1d6fd6" name="Rent collected" />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <ChartCard title="Expected vs Collected Rent" to="/rent">
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={charts.expectedVsCollected} onBarClick={monthReceipts('RENT')}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -90,7 +81,7 @@ export function ChartGrid({ charts, currency, reportingYear, water }: {
               <Tooltip formatter={(v: any) => money(v, currency)} />
               <Legend />
               <Bar dataKey="expected" fill="#cbd5e1" name="Expected" />
-              <Bar dataKey="collected" fill="#10b981" name="Collected" />
+              <Bar dataKey="collected" fill="#1d6fd6" name="Rent collected" />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>

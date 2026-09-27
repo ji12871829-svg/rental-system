@@ -148,7 +148,6 @@ export interface DashboardData {
     lastFailure: LastFailure | null;
   };
   charts: {
-    monthlyRentCollected: { month: number; collected: number }[];
     expectedVsCollected: { month: number; expected: number; collected: number }[];
     occupiedVsVacant: { occupied: number; vacant: number };
     rentByPaymentMethod: { method: string; total: number }[];

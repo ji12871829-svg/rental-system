@@ -274,8 +274,7 @@ export async function monthlyRentSummary(year: number): Promise<RentMonthlySumma
   const targetYear = year ?? settings.reporting_year;
   const rows = await query<{
     month: number; expected: string; collected: string;
-    paid_tenants: string; partial_tenants: string; unpaid_tenants: string;
-    occupied_units: string; vacant_units: string;
+    occupied_units: string;
   }>(
     `WITH months AS (
        SELECT generate_series(1, 12) AS m
@@ -302,9 +301,7 @@ export async function monthlyRentSummary(year: number): Promise<RentMonthlySumma
      SELECT mb.m AS month,
             COALESCE((SELECT SUM(monthly_rent) FROM occupied_units WHERE m = mb.m), 0) AS expected,
             COALESCE(c.paid, 0) AS collected,
-            (SELECT COUNT(*) FROM occupied_units WHERE m = mb.m) AS occupied_units,
-            0 AS vacant_units,
-            0 AS paid_tenants, 0 AS partial_tenants, 0 AS unpaid_tenants
+            (SELECT COUNT(*) FROM occupied_units WHERE m = mb.m) AS occupied_units
      FROM month_bounds mb
      LEFT JOIN collected c ON c.m = mb.m
      ORDER BY mb.m`,
