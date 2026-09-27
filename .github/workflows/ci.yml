@@ -181,6 +181,8 @@ jobs:
       - run: npm ci --include=dev
       - name: Lint backend, frontend, shared and scripts (oxlint)
         run: npx oxlint shared backend/src backend/tests frontend/src scripts --config=.oxlintrc.json
+      - name: Guard Tailwind color tokens (silent-drop detection)
+        run: npm run guard:tailwind-tokens
 
   # Secret scanner: blocks on credentials committed in any reachable commit.
   # Gitleaks is installed from its official GitHub release pinned by version

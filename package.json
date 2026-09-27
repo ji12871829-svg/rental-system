@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "lint": "node scripts/run-oxlint.mjs",
+    "guard:tailwind-tokens": "node scripts/check-tailwind-tokens.mjs",
     "knip": "knip --include files,dependencies,exports,types",
     "typecheck": "npm --prefix backend run typecheck",
     "typecheck:backend": "npm --prefix backend run typecheck",
@@ -19,6 +20,9 @@
   "lint-staged": {
     "*.{js,mjs,cjs,ts,tsx}": [
       "node scripts/run-oxlint.mjs"
+    ],
+    "{frontend/src/**,frontend/index.html,tailwind.config.js,frontend/tailwind.config.js}": [
+      "npm run guard:tailwind-tokens"
     ]
   }
 }

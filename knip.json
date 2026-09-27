@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "ignore": [".ua/**", "shared/**"],
+  "ignore": [".ua/**", "shared/**", "design/**"],
   "workspaces": {
     ".": {
       "entry": ["scripts/*.mjs"]
