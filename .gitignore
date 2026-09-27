@@ -32,3 +32,9 @@ videos/
 # Local tooling: standalone oxlint binary (scripts/run-oxlint.mjs fallback)
 .tools/
 .ua/
+
+# Generated knowledge graph (graphify) — local tooling state, rebuilt on demand
+graphify-out/
+
+# canvas-design renderer scratch — vendored deps for the art scripts (fonts + sources stay tracked-eligible)
+design/work/node_modules/
