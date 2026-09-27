@@ -81,6 +81,10 @@ export default function MpesaReview() {
   const rows = data?.data ?? [];
   const totalPending = rows.reduce((s, r) => s + r.amount, 0);
   const suggestedCount = rows.filter((r) => r.suggested_tenant).length;
+  // Blank-reference rows: the payer skipped the paybill account field, so the
+  // sender phone is the only identifier. Badge + queue chip make that
+  // instantly visible instead of an empty reference cell.
+  const blankRefCount = rows.filter((r) => r.account_reference.trim() === '').length;
 
   return (
     <div>
@@ -88,6 +92,9 @@ export default function MpesaReview() {
       {rows.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-3 text-sm">
           <span className="rounded-lg bg-amber-50 px-3 py-1.5 text-amber-800"><b>{rows.length}</b> pending · <b>{money(totalPending, 'KSh')}</b> held</span>
+          {blankRefCount > 0 && (
+            <span className="rounded-lg bg-amber-50 px-3 py-1.5 text-amber-800"><b>{blankRefCount}</b> with a blank account reference — payer left the field empty</span>
+          )}
           {suggestedCount > 0 && (
             <span className="rounded-lg bg-emerald-50 px-3 py-1.5 text-emerald-800">{suggestedCount} matched by sender phone — confirm to post</span>
           )}
@@ -105,7 +112,19 @@ export default function MpesaReview() {
               const selected = selectionFor(row);
               return <tr key={row.id} className="border-b border-gray-100 align-top last:border-0">
                 <td className="px-4 py-3 text-gray-900"><b>{row.transaction_id}</b><br /><span className="text-xs text-gray-500">{formatDate(row.transaction_date)}{row.phone_number ? ` · ${row.phone_number}` : ''}</span></td>
-                <td className="px-4 py-3 text-gray-700">{row.account_reference}<br /><span className="text-xs text-red-700">{row.status}</span></td>
+                <td className="px-4 py-3 text-gray-700">
+                  {row.account_reference.trim() === ''
+                    ? (
+                      <span
+                        className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800"
+                        title="The payer left the paybill account field empty — the sender phone is the only identifier"
+                      >
+                        BLANK REFERENCE
+                      </span>
+                    )
+                    : <>{row.account_reference}</>}
+                  <br /><span className="text-xs text-red-700">{row.status}</span>
+                </td>
                 <td className="px-4 py-3 font-medium">{money(row.amount, 'KSh')}</td>
                 <td className="max-w-xs px-4 py-3 text-gray-600">
                   {row.error_message ?? 'Needs staff review'}
