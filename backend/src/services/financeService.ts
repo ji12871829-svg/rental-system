@@ -91,10 +91,13 @@ export async function dashboard(year?: number): Promise<DashboardData> {
   const totalCollected = round2(rentCollected + water.waterCollected);
 
   // Charts
-  const monthlyRent = await query<{ month: number; collected: string; expected: string }>(
+  // Collected-only series; the "expected" side of the Expected-vs-Collected
+  // chart comes from rentMonthlySummary (monthlyRentSummary), which knows the
+  // occupancy-aware expected rent. An old stub here selected `0 AS expected`
+  // that nothing ever read.
+  const monthlyRent = await query<{ month: number; collected: string }>(
     `SELECT m.m AS month,
-            COALESCE((SELECT SUM(amount) FROM rent_payments WHERE billing_year = $1 AND billing_month = m.m), 0) AS collected,
-            0 AS expected
+            COALESCE((SELECT SUM(amount) FROM rent_payments WHERE billing_year = $1 AND billing_month = m.m), 0) AS collected
      FROM generate_series(1, 12) AS m`,
     [targetYear]
   );
