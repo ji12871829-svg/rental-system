@@ -88,7 +88,7 @@ export function HowItWorks() {
             <ol data-reveal className="mt-10 grid gap-5 sm:grid-cols-2">
             {STEPS.map((s) => (
               <li key={s.n} className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                <span className="text-3xl font-bold text-brand-100" aria-hidden>
+                <span className="text-3xl font-bold text-brand-200" aria-hidden>
                   {s.n}
                 </span>
                 <h3 className="mt-2 text-base font-semibold text-gray-900">{s.title}</h3>
@@ -101,9 +101,13 @@ export function HowItWorks() {
               hands, rent flowing into the ledger instead of a notebook. */}
           <figure data-reveal className="relative mx-auto w-full max-w-md lg:max-w-none">
             <div className="absolute -inset-4 rounded-[2rem] bg-brand-500/10 blur-2xl" aria-hidden />
+            {/* Intrinsic dimensions reserved (photo is 1400×1051) so the image's
+                load never shifts the layout — CLS budget, not decoration. */}
             <img
               src="/photos/keys-move-in.jpg"
-              alt="Keys handed over at a move-in — the moment the tenancy enters the system"
+              alt="Keys handed over at a move-in"
+              width={1400}
+              height={1051}
               className="relative w-full rounded-2xl object-cover shadow-xl ring-1 ring-black/5"
               loading="lazy"
               decoding="async"
@@ -151,7 +155,7 @@ export function Pricing({ currency = 'KSh' }: { currency?: string }) {
         </div>
 
         {failed ? (
-          <p className="mt-10 text-center text-sm text-gray-400">
+          <p className="mt-10 text-center text-sm text-gray-500">
             Prices are unavailable right now — please check back soon.
           </p>
         ) : rows === null ? (
@@ -159,7 +163,7 @@ export function Pricing({ currency = 'KSh' }: { currency?: string }) {
             <Loader2 className="animate-spin text-brand-500" size={28} aria-hidden />
           </div>
         ) : rows.length === 0 ? (
-          <p className="mt-10 text-center text-sm text-gray-400">
+          <p className="mt-10 text-center text-sm text-gray-500">
             Our unit list is being prepared — contact us for current rates.
           </p>
         ) : (
@@ -170,7 +174,7 @@ export function Pricing({ currency = 'KSh' }: { currency?: string }) {
                 className="relative flex flex-col rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
               >
                 {r.vacant > 0 && (
-                  <span className="absolute -top-2.5 right-4 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
+                  <span className="absolute -top-2.5 right-4 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
                     Available
                   </span>
                 )}
@@ -179,7 +183,7 @@ export function Pricing({ currency = 'KSh' }: { currency?: string }) {
                   {currency}
                   {r.minRent.toLocaleString()}
                   {r.maxRent > r.minRent && (
-                    <span className="text-base font-medium text-gray-400"> – {currency}{r.maxRent.toLocaleString()}</span>
+                    <span className="text-base font-medium text-gray-500"> – {currency}{r.maxRent.toLocaleString()}</span>
                   )}
                   <span className="ml-1 text-sm font-normal text-gray-500">/month</span>
                 </p>
@@ -188,7 +192,7 @@ export function Pricing({ currency = 'KSh' }: { currency?: string }) {
                 </p>
                 <a
                   href="#demo"
-                  className="mt-4 inline-flex min-h-[40px] items-center justify-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700 transition hover:bg-brand-100 active:scale-[0.98] active:bg-brand-100"
+                  className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700 transition-[background-color,color,transform] hover:bg-brand-100 active:scale-[0.98] active:bg-brand-100"
                 >
                   <CalendarClock size={15} aria-hidden /> Request a viewing
                 </a>
@@ -310,13 +314,13 @@ export function DemoRequest({ contactEmail }: { contactEmail?: string | null }) 
                     rel="noopener noreferrer"
                     className="flex items-start gap-3 rounded-xl border border-gray-100 p-3 transition-colors hover:bg-gray-50"
                   >
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
                       <MessageCircle size={18} aria-hidden />
                     </span>
                     <span className="min-w-0">
                       <span className="block text-sm font-semibold text-gray-900">WhatsApp</span>
                       <span className="block truncate text-sm text-gray-600">{phone}</span>
-                      <span className="block text-xs text-gray-400">Fastest way to reach us</span>
+                      <span className="block text-xs text-gray-500">Fastest way to reach us</span>
                     </span>
                   </a>
                 )}
@@ -325,19 +329,19 @@ export function DemoRequest({ contactEmail }: { contactEmail?: string | null }) 
                     href={`mailto:${email}`}
                     className="flex items-start gap-3 rounded-xl border border-gray-100 p-3 transition-colors hover:bg-gray-50"
                   >
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
                       <Mail size={18} aria-hidden />
                     </span>
                     <span className="min-w-0">
                       <span className="block text-sm font-semibold text-gray-900">Email</span>
                       <span className="block truncate text-sm text-gray-600">{email}</span>
-                      <span className="block text-xs text-gray-400">For detailed inquiries</span>
+                      <span className="block text-xs text-gray-500">For detailed inquiries</span>
                     </span>
                   </a>
                 )}
                 {phone && (
                   <div className="flex items-start gap-3 rounded-xl border border-gray-100 p-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-600">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-600">
                       <Phone size={18} aria-hidden />
                     </span>
                     <span className="min-w-0">
@@ -347,7 +351,7 @@ export function DemoRequest({ contactEmail }: { contactEmail?: string | null }) 
                   </div>
                 )}
               </div>
-              {identity?.address && <p className="mt-4 text-xs text-gray-400">{identity.address}</p>}
+              {identity?.address && <p className="mt-4 text-xs text-gray-500">{identity.address}</p>}
             </div>
           </div>
 
@@ -360,13 +364,13 @@ export function DemoRequest({ contactEmail }: { contactEmail?: string | null }) 
             <div className="mt-5 grid gap-5 sm:grid-cols-2">
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-gray-700">Your name *</span>
-                <TextInput value={form.name} onChange={setField('name')} aria-invalid={!!errors.name} autoComplete="name" />
-                {errors.name && <span role="alert" className="mt-1 block text-xs font-medium text-red-700">{errors.name}</span>}
+                <TextInput value={form.name} onChange={setField('name')} aria-invalid={!!errors.name} aria-describedby={errors.name ? 'demo-name-error' : undefined} autoComplete="name" />
+                {errors.name && <span role="alert" id="demo-name-error" className="mt-1 block text-xs font-medium text-red-700">{errors.name}</span>}
               </label>
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-gray-700">Email *</span>
-                <TextInput type="email" value={form.email} onChange={setField('email')} aria-invalid={!!errors.email} autoComplete="email" />
-                {errors.email && <span role="alert" className="mt-1 block text-xs font-medium text-red-700">{errors.email}</span>}
+                <TextInput type="email" value={form.email} onChange={setField('email')} aria-invalid={!!errors.email} aria-describedby={errors.email ? 'demo-email-error' : undefined} autoComplete="email" />
+                {errors.email && <span role="alert" id="demo-email-error" className="mt-1 block text-xs font-medium text-red-700">{errors.email}</span>}
               </label>
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-gray-700">Phone</span>
@@ -381,7 +385,7 @@ export function DemoRequest({ contactEmail }: { contactEmail?: string | null }) 
                 <select
                   value={form.unitsCount}
                   onChange={setField('unitsCount')}
-                  className="flex min-h-[40px] w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none transition-colors focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                  className="flex min-h-[44px] w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none transition-colors focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
                 >
                   {UNITS_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -518,8 +522,10 @@ export function SectionLinks({ className = '' }: { className?: string }) {
   ];
   return (
     <nav aria-label="Page sections" className={className}>
+      {/* Light-footer palette: slate-300/white-hover was a dark-theme leftover
+          here — 1.35:1 against bg-gray-50, effectively invisible. */}
       {links.map((l) => (
-        <a key={l.href} href={l.href} className="whitespace-nowrap text-sm text-slate-300 transition-colors hover:text-white">
+        <a key={l.href} href={l.href} className="whitespace-nowrap text-sm text-gray-500 transition-colors hover:text-gray-900">
           {l.label}
         </a>
       ))}

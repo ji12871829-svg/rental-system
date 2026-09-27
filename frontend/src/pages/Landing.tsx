@@ -37,7 +37,7 @@ import {
   Menu,
 } from 'lucide-react';
 import { BrandLogo } from '../components/BrandLogo';
-import { ThemeToggle } from '../components/ThemeToggle';
+import { LandingThemeToggle } from '../components/ThemeToggle';
 import { useBranding } from '../lib/BrandingContext';
 import { branding } from '../lib/branding';
 import { useAuth } from '../lib/auth';
@@ -190,7 +190,7 @@ export default function Landing() {
                 <a
                   key={l.href}
                   href={l.href}
-                  className="whitespace-nowrap text-sm font-medium text-gray-600 transition-colors hover:text-gray-900"
+                  className="inline-flex min-h-[44px] items-center whitespace-nowrap text-sm font-medium text-gray-600 transition-colors hover:text-gray-900"
                 >
                   {l.label}
                 </a>
@@ -201,7 +201,7 @@ export default function Landing() {
               the far edge. The unified sign-in serves both staff and tenants
               via tabs, so one link covers every visitor. */}
           <nav className="flex shrink-0 items-center gap-2">
-            <ThemeToggle />
+            <LandingThemeToggle />
             {/* Phone/tablet: hamburger opens the section menu sheet. */}
             <button
               type="button"
@@ -209,27 +209,27 @@ export default function Landing() {
               aria-expanded={menuOpen}
               aria-controls="landing-nav-menu"
               aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-              className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 text-gray-700 transition-colors hover:bg-gray-50 active:bg-gray-100 lg:hidden"
+              className="flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 text-gray-700 transition-[background-color,color,transform] hover:bg-gray-50 active:scale-[0.97] active:bg-gray-100 lg:hidden"
             >
               {menuOpen ? <X size={18} aria-hidden /> : <Menu size={18} aria-hidden />}
             </button>
             <Link
               to="/login"
               aria-label="Staff sign in"
-              className="hidden min-h-[40px] items-center whitespace-nowrap rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 sm:flex"
+              className="hidden min-h-[44px] items-center whitespace-nowrap rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-[background-color,color,transform] hover:bg-gray-50 active:scale-[0.97] sm:flex"
             >
               Sign in
             </Link>
             <Link
               to="/login"
               aria-label="Staff sign in"
-              className="flex min-h-[40px] w-11 items-center justify-center rounded-lg border border-gray-200 text-gray-700 transition-colors hover:bg-gray-50 sm:hidden"
+              className="flex min-h-[44px] w-11 items-center justify-center rounded-lg border border-gray-200 text-gray-700 transition-[background-color,color,transform] hover:bg-gray-50 active:scale-[0.97] sm:hidden"
             >
               <KeyRound size={17} aria-hidden />
             </Link>
             <Link
               to="/register"
-              className="flex min-h-[40px] items-center whitespace-nowrap rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white shadow-sm shadow-brand-600/25 transition-colors hover:bg-brand-700 sm:px-4"
+              className="flex min-h-[44px] items-center whitespace-nowrap rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white shadow-sm shadow-brand-600/25 transition-[background-color,color,transform] hover:bg-brand-700 active:scale-[0.97] sm:px-4"
             >
               <span className="hidden sm:inline">Create account</span>
               <span className="sm:hidden">Sign up</span>
@@ -255,7 +255,7 @@ export default function Landing() {
                     <a
                       href={l.href}
                       onClick={(e) => goToSection(e, l.href)}
-                      className="flex min-h-[44px] items-center rounded-lg px-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 active:bg-gray-100"
+                      className="flex min-h-[44px] items-center rounded-lg px-3 text-sm font-medium text-gray-700 transition-[background-color,color,transform] hover:bg-gray-50 active:scale-[0.99] active:bg-gray-100"
                     >
                       {l.label}
                     </a>
@@ -277,7 +277,7 @@ export default function Landing() {
           />
           <img
             src="/building/building-1-800.webp"
-            alt=""
+            alt="Facade of the apartment building managed on this platform"
             className="absolute inset-0 h-full w-full object-cover opacity-90"
             loading="eager"
             decoding="async"
@@ -307,13 +307,13 @@ export default function Landing() {
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
                 to="/register"
-                className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-600/30 transition hover:bg-brand-700 active:scale-[0.98] active:bg-brand-700"
+                className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-600/30 transition-[background-color,box-shadow,color,transform] hover:bg-brand-700 active:scale-[0.98]"
               >
                 Create an account <ArrowRight size={16} aria-hidden />
               </Link>
               <a
                 href="#demo"
-                className="inline-flex items-center gap-2 rounded-xl border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10 active:scale-[0.98] active:bg-white/15"
+                className="inline-flex items-center gap-2 rounded-xl border border-white/20 px-5 py-3 text-sm font-semibold text-white transition-[background-color,color,transform] hover:bg-white/10 active:scale-[0.98] active:bg-white/15"
               >
                 <MessageCircle size={16} aria-hidden /> Talk to us
               </a>
@@ -323,7 +323,7 @@ export default function Landing() {
             <ul className="mt-7 flex flex-wrap gap-x-5 gap-y-2">
               {['M-Pesa built in', 'Works on your phone', 'No training needed'].map((t) => (
                 <li key={t} className="flex items-center gap-1.5 text-xs font-medium text-slate-300">
-                  <Check size={13} className="text-brand-300" aria-hidden /> {t}
+                  <Check size={13} className="text-brand-400" aria-hidden /> {t}
                 </li>
               ))}
             </ul>
@@ -346,7 +346,7 @@ export default function Landing() {
                 <X size={16} className="mt-0.5 shrink-0 text-red-500" aria-hidden />
                 <p className="text-sm text-gray-600">{pain}</p>
               </div>
-              <div className="flex flex-1 items-start gap-3 border-t border-brand-100 bg-brand-50 p-5 md:border-l md:border-t-0">
+              <div className="flex flex-1 items-start gap-3 border-t border-brand-100 bg-brand-50 p-5 md:border-l md:border-l-brand-200 md:border-t-0">
                 <Check size={16} className="mt-0.5 shrink-0 text-brand-600" aria-hidden />
                 <p className="text-sm font-medium text-gray-900">{fix}</p>
               </div>
@@ -369,7 +369,7 @@ export default function Landing() {
             {FEATURES.map(({ icon: Icon, title, body, badge }) => (
               <article key={title} className="relative flex flex-col rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
                 {badge && (
-                  <span className="absolute -top-2.5 right-4 rounded-full bg-brand-600 px-2.5 py-0.5 text-[11px] font-semibold text-white">
+                  <span className="absolute -top-2.5 right-4 rounded-full bg-brand-600 px-2.5 py-0.5 text-xs font-semibold text-white">
                     {badge}
                   </span>
                 )}
@@ -408,7 +408,7 @@ export default function Landing() {
                   { t: 'PayBill & other channels', d: 'PayBill payments flow through the same ledger; cash and bank records are just as easy to keep.' },
                 ].map((item) => (
                   <li key={item.t} className="flex items-start gap-3">
-                    <Check size={16} className="mt-1 shrink-0 text-brand-300" aria-hidden />
+                    <Check size={16} className="mt-1 shrink-0 text-brand-400" aria-hidden />
                     <span>
                       <span className="block text-sm font-semibold text-white">{item.t}</span>
                       <span className="block text-sm text-slate-300">{item.d}</span>
@@ -422,7 +422,7 @@ export default function Landing() {
             <div className="mx-auto w-full max-w-xs">
               <div className="rounded-[2rem] border-[6px] border-gray-900 bg-gray-50 shadow-2xl">
                 <div className="rounded-[1.6rem] bg-white p-5">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Tenant portal</p>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Tenant portal</p>
                   <p className="mt-1 text-sm font-semibold text-gray-900">Unit B4 · April rent</p>
                   <p className="mt-3 text-3xl font-bold tracking-tight tabular-nums text-gray-900">KSh 9,000</p>
                   <p className="text-xs text-gray-500">Balance due in 12 days</p>
@@ -471,11 +471,11 @@ export default function Landing() {
             </ul>
             <Link
               to="/register?type=tenant"
-              className="mt-6 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-5 py-2.5 text-sm font-semibold text-brand-700 transition-colors hover:bg-brand-100"
+              className="mt-6 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-5 py-2.5 text-sm font-semibold text-brand-700 transition-[background-color,color,transform] hover:bg-brand-100 active:scale-[0.98]"
             >
               Create tenant access <ArrowRight size={15} aria-hidden />
             </Link>
-            <p className="mt-3 text-center text-xs text-gray-400">
+            <p className="mt-3 text-center text-xs text-gray-500">
               Already have access?{' '}
               <Link to="/login?type=tenant" className="font-medium text-gray-600 underline underline-offset-2 hover:text-gray-900">
                 Sign in to the tenant portal
@@ -502,11 +502,11 @@ export default function Landing() {
             </ul>
             <Link
               to="/register?type=landlord"
-              className="mt-6 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-black"
+              className="mt-6 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white transition-[background-color,color,transform] hover:bg-black active:scale-[0.98]"
             >
               Request staff access <ArrowRight size={15} aria-hidden />
             </Link>
-            <p className="mt-3 text-center text-xs text-gray-400">
+            <p className="mt-3 text-center text-xs text-gray-500">
               Already approved?{' '}
               <Link to="/login" className="font-medium text-gray-600 underline underline-offset-2 hover:text-gray-900">
                 Sign in as staff
@@ -538,7 +538,7 @@ export default function Landing() {
         <div data-reveal className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link
               to="/register"
-              className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-600/30 transition-colors hover:bg-brand-700"
+              className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-600/30 transition-[background-color,box-shadow,color,transform] hover:bg-brand-700 active:scale-[0.98]"
             >
               Create an account <ArrowRight size={16} aria-hidden />
             </Link>
@@ -547,14 +547,14 @@ export default function Landing() {
                 href={waHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl border border-white/20 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/10"
+                className="inline-flex items-center gap-2 rounded-xl border border-white/20 px-6 py-3 text-sm font-semibold text-white transition-[background-color,color,transform] hover:bg-white/10 active:scale-[0.98]"
               >
                 <MessageCircle size={16} aria-hidden /> WhatsApp us
               </a>
             )}
             <a
               href="#demo"
-              className="inline-flex items-center gap-2 rounded-xl border border-white/20 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/10"
+              className="inline-flex items-center gap-2 rounded-xl border border-white/20 px-6 py-3 text-sm font-semibold text-white transition-[background-color,color,transform] hover:bg-white/10 active:scale-[0.98]"
             >
               Request a demo
             </a>
@@ -570,7 +570,7 @@ export default function Landing() {
           <div className="mt-6 flex flex-col gap-4 border-t border-gray-200 pt-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-gray-500">
               {identity?.legalName ?? branding.appName}
-              {identity?.address && <span className="block text-xs text-gray-400">{identity.address}</span>}
+              {identity?.address && <span className="block text-xs text-gray-500">{identity.address}</span>}
             </div>
             <nav className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-gray-500">
               <Link to="/privacy" className="hover:text-gray-800">Privacy Policy</Link>
