@@ -6,6 +6,9 @@ import { badRequest, notFound } from '../utils/httpError';
 import { normalizePhoneNumber } from './smsProvider';
 import { postRentWithAllocation } from './mpesaService';
 import { kenyaDateParts } from '../utils/kenyaTime';
+import { balanceDue } from '../utils/businessRules';
+import { toNumber } from '../utils/money';
+import { getSettings } from './settingsService';
 
 /**
  * The likely tenant for an unmatched payment, identified by the sender's
@@ -13,8 +16,15 @@ import { kenyaDateParts } from '../utils/kenyaTime';
  * The auto path refuses to guess on ambiguity; the review page surfaces this
  * as a SUGGESTION so staff don't have to do the detective work. Returns null
  * when the phone is unknown, matches nobody, or matches several tenants.
+ *
+ * Also carries the unit's water context (water_enabled + reporting-year water
+ * balance, same semantics as the Tenants page) so the resolve form can
+ * preselect the payment kind instead of always defaulting to rent.
  */
-async function suggestTenantByPhone(rawPhone: string | null): Promise<{ id: number; full_name: string; unit_number: string | null } | null> {
+async function suggestTenantByPhone(
+  rawPhone: string | null,
+  reportingYear: number
+): Promise<{ id: number; full_name: string; unit_number: string | null; water_enabled: boolean; water_balance: number } | null> {
   if (!rawPhone) return null;
   const normalized = normalizePhoneNumber(rawPhone);
   if (!normalized) return null;
@@ -24,10 +34,27 @@ async function suggestTenantByPhone(rawPhone: string | null): Promise<{ id: numb
      WHERE t.status = 'ACTIVE' AND t.phone_number IS NOT NULL AND TRIM(t.phone_number) <> ''`
   );
   const matches = candidates.filter((c) => normalizePhoneNumber(c.phone_number) === normalized);
-  return matches.length === 1 ? matches[0] : null;
+  if (matches.length !== 1) return null;
+
+  const water = await queryOne<{ water_enabled: boolean; water_billed: string; water_paid: string }>(
+    `SELECT u.water_enabled,
+            COALESCE((SELECT SUM(wmr.water_bill) FROM water_meter_readings wmr
+                      WHERE wmr.unit_id = u.id AND wmr.billing_year = $2), 0)::text AS water_billed,
+            COALESCE((SELECT SUM(wp.amount) FROM water_payments wp
+                      WHERE wp.tenant_id = t.id AND wp.billing_year = $2), 0)::text AS water_paid
+     FROM tenants t JOIN units u ON u.id = t.unit_id
+     WHERE t.id = $1`,
+    [matches[0].id, reportingYear]
+  );
+  return {
+    ...matches[0],
+    water_enabled: water?.water_enabled ?? false,
+    water_balance: balanceDue(toNumber(water?.water_billed ?? '0'), toNumber(water?.water_paid ?? '0')),
+  };
 }
 
 export async function listMpesaReviewTransactions(): Promise<unknown[]> {
+  const settings = await getSettings();
   const rows = await query<{
     id: number; transaction_id: string; amount: string; account_reference: string; payment_kind: string;
     transaction_date: Date; phone_number: string | null; status: string; error_message: string | null;
@@ -43,22 +70,33 @@ export async function listMpesaReviewTransactions(): Promise<unknown[]> {
      ORDER BY m.created_at DESC`
   );
   // One suggested tenant per row (null when the phone identifies nobody
-  // unambiguously) — the review page preselects it, staff confirm.
-  return Promise.all(rows.map(async (row) => ({
-    id: row.id,
-    transaction_id: row.transaction_id,
-    amount: Number(row.amount),
-    account_reference: row.account_reference,
-    payment_kind: row.payment_kind,
-    transaction_date: row.transaction_date,
-    phone_number: row.phone_number,
-    status: row.status,
-    error_message: row.error_message,
-    created_at: row.created_at,
-    tenant_name: row.tenant_name,
-    unit_number: row.unit_number,
-    suggested_tenant: await suggestTenantByPhone(row.phone_number),
-  })));
+  // unambiguously) — the review page preselects it, staff confirm. The kind
+  // preselect follows the water context: a water-enabled unit with an
+  // outstanding water balance makes an incoming payment more likely water
+  // than rent, so the form starts on WATER instead of defaulting to RENT.
+  return Promise.all(rows.map(async (row) => {
+    const suggested_tenant = await suggestTenantByPhone(row.phone_number, settings.reporting_year);
+    const suggested_kind: 'RENT' | 'WATER' | null = suggested_tenant
+      ? (suggested_tenant.water_enabled && suggested_tenant.water_balance > 0 ? 'WATER' : 'RENT')
+      : null;
+    return {
+      id: row.id,
+      transaction_id: row.transaction_id,
+      amount: Number(row.amount),
+      account_reference: row.account_reference,
+      payment_kind: row.payment_kind,
+      transaction_date: row.transaction_date,
+      phone_number: row.phone_number,
+      status: row.status,
+      error_message: row.error_message,
+      created_at: row.created_at,
+      tenant_name: row.tenant_name,
+      unit_number: row.unit_number,
+      suggested_tenant,
+      suggested_kind,
+      likely_water: suggested_kind === 'WATER',
+    };
+  }));
 }
 
 export async function ignoreMpesaReviewTransaction(id: number, userId: number): Promise<void> {

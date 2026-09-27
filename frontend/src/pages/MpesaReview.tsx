@@ -3,13 +3,18 @@ import { PageHeader, Button, useFetch, useShake, useToast } from '../components/
 import { api } from '../lib/api';
 import { money, formatDate } from '../lib/format';
 
-interface SuggestedTenant { id: number; full_name: string; unit_number: string | null; }
+interface SuggestedTenant { id: number; full_name: string; unit_number: string | null; water_enabled?: boolean; water_balance?: number; }
 
 interface ReviewRow {
   id: number;
   transaction_id: string;
   amount: number;
   account_reference: string;
+  // Water context from the suggestion: the resolve form preselects this kind
+  // (water balance outstanding on a water unit → WATER, else RENT), and rows
+  // where water is the likely intent get a row highlight.
+  suggested_kind: 'RENT' | 'WATER' | null;
+  likely_water: boolean;
   payment_kind: 'RENT' | 'WATER';
   transaction_date: string;
   phone_number: string | null;
@@ -33,7 +38,10 @@ export default function MpesaReview() {
   function selectionFor(row: ReviewRow) {
     return selection[row.id] ?? {
       tenantId: row.suggested_tenant ? String(row.suggested_tenant.id) : '',
-      kind: row.payment_kind,
+      // Preselect the suggested kind: WATER when the sender's unit is
+      // water-enabled with an outstanding water balance, else RENT (falling
+      // back to the stored payment_kind when nobody is suggested).
+      kind: row.suggested_kind ?? row.payment_kind,
       allocate: true,
     };
   }
@@ -85,6 +93,7 @@ export default function MpesaReview() {
   // sender phone is the only identifier. Badge + queue chip make that
   // instantly visible instead of an empty reference cell.
   const blankRefCount = rows.filter((r) => r.account_reference.trim() === '').length;
+  const likelyWaterCount = rows.filter((r) => r.likely_water).length;
 
   return (
     <div>
@@ -94,6 +103,9 @@ export default function MpesaReview() {
           <span className="rounded-lg bg-amber-50 px-3 py-1.5 text-amber-800"><b>{rows.length}</b> pending · <b>{money(totalPending, 'KSh')}</b> held</span>
           {blankRefCount > 0 && (
             <span className="rounded-lg bg-amber-50 px-3 py-1.5 text-amber-800"><b>{blankRefCount}</b> with a blank account reference — payer left the field empty</span>
+          )}
+          {likelyWaterCount > 0 && (
+            <span className="rounded-lg bg-cyan-50 px-3 py-1.5 text-cyan-800"><b>{likelyWaterCount}</b> likely water payments — kind preselected</span>
           )}
           {suggestedCount > 0 && (
             <span className="rounded-lg bg-emerald-50 px-3 py-1.5 text-emerald-800">{suggestedCount} matched by sender phone — confirm to post</span>
@@ -110,7 +122,10 @@ export default function MpesaReview() {
             </tr></thead>
             <tbody>{rows.map((row) => {
               const selected = selectionFor(row);
-              return <tr key={row.id} className="border-b border-gray-100 align-top last:border-0">
+              return <tr
+                key={row.id}
+                className={`border-b border-gray-100 align-top last:border-0 ${row.likely_water ? 'bg-cyan-50' : ''}`}
+              >
                 <td className="px-4 py-3 text-gray-900"><b>{row.transaction_id}</b><br /><span className="text-xs text-gray-500">{formatDate(row.transaction_date)}{row.phone_number ? ` · ${row.phone_number}` : ''}</span></td>
                 <td className="px-4 py-3 text-gray-700">
                   {row.account_reference.trim() === ''
@@ -129,8 +144,9 @@ export default function MpesaReview() {
                 <td className="max-w-xs px-4 py-3 text-gray-600">
                   {row.error_message ?? 'Needs staff review'}
                   {row.suggested_tenant && (
-                    <span className="mt-1 block text-xs font-medium text-emerald-700">
+                    <span className={`mt-1 block text-xs font-medium ${row.likely_water ? 'text-cyan-700' : 'text-emerald-700'}`}>
                       Likely: {row.suggested_tenant.full_name}{row.suggested_tenant.unit_number ? ` · ${row.suggested_tenant.unit_number}` : ''} (sender phone)
+                      {row.likely_water && ' · likely paying water'}
                     </span>
                   )}
                 </td>

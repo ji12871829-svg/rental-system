@@ -124,6 +124,37 @@ describe('M-Pesa review: manual assignment of UNMATCHED payments', () => {
     expect(row.suggested_tenant).toBeNull();
   });
 
+  it('carries water context on the suggestion (unit 15 has an outstanding water balance)', async () => {
+    // Grace Njeri (unit 15, phone +254711000004): fixture bills her 1,600 +
+    // 1,600 + 1,200 = 4,400 of water in 2026 with 1,600 paid → balance 2,800.
+    const transId = `REVWC${Date.now()}`;
+    created.push(transId);
+    await seedUnmatched(transId, 'GARBAGE3', '2000', '+254711000004');
+
+    const res = await request(app).get('/api/mpesa/review').set(auth(adminToken));
+    const row = res.body.data.find((r: { transaction_id: string }) => r.transaction_id === transId);
+    expect(row.suggested_tenant).not.toBeNull();
+    expect(row.suggested_tenant.water_enabled).toBe(true);
+    expect(row.suggested_tenant.water_balance).toBeGreaterThan(0);
+    expect(row.suggested_kind).toBe('WATER');
+    expect(row.likely_water).toBe(true);
+  });
+
+  it('preselects RENT for a suggested tenant without water exposure (unit 2, Jane)', async () => {
+    // Jane Wanjiru's unit has water billing disabled — a payment from her
+    // phone stays rent-first even though she is a confident phone match.
+    const transId = `REVNR${Date.now()}`;
+    created.push(transId);
+    await seedUnmatched(transId, 'GARBAGE4', '2500', '+254711000002');
+
+    const res = await request(app).get('/api/mpesa/review').set(auth(adminToken));
+    const row = res.body.data.find((r: { transaction_id: string }) => r.transaction_id === transId);
+    expect(row.suggested_tenant).not.toBeNull();
+    expect(row.suggested_tenant.water_enabled).toBe(false);
+    expect(row.suggested_kind).toBe('RENT');
+    expect(row.likely_water).toBe(false);
+  });
+
   it('resolves rent with oldest-arrears allocation (same engine as the auto path)', async () => {
     const tenantId = await tenantIdForUnit('1');
     const { rentArrearsForYear } = await import('../../src/services/mpesaService');
