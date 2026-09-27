@@ -302,14 +302,19 @@ export default function RentCollection() {
               onClick={(e) => {
                 e.preventDefault();
                 authenticatedFetch(exportUrl)
-                  .then((r) => r.text())
+                  .then((r) => {
+                    if (!r.ok) throw new Error(`Export failed (${r.status})`);
+                    return r.text();
+                  })
                   .then((csv) => {
                     const blob = new Blob([csv], { type: 'text/csv' });
                     const a = document.createElement('a');
                     a.href = URL.createObjectURL(blob);
                     a.download = 'rent-payments.csv';
                     a.click();
-                  });
+                    URL.revokeObjectURL(a.href);
+                  })
+                  .catch((err) => toast('error', (err as Error).message));
               }}
             >
               Download CSV
