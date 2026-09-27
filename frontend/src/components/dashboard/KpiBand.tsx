@@ -82,7 +82,7 @@ export function KpiBand({ data }: { data: DashboardData }) {
           <KpiCard
             title="Water Invoicing & Recovery"
             badge={<Badge tone={w.collectionRate >= 90 ? 'good' : w.collectionRate >= 70 ? 'warn' : 'bad'}>{w.collectionRate}% collection</Badge>}
-            linkTo="/water-meter"
+            linkTo="/water?tab=meter"
             linkLabel="Meter registry"
             footer={<span>Sub-metered usage — readings from each unit's meter</span>}
           >
@@ -104,7 +104,7 @@ export function KpiBand({ data }: { data: DashboardData }) {
                 <Badge tone="bad">Running deficit</Badge>
               )
             }
-            linkTo="/water-supply"
+            linkTo="/water?tab=supply"
             linkLabel="Water supply"
             footer={<span>Bulk purchase → per-unit sub-meter billing</span>}
           >

@@ -169,7 +169,7 @@ export function ChartGrid({ charts, currency, reportingYear, water }: {
           <OutstandingList rows={charts.outstandingRentByUnit} currency={currency} barClass="bg-red-500" onSelect={unitArrearsDirect} />
         </ChartCard>
 
-        <ChartCard title="Water Billed vs Collected" meta={currency} to="/water-payments">
+        <ChartCard title="Water Billed vs Collected" meta={currency} to="/water?tab=payments">
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={charts.monthlyWaterBilledVsCollected} onBarClick={monthReceipts('WATER')}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -183,7 +183,7 @@ export function ChartGrid({ charts, currency, reportingYear, water }: {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Supply Cost vs Collected" meta={currency} to="/water-supply">
+        <ChartCard title="Supply Cost vs Collected" meta={currency} to="/water?tab=supply">
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={charts.waterSupplyCostVsCollected}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -197,9 +197,9 @@ export function ChartGrid({ charts, currency, reportingYear, water }: {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Monthly Water Net Balance" meta={<Badge tone={water.surplus ? 'good' : 'bad'}>{water.surplus ? 'All Positive' : 'Deficit Present'}</Badge>} to="/water-supply">
+        <ChartCard title="Monthly Water Net Balance" meta={<Badge tone={water.surplus ? 'good' : 'bad'}>{water.surplus ? 'All Positive' : 'Deficit Present'}</Badge>} to="/water?tab=supply">
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={charts.monthlyWaterSurplusDeficit} onBarClick={() => navigate('/water-supply')}>
+            <BarChart data={charts.monthlyWaterSurplusDeficit} onBarClick={() => navigate('/water?tab=supply')}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey={(d: any) => monthLabel(d.month)} />
               <YAxis />

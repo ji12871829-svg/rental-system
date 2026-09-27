@@ -3,7 +3,7 @@ import { BrandLogo } from './BrandLogo';
 import { Suspense } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, BookUser, Building2, CalendarDays, ChevronDown, Droplets, FileBarChart, FileText, Gauge, LayoutDashboard, Loader2, LogOut, Mail, Menu, ReceiptText, Settings,
+  AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, BookUser, Building2, CalendarDays, ChevronDown, Droplets, FileText, LayoutDashboard, Loader2, LogOut, Mail, Menu, ReceiptText, Settings,
   Smartphone, Ticket, Users as UsersIcon, Wallet, X, ClipboardCheck, Zap,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
@@ -32,9 +32,7 @@ const PREFETCH_BY_PATH: Record<string, keyof typeof routeChunks> = {
   '/units': 'units',
   '/tenants': 'tenants',
   '/rent': 'rent',
-  '/water-meter': 'waterMeter',
-  '/water-payments': 'waterPayments',
-  '/water-supply': 'waterSupply',
+  '/water': 'water',
   '/ledger': 'ledger',
   '/receipts': 'receipts',
   '/monthly': 'monthly',
@@ -80,9 +78,7 @@ const NAV_SECTIONS: NavSection[] = [
     icon: Wallet,
     items: [
       { to: '/rent', label: 'Rent Collection', icon: Wallet },
-      { to: '/water-meter', label: 'Water Meter', icon: Gauge },
-      { to: '/water-payments', label: 'Water Payments', icon: Droplets },
-      { to: '/water-supply', label: 'Water Supply Costs', icon: FileBarChart },
+      { to: '/water', label: 'Water', icon: Droplets },
     ],
   },
   {
@@ -135,7 +131,7 @@ const NAV_SECTIONS: NavSection[] = [
     icon: Zap,
     items: [
       { to: '/rent?new=1', label: 'Record Payment', icon: Wallet },
-      { to: '/water-meter?new=1', label: 'Log Reading', icon: Droplets },
+      { to: '/water?new=1', label: 'Log Reading', icon: Droplets },
       { to: '/expenses?new=1', label: 'Add Expense', icon: ReceiptText, managerOnly: true },
     ],
   },

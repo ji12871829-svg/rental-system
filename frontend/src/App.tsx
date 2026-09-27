@@ -26,9 +26,7 @@ const Settings = lazy(routeChunks.settings);
 const Units = lazy(routeChunks.units);
 const Tenants = lazy(routeChunks.tenants);
 const RentCollection = lazy(routeChunks.rent);
-const WaterMeter = lazy(routeChunks.waterMeter);
-const WaterPayments = lazy(routeChunks.waterPayments);
-const WaterSupply = lazy(routeChunks.waterSupply);
+const Water = lazy(routeChunks.water);
 const TenantLedger = lazy(routeChunks.ledger);
 const MonthlySummary = lazy(routeChunks.monthly);
 const Expenses = lazy(routeChunks.expenses);
@@ -92,9 +90,7 @@ const TITLES: Record<string, string> = {
   '/units': 'Units',
   '/tenants': 'Tenants',
   '/rent': 'Rent Collection',
-  '/water-meter': 'Water Meter',
-  '/water-payments': 'Water Payments',
-  '/water-supply': 'Water Supply Costs',
+  '/water': 'Water',
   '/ledger': 'Tenant Ledger',
   '/monthly': 'Monthly Summary',
   '/expenses': 'Expenses',
@@ -184,9 +180,12 @@ export default function App() {
             <Route path="/units" element={<Units />} />
             <Route path="/tenants" element={<Tenants />} />
             <Route path="/rent" element={<RentCollection />} />
-            <Route path="/water-meter" element={<WaterMeter />} />
-            <Route path="/water-payments" element={<WaterPayments />} />
-            <Route path="/water-supply" element={<WaterSupply />} />
+            {/* The three former water pages merged into one — old URLs redirect
+                so saved bookmarks and existing habits keep working. */}
+            <Route path="/water" element={<Water />} />
+            <Route path="/water-meter" element={<Navigate to="/water?tab=meter" replace />} />
+            <Route path="/water-payments" element={<Navigate to="/water?tab=payments" replace />} />
+            <Route path="/water-supply" element={<Navigate to="/water?tab=supply" replace />} />
             <Route path="/ledger" element={<TenantLedger />} />
             <Route path="/monthly" element={<MonthlySummary />} />
             <Route path="/expenses" element={<Expenses />} />

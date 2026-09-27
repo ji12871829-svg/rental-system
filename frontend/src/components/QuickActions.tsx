@@ -17,7 +17,7 @@ interface QuickAction {
 
 const ACTIONS: QuickAction[] = [
   { to: '/rent?new=1', label: 'Record Payment', icon: Wallet },
-  { to: '/water-meter?new=1', label: 'Log Reading', icon: Droplets },
+  { to: '/water?new=1', label: 'Log Reading', icon: Droplets },
   { to: '/expenses?new=1', label: 'Add Expense', icon: ReceiptText, managerOnly: true },
 ];
 
