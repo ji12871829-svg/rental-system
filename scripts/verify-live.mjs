@@ -235,6 +235,90 @@ try {
   record('GET / → OG meta tags', false, err.message);
 }
 
+// ----------------------------------------------------- C2B probe (signed) --
+// Posts a clearly-marked, money-free C2B confirmation through the REAL
+// callback endpoint to prove the gate accepts signed traffic and the
+// review pipeline is alive. Safety properties (mirrored from the integration
+// suite):
+//   * reference "RPMS-PROBE" matches no unit → the payment CANNOT post; it
+//     lands UNMATCHED in the M-Pesa review queue — the same path a real
+//     unmatched paybill payment takes, which is exactly what we verify;
+//   * MSISDN 0000000000 is not a Kenyan number (normalizePhoneNumber → null),
+//     so the sender-phone fallback can never match a tenant either;
+//   * the token gates the endpoint — this is the "signed" half.
+// Idempotent across retries: the TransID is derived from the current Nairobi
+// minute (Daraja replays the same confirmation, verify-live may retry the
+// job) — replays re-evaluate but the operator alert fires only on the row's
+// first attempt, and the review page names the transaction in the alert body.
+// The queue therefore accumulates at most one RPMS-PROBE row per minute per
+// deploy; operators can clear them from M-Pesa Review (search RPMS-PROBE).
+const PROBE_HOSTS_LOCAL = ['localhost', '127.0.0.1', '::1'].includes(base.hostname);
+if (process.env.RPMS_SKIP_C2B_PROBE === '1') {
+  record('C2B probe skipped (RPMS_SKIP_C2B_PROBE=1)', true, 'set by the operator');
+} else if (PROBE_HOSTS_LOCAL) {
+  record('C2B probe skipped (local target)', true, 'local/dev DBs stay clean — the probe runs against deployments');
+} else {
+  // Nairobi is UTC+3 year-round (no DST): wall-clock minute as the run id.
+  const nairobiMinute = new Date(Date.now() + 3 * 3_600_000).toISOString().replace(/[-:TZ.]/g, '').slice(0, 12);
+  const probeId = `RPMS-PROBE-${nairobiMinute}`;
+  const probeBody = {
+    TransactionType: 'Pay Bill',
+    TransID: probeId,
+    TransTime: `${nairobiMinute}00`, // minute granularity, valid 14-digit form
+    TransAmount: '1',
+    BillRefNumber: 'RPMS-PROBE',
+    OrgAccountBalance: '0',
+    MSISDN: '0000000000',
+    FirstName: 'RPMS',
+    MiddleName: 'VERIFY',
+    LastName: 'PROBE',
+    // BusinessShortCode deliberately omitted: the route tolerates absent
+    // shortcodes (some Daraja validation bodies lack it) and verify-live does
+    // not know the deploy's shortcode — sending a guess would 400 the probe.
+  };
+  try {
+    const res = await postJson('/api/mpesa/c2b/confirm?token=rpms-verify-wrong-token-probe', probeBody);
+    // A wrong token must be a stealth 404. Anything else means the callback
+    // gate is down (MPESA_CALLBACK_TOKEN unset on the deploy) — a security
+    // regression the startup warning alone cannot catch at runtime.
+    record(
+      'C2B probe (wrong token) → rejected (404)',
+      res.status === 404,
+      res.status === 404
+        ? 'callback gate active'
+        : `status=${res.status} — /api/mpesa/c2b/confirm answered without a valid token; MPESA_CALLBACK_TOKEN is unset on the deploy`
+    );
+  } catch (err) {
+    record('C2B probe (wrong token)', false, err.message);
+  }
+  // The signed probe needs the deploy's real callback token, which CI does
+  // not hold by default (the gate secret must not live in the repo). Without
+  // it there is nothing to assert beyond the wrong-token check above — skip
+  // rather than fail. With RPMS_PROBE_CALLBACK_TOKEN set (repo secret or a
+  // local run), this exercises the full signed path end to end.
+  const probeToken = process.env.RPMS_PROBE_CALLBACK_TOKEN;
+  if (!probeToken) {
+    record('C2B probe (signed path) → skipped', true, `set RPMS_PROBE_CALLBACK_TOKEN to exercise it — probe id this run would be ${probeId}`);
+  } else {
+    try {
+      const res = await postJson(`/api/mpesa/c2b/confirm?token=${encodeURIComponent(probeToken)}`, probeBody);
+      const body = await res.json().catch(() => null);
+      const detail = `status=${res.status} ResultDesc="${body?.ResultDesc ?? '?'}" — one review row per run minute: ${probeId}`;
+      const accepted = res.status === 200 && body?.ResultCode === 0 && /manual review|Accepted/.test(body?.ResultDesc ?? '');
+      const postedInstead = res.status === 200 && body?.ResultDesc === 'Accepted.';
+      record(
+        'C2B probe (signed) → accepted for manual review',
+        accepted,
+        postedInstead
+          ? `RESULT DESC SAYS PLAIN "Accepted." — the probe posted instead of parking for review. Investigate: a unit named RPMS-PROBE must not exist. ${detail}`
+          : detail
+      );
+    } catch (err) {
+      record('C2B probe (signed)', false, err.message);
+    }
+  }
+}
+
 // --------------------------------------------- API 404 shape (router sanity) --
 try {
   const res = await get('/api/definitely-not-a-route');
