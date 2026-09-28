@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { branding } from '../lib/branding';
 import { useBranding } from '../lib/BrandingContext';
 import { BrandMark } from '../components/BrandMark';
+import { Toon } from '../components/Toon';
 
 /*
  * Legal pages. The business identity and policy details are live from the
@@ -44,6 +45,23 @@ function LegalShell({ title, children }: { title: string; children: ReactNode })
           <h1 className="mt-6 text-2xl font-bold tracking-tight text-gray-900">{title}</h1>
           <p className="mt-1 text-xs text-gray-500">Last updated: {lastUpdatedDisplay}</p>
           <div className="mt-6 space-y-6 text-sm leading-6 text-gray-700">{children}</div>
+          {/* Warmth: the mascot points readers with questions to the contact
+              section — the Instructions-page onboarding banner's idiom,
+              quieted for a legal footer. Decorative: the link carries the
+              meaning for screen readers. */}
+          <div className="mt-8 flex items-center gap-4 rounded-xl border border-ash bg-fog p-4">
+            <Toon size={64} pose="point" className="shrink-0" />
+            <p className="text-sm leading-6 text-graphite">
+              Questions about this policy?{' '}
+              <Link
+                to="/landing#demo"
+                className="font-medium text-brand-600 underline underline-offset-2 transition-colors duration-150 hover:text-brand-700"
+              >
+                Reach us here
+              </Link>{' '}
+              — we usually reply the same day.
+            </p>
+          </div>
           <nav aria-label="Other policies" className="mt-10 flex flex-wrap gap-x-5 gap-y-2 border-t border-gray-100 pt-5 text-xs">
             <span className="font-medium text-gray-500">Other policies:</span>
             {[

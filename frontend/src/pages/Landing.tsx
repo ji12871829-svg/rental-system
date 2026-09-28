@@ -21,7 +21,7 @@
 // no fake numbers; the stat band and pricing render real data. Branding
 // flows from BrandingContext so the page rebrands exactly like Login/portal.
 import { useEffect, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import {
   ArrowRight,
   Building2,
@@ -116,6 +116,35 @@ export default function Landing() {
   // Amie-style restraint: one IntersectionObserver pass marks below-the-fold
   // sections for a single rise-in. No scroll listeners, no replays.
   useLandingReveal();
+
+  // Deep links like /landing#demo (legal pages, shared URLs) must actually
+  // scroll: React Router performs no native anchor jump on SPA navigation,
+  // and the section only exists after mount. The jump is instant (like a
+  // native hash jump, and what reduced motion wants anyway), then corrective
+  // frames keep it on target while async content (pricing rows, contact
+  // cards) grows the page over the first few hundred milliseconds.
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (!hash) return;
+    const jump = () => {
+      const el = document.querySelector(hash);
+      if (!el) return false;
+      const top = el.getBoundingClientRect().top + window.scrollY - 72;
+      window.scrollTo({ top: Math.max(top, 0), behavior: 'auto' });
+      return true;
+    };
+    if (!jump()) return;
+    let frames = 0;
+    const settle = () => {
+      const el = document.querySelector(hash);
+      if (!el || frames++ > 40) return;
+      if (Math.abs(el.getBoundingClientRect().top - 72) > 4) {
+        jump();
+        requestAnimationFrame(settle);
+      }
+    };
+    requestAnimationFrame(settle);
+  }, [hash]);
 
   // Social-preview + SEO metadata while the landing page is mounted (OG,
   // Twitter cards, canonical, JSON-LD LocalBusiness); restored on unmount.
