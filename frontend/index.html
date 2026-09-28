@@ -13,15 +13,38 @@
     <meta name="apple-mobile-web-app-title" content="RPMS" />
     <meta
       name="description"
-      content="RPMS — Olbano Property Management System. Manage units, tenants, rent collection, water billing, expenses and financial reports for a single property."
+      content="Olbano Plaza puts rent, water, receipts and messages in one place — M-Pesa collection, per-unit water billing and a tenant self-service portal for landlords and managers."
     />
+    <!-- Social-preview fallbacks (OG + Twitter). The landing page rewrites
+         these at runtime with the live identity (src/lib/seo.ts); these
+         statics cover every other route and no-JS crawls. og:image is
+         intentionally relative — preview resolvers resolve it against the
+         page URL, so it works on any deploy domain. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Olbano Plaza" />
+    <meta property="og:title" content="Olbano Plaza — Olbano Property Management" />
+    <meta
+      property="og:description"
+      content="Olbano Plaza puts rent, water, receipts and messages in one place — M-Pesa collection, per-unit water billing and a tenant self-service portal for landlords and managers."
+    />
+    <meta property="og:image" content="/og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Olbano Plaza — run the whole property from one ledger" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Olbano Plaza — Olbano Property Management" />
+    <meta
+      name="twitter:description"
+      content="Olbano Plaza puts rent, water, receipts and messages in one place — M-Pesa collection, per-unit water billing and a tenant self-service portal for landlords and managers."
+    />
+    <meta name="twitter:image" content="/og.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap"
     />
-    <title>RPMS — Olbano Property Management</title>
+    <title>Olbano Plaza — Olbano Property Management</title>
   </head>
   <body>
     <div id="root"></div>

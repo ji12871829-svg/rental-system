@@ -4,6 +4,9 @@
 // sign-in UI stays dormant and the password form is the only door.
 interface ImportMetaEnv {
   readonly VITE_CLERK_PUBLISHABLE_KEY?: string;
+  // Canonical site origin (no trailing slash) used for absolute og:url / OG
+  // image / JSON-LD URLs. Unset = the current browser origin is used.
+  readonly VITE_SITE_URL?: string;
 }
 
 // Virtual module injected by the lastUpdatedVirtual() plugin in vite.config.ts

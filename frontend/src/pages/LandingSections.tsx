@@ -1,10 +1,11 @@
-// Landing page sections — How-it-works, Pricing, Demo request + contact
-// cards, FAQ.
+// Landing page sections — workflow, Pricing, Demo request + contact cards,
+// FAQ.
 //
 // Extracted from Landing.tsx so the public marketing page stays navigable:
 // each section is a self-contained component fed by the business branding.
 //
 //   HowItWorks     — four numbered steps from sign-up to a running system
+//   TrustMarquee   — capability chips on the Amie marquee
 //   Pricing        — live room prices from GET /api/public/units (the
 //                    operator's real roster: types, rent ranges, availability)
 //   DemoRequest    — POST /api/public/demo-requests with the app-wide Button
@@ -104,69 +105,60 @@ export function TrustMarquee() {
 const STEPS = [
   {
     n: '01',
-    title: 'Add your property',
-    body: 'Create the property, floors and units with their rents in minutes — import your existing records or start fresh.',
+    title: 'Set up the building',
+    body: 'Create the property, floors and units with their rents. Import existing records or start fresh — most buildings are in before lunch.',
   },
   {
     n: '02',
-    title: 'Bring tenants on',
+    title: 'Invite your tenants',
     body: 'Add each tenancy with the tenant\u2019s email and phone. Tenants then claim portal access with that email and set their own password.',
   },
   {
     n: '03',
-    title: 'Collect via M-Pesa',
+    title: 'Turn on M-Pesa',
     body: 'Tenants pay by STK push or PayBill. Payments reconcile against the ledger automatically, with a numbered receipt every time.',
   },
   {
     n: '04',
-    title: 'Watch the dashboard',
+    title: 'Let the ledger run',
     body: 'Arrears, collections, water bills and expenses update live — from your desk or your phone, with no exercise books.',
   },
 ];
 
 export function HowItWorks() {
   return (
-    <section id="how-it-works" className="scroll-mt-20 border-t border-gray-100">
+    <section id="workflow" className="scroll-mt-20 border-t border-gray-100">
       <div className="mx-auto max-w-6xl px-5 py-16 lg:py-20">
-        <div className="grid items-center gap-10 lg:grid-cols-[1.15fr_0.85fr]">
-          <div>
-            <div className="mx-auto max-w-2xl text-center lg:text-left">
-              <h2 className="type-heading text-gray-900">Get started in under an hour</h2>
-              <p className="mt-3 text-base text-gray-500">
-                No training needed. Your first rent payment can land the same day you sign in.
-              </p>
-            </div>
-            <ol data-reveal className="mt-10 grid gap-5 sm:grid-cols-2">
+        {/* Sticky-left editorial: the intro pins while the numbered steps
+            scroll past — the design's long-read treatment for sequences. */}
+        <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
+          <div className="lg:sticky lg:top-24 lg:self-start">
+            <h2 className="type-heading text-gray-900">Live in four steps</h2>
+            <p className="mt-3 text-base text-graphite">
+              No training needed. Your first rent payment can land the same day you
+              sign in — bring the building on, invite the tenants, switch on M-Pesa
+              and let the ledger take it from there.
+            </p>
+            <a
+              href="#demo"
+              className="press mt-6 inline-flex min-h-[44px] items-center rounded-xl border border-ash bg-white px-5 py-2.5 text-sm font-semibold text-graphite transition-[background-color,color] hover:bg-fog"
+            >
+              Book a walkthrough
+            </a>
+          </div>
+          <ol data-reveal className="grid gap-4">
             {STEPS.map((s) => (
-              <li key={s.n} className="rounded-xl border border-ash bg-white p-6 shadow-sm">
-                <span className="text-3xl font-bold text-brand-400" aria-hidden>
+              <li key={s.n} className="flex gap-5 rounded-xl bg-white p-6 shadow-md">
+                <span className="text-3xl font-bold tracking-tight text-brand-400" aria-hidden>
                   {s.n}
                 </span>
-                <h3 className="mt-2 text-base font-semibold text-gray-900">{s.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-gray-500">{s.body}</p>
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900">{s.title}</h3>
+                  <p className="mt-1.5 text-sm leading-relaxed text-graphite">{s.body}</p>
+                </div>
               </li>
             ))}
-            </ol>
-          </div>
-          {/* Move-in moment — the photo this system exists for: keys changing
-              hands, rent flowing into the ledger instead of a notebook. */}
-          <figure data-reveal className="relative mx-auto w-full max-w-md lg:max-w-none">
-            <div className="absolute -inset-4 rounded-[2rem] bg-pale/40 blur-2xl" aria-hidden />
-            {/* Intrinsic dimensions reserved (photo is 1400×1051) so the image's
-                load never shifts the layout — CLS budget, not decoration. */}
-            <img
-              src="/photos/keys-move-in.jpg"
-              alt="Keys handed over at a move-in"
-              width={1400}
-              height={1051}
-              className="gray-reveal relative w-full rounded-xl object-cover shadow-md ring-1 ring-black/5"
-              loading="lazy"
-              decoding="async"
-            />
-            <figcaption className="absolute bottom-3 left-3 rounded-lg bg-white/90 px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm backdrop-blur-sm">
-              Every tenancy, tracked from day one
-            </figcaption>
-          </figure>
+          </ol>
         </div>
       </div>
     </section>
@@ -199,9 +191,10 @@ export function Pricing({ currency = 'KSh' }: { currency?: string }) {
     <section id="pricing" className="scroll-mt-20 border-t border-gray-100 bg-gray-50">
       <div className="mx-auto max-w-6xl px-5 py-16 lg:py-20">
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="type-heading text-gray-900">Room prices</h2>
-          <p className="mt-3 text-base text-gray-500">
-            Transparent, straight from our rent ledger — what you see is what our tenants pay, per month.
+          <h2 className="type-heading text-gray-900">Straight rent, published openly</h2>
+          <p className="mt-3 text-base text-graphite">
+            These are the real rates from our rent ledger — what tenants pay, per month, with
+            availability straight from the units page. No "contact us for pricing".
           </p>
         </div>
 
@@ -318,11 +311,11 @@ export function DemoRequest({ contactEmail }: { contactEmail?: string | null }) 
     return (
       <section id="demo" className="scroll-mt-20">
         <div className="mx-auto max-w-6xl px-5 py-16 lg:py-20">
-          <div className="mx-auto max-w-xl rounded-2xl border border-brand-100 bg-brand-50 p-8 text-center shadow-sm">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/30">
+          <div className="mx-auto max-w-xl rounded-xl border border-ash bg-white p-8 text-center shadow-lg">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand-500 text-white">
               <Check size={28} aria-hidden />
             </div>
-            <h2 className="mt-5 text-2xl font-semibold text-gray-900">Request received</h2>
+            <h2 className="type-heading-sm mt-5 text-gray-900">Request received</h2>
             <p className="mt-2 text-sm leading-relaxed text-gray-600">
               Thank you — we have your details and will reach out shortly to schedule your demo.
             </p>
@@ -336,9 +329,9 @@ export function DemoRequest({ contactEmail }: { contactEmail?: string | null }) 
     <section id="demo" className="scroll-mt-20 border-t border-gray-100">
       <div className="mx-auto max-w-6xl px-5 py-16 lg:py-20">
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="type-heading text-gray-900">Get in touch</h2>
-          <p className="mt-3 text-base text-gray-500">
-            Questions? Want a walkthrough on your own numbers? Reach out — we usually reply the same day.
+          <h2 className="type-heading text-gray-900">See it on your own numbers</h2>
+          <p className="mt-3 text-base text-graphite">
+            A walkthrough on your real rents, meters and tenants — reach out and we usually reply the same day.
           </p>
         </div>
 
@@ -356,14 +349,14 @@ export function DemoRequest({ contactEmail }: { contactEmail?: string | null }) 
               />
             </figure>
             <div className="flex-1 rounded-xl border border-ash bg-white p-6 shadow-sm">
-              <h3 className="text-base font-semibold text-gray-900">Reach us directly</h3>
+              <h3 className="type-heading-sm text-gray-900">Reach us directly</h3>
               <div className="mt-4 space-y-4">
                 {showWhatsApp && (
                   <a
                     href={`https://wa.me/${waDigits}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-start gap-3 rounded-xl border border-gray-100 p-3 transition-colors hover:bg-gray-50"
+                    className="flex items-start gap-3 rounded-xl border border-gray-100 p-3 transition-colors hover:bg-fog"
                   >
                     <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
                       <MessageCircle size={18} aria-hidden />
@@ -371,28 +364,28 @@ export function DemoRequest({ contactEmail }: { contactEmail?: string | null }) 
                     <span className="min-w-0">
                       <span className="block text-sm font-semibold text-gray-900">WhatsApp</span>
                       <span className="block truncate text-sm text-gray-600">{phone}</span>
-                      <span className="block text-xs text-gray-500">Fastest way to reach us</span>
+                      <span className="block text-xs text-silver">Fastest way to reach us</span>
                     </span>
                   </a>
                 )}
                 {email && (
                   <a
                     href={`mailto:${email}`}
-                    className="flex items-start gap-3 rounded-xl border border-gray-100 p-3 transition-colors hover:bg-gray-50"
+                    className="flex items-start gap-3 rounded-xl border border-gray-100 p-3 transition-colors hover:bg-fog"
                   >
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-fog text-gray-700">
                       <Mail size={18} aria-hidden />
                     </span>
                     <span className="min-w-0">
                       <span className="block text-sm font-semibold text-gray-900">Email</span>
                       <span className="block truncate text-sm text-gray-600">{email}</span>
-                      <span className="block text-xs text-gray-500">For detailed inquiries</span>
+                      <span className="block text-xs text-silver">For detailed inquiries</span>
                     </span>
                   </a>
                 )}
                 {phone && (
                   <div className="flex items-start gap-3 rounded-xl border border-gray-100 p-3">
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-600">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-fog text-gray-700">
                       <Phone size={18} aria-hidden />
                     </span>
                     <span className="min-w-0">
@@ -402,7 +395,7 @@ export function DemoRequest({ contactEmail }: { contactEmail?: string | null }) 
                   </div>
                 )}
               </div>
-              {identity?.address && <p className="mt-4 text-xs text-gray-500">{identity.address}</p>}
+              {identity?.address && <p className="mt-4 text-xs text-silver">{identity.address}</p>}
             </div>
           </div>
 
@@ -514,11 +507,11 @@ export function FaqSection() {
         <div className="text-center">
           <h2 className="type-heading text-gray-900">Frequently asked questions</h2>
           <p className="mt-3 text-base text-gray-500">
-            Everything you need to know about how the system works. Anything else — <a href="#demo" className="font-medium text-brand-600 underline underline-offset-2 hover:text-brand-700">ask us</a>.
+            The questions every landlord asks before moving off the exercise book. Anything else — <a href="#demo" className="font-medium text-brand-600 underline underline-offset-2 hover:text-brand-700">ask us</a>.
           </p>
         </div>
 
-        <div data-reveal className="mt-8 divide-y divide-gray-200 rounded-xl border border-ash bg-white shadow-sm">
+        <div data-reveal className="mt-8 divide-y divide-gray-200 rounded-xl bg-white shadow-md">
           {FAQS.map((item, i) => {
             const isOpen = open === i;
             return (
@@ -556,28 +549,5 @@ export function FaqSection() {
         </div>
       </div>
     </section>
-  );
-}
-
-// Footer helper: one-line anchor strip so every landing section is one click
-// from anywhere on the page.
-export function SectionLinks({ className = '' }: { className?: string }) {
-  const links = [
-    { href: '#how-it-works', label: 'How it works' },
-    { href: '#features', label: 'Features' },
-    { href: '#mpesa', label: 'M-Pesa' },
-    { href: '#pricing', label: 'Pricing' },
-    { href: '#demo', label: 'Request a demo' },
-    { href: '#faq', label: 'FAQs' },
-    { href: '#create-account', label: 'Create account' },
-  ];
-  return (
-    <nav aria-label="Page sections" className={className}>          {/* Dark-footer palette — links sit on the ink footer band. */}
-      {links.map((l) => (
-        <a key={l.href} href={l.href} className="whitespace-nowrap text-sm text-silver transition-colors hover:text-white">
-          {l.label}
-        </a>
-      ))}
-    </nav>
   );
 }
