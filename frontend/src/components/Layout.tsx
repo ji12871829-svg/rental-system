@@ -195,7 +195,7 @@ export default function Layout() {
               aria-controls={`${id}-menu`}
               aria-expanded={openSections[section.title] ?? false}
               onClick={() => setOpenSections((current) => ({ ...current, [section.title as string]: !(current[section.title as string] ?? false) }))}
-              className="group flex min-h-6 w-full items-center justify-between rounded-md px-2 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-silver transition-colors hover:bg-white/10 hover:text-white"
+              className="group flex min-h-6 w-full items-center justify-between rounded-md px-2 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-silver transition-[background-color,color,transform] duration-150 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)] hover:bg-white/10 hover:text-white active:scale-[0.98]"
             >
               <span className="flex min-w-0 items-center gap-1.5">
                 {section.icon && <section.icon size={13} strokeWidth={1.75} aria-hidden className="shrink-0 text-silver group-hover:text-white" />}
@@ -218,7 +218,7 @@ export default function Layout() {
                 end={item.to === '/'}
                   onClick={() => setMobileOpen(false)}
                   className={({ isActive }) =>
-                    `group flex min-h-[24px] items-center gap-1.5 rounded-md px-2.5 py-0.5 text-xs leading-tight font-medium transition-colors duration-150 ${
+                    `group flex min-h-[24px] items-center gap-1.5 rounded-md px-2.5 py-0.5 text-xs leading-tight font-medium transition-[background-color,color,transform] duration-150 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)] active:scale-[0.98] ${
                       isActive
                         ? 'bg-brand-500 text-white shadow-sm'
                         : 'text-silver hover:bg-white/10 hover:text-white'

@@ -80,7 +80,7 @@ function HealthCard({
   return (
     <Link
       to={to}
-      className={`block rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-colors duration-150 hover:bg-gray-50 ${border}`}
+      className={`block rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-[background-color,transform] duration-150 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)] hover:bg-gray-50 active:scale-[0.98] ${border}`}
     >
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm font-semibold text-gray-900">{title}</span>

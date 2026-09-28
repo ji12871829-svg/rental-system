@@ -119,8 +119,10 @@ export function OccupancyBar({ total, occupied, vacant }: { total: number; occup
       role="img"
       aria-label={`${occPct}% occupied, ${vacant} vacant of ${total} units`}
     >
-      <div className="h-full bg-brand-600 transition-[width] duration-700" style={{ width: `${occPct}%` }} />
-      <div className="h-full bg-amber-400 transition-[width] duration-700" style={{ width: `${total > 0 ? (vacant / total) * 100 : 0}%` }} />
+      {/* Bars ease out on the design's expo curve so poll-driven width
+          changes settle instead of sliding. */}
+      <div className="h-full bg-brand-500 transition-[width] duration-700 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]" style={{ width: `${occPct}%` }} />
+      <div className="h-full bg-amber-400 transition-[width] duration-700 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]" style={{ width: `${total > 0 ? (vacant / total) * 100 : 0}%` }} />
     </div>
   );
 }
@@ -157,13 +159,13 @@ export function OutstandingList({
             <button
               type="button"
               onClick={() => onSelect({ unitNumber: r.unitNumber })}
-              className="group flex w-full items-center gap-3 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-gray-50"
+              className="group flex w-full items-center gap-3 rounded-lg px-1.5 py-1 text-left transition-[background-color,transform] duration-150 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)] hover:bg-gray-50 active:scale-[0.99]"
               title={`Open arrears for unit ${r.unitNumber}`}
             >
               <span className="w-24 shrink-0 truncate text-xs font-semibold text-gray-700 sm:w-28">{r.unitNumber}</span>
               <span className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-gray-100">
                 <span
-                  className={`block h-full rounded-full ${barClass} transition-[width] duration-700`}
+                  className={`block h-full rounded-full ${barClass} transition-[width] duration-700 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]`}
                   style={{ width: `${Math.max(4, (amount / max) * 100)}%` }}
                 />
               </span>
@@ -209,7 +211,7 @@ export function CombinedCell({
   return to ? (
     <Link
       to={to}
-      className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-colors duration-150 hover:bg-gray-50"
+      className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-[background-color,transform] duration-150 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)] hover:bg-gray-50 active:scale-[0.98]"
     >
       {body}
     </Link>

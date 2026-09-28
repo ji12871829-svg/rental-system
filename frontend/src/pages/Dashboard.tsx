@@ -74,6 +74,9 @@ export default function Dashboard() {
 
   const { reportingYear } = data;
 
+  // Amie motion: each band rises in once with the expo-out curve, staggered
+  // so the eye walks the page top-to-bottom (first mount only — polls then
+  // update in place, and reduced-motion users get everything static).
   return (
     <div>
       <PageHeader
@@ -82,14 +85,20 @@ export default function Dashboard() {
         actions={<QuickActions variant="header" />}
       />
 
-      <KpiBand data={data} />
-      <HealthCards data={data} />
-      <ChartGrid
-        charts={data.charts}
-        currency={data.currency}
-        reportingYear={reportingYear}
-        water={data.water}
-      />
+      <div className="rise-in">
+        <KpiBand data={data} />
+      </div>
+      <div className="rise-in" style={{ animationDelay: '90ms' }}>
+        <HealthCards data={data} />
+      </div>
+      <div className="rise-in" style={{ animationDelay: '180ms' }}>
+        <ChartGrid
+          charts={data.charts}
+          currency={data.currency}
+          reportingYear={reportingYear}
+          water={data.water}
+        />
+      </div>
     </div>
   );
 }
