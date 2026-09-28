@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom';
-import { Building2, Home, ArrowLeft } from 'lucide-react';
+import { Home, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useBranding } from '../lib/BrandingContext';
+import { Toon } from '../components/Toon';
 
 export default function NotFound() {
   const { token } = useAuth();
@@ -10,9 +11,9 @@ export default function NotFound() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-100 p-4 text-center">
-      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-500 text-white shadow-md">
-        <Building2 size={26} strokeWidth={1.75} aria-hidden />
-      </span>
+      {/* Lost-page moment: the mascot greets instead of a bare brand chip —
+          the error state the mascot's own welcome softens best. */}
+      <Toon size={110} pose="wave" animated className="shrink-0" />
       <p className="mt-6 text-sm font-semibold uppercase tracking-widest text-brand-600">Error 404</p>
       <h1 className="mt-1 text-3xl font-bold text-gray-900">Page not found</h1>
       <p className="mt-2 max-w-sm text-sm text-gray-500">

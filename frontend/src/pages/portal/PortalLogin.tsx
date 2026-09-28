@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { Building2, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { usePortalAuth } from '../../lib/portalAuth';
 import { portalApi } from '../../lib/portalApi';
+import { Toon } from '../../components/Toon';
 
 export default function PortalLogin() {
   const { tenant, loading, login } = usePortalAuth();
@@ -66,9 +67,9 @@ export default function PortalLogin() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-white px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-2">
-          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-500 text-white">
-            <Building2 className="h-6 w-6" />
-          </span>
+          {/* The same waving welcome the staff sign-in gives — tenants get
+              the mascot too, not a bare icon. */}
+          <Toon size={110} pose="wave" animated title="Olbano Plaza property manager mascot waving hello" />
           <h1 className="text-xl font-semibold text-gray-900">Tenant Portal</h1>
           <p className="text-sm text-gray-500">Sign in with the email your landlord registered</p>
         </div>

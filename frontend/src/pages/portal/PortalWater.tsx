@@ -1,4 +1,5 @@
 import { PageHeader, SkeletonTable, useFetch } from '../../components/ui';
+import { Toon } from '../../components/Toon';
 import { money, monthLabel } from '../../lib/format';
 import { portalApi } from '../../lib/portalApi';
 
@@ -34,7 +35,12 @@ export default function PortalWater() {
           <h3 className="text-sm font-semibold text-gray-900">Reading history</h3>
         </div>
         {readings.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-gray-500">No readings recorded for your unit yet.</p>
+          <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+            <Toon size={72} pose="idle" className="shrink-0" />
+            <p className="max-w-xs text-sm text-gray-500">
+              No readings recorded for your unit yet — readings appear here once staff record them.
+            </p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

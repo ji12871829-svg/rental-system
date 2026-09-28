@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { PageHeader, SkeletonTable, StatGroupCard, useFetch } from '../../components/ui';
+import { Toon } from '../../components/Toon';
 import { money } from '../../lib/format';
 import { portalApi } from '../../lib/portalApi';
 import { usePortalAuth } from '../../lib/portalAuth';
@@ -43,7 +44,18 @@ export default function PortalHome() {
       </div>
     );
   }
-  if (error) return <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>;
+  if (error) {
+    return (
+      <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-ash bg-white p-10 text-center">
+        <Toon size={84} pose="idle" className="shrink-0" />
+        <p className="max-w-sm text-sm leading-6 text-graphite">
+          We couldn&rsquo;t load your summary just now —{' '}
+          <span className="font-medium text-red-700">{error}</span>. Check your connection and try again in a
+          moment; your data is safe on the server.
+        </p>
+      </div>
+    );
+  }
   if (!summary) return null;
 
   const s = summary.data;

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, Copy, Smartphone } from 'lucide-react';
 import { PageHeader, SkeletonTable, useFetch } from '../../components/ui';
+import { Toon } from '../../components/Toon';
 import { money, formatDate, monthLabel } from '../../lib/format';
 import { portalApi } from '../../lib/portalApi';
 import { useStkPush } from '../../lib/useStkPush';
@@ -184,7 +185,12 @@ export default function PortalPayments() {
         {loading && <SkeletonTable cols={5} />}
         {error && <p className="px-4 py-4 text-sm text-red-700">{error}</p>}
         {!loading && !error && (paymentsData?.data.length ?? 0) === 0 && (
-          <p className="px-4 py-6 text-sm text-gray-500">No payments recorded yet.</p>
+          <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+            <Toon size={72} pose="idle" className="shrink-0" />
+            <p className="max-w-xs text-sm text-gray-500">
+              No payments recorded yet — your M-Pesa payments will appear here once you make one.
+            </p>
+          </div>
         )}
         {!loading && !error && (paymentsData?.data.length ?? 0) > 0 && (
           <div className="overflow-x-auto">
