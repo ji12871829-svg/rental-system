@@ -141,8 +141,12 @@ node scripts/verify-live.mjs https://<your-service>.onrender.com
 ```
 
 It checks health + config knobs, the SPA index, manifest/service worker/icons,
-four deep links, the API 404 shape, HTTPS/HSTS, then signs in with the seed
-admin and calls three authed read endpoints. Exit code 0 = all green.
+four deep links, the SEO surface (robots.txt, sitemap.xml when emitted,
+og.jpg, OG meta tags), the API 404 shape, HTTPS/HSTS, then signs in with the
+seed admin and calls three authed read endpoints. Exit code 0 = all green.
+Static-file checks sniff content type rather than trusting 200s — the SPA
+fallback serves HTML for missing paths, which would otherwise hide a lost
+robots.txt or og.jpg.
 
 - After changing passwords: `RPMS_ADMIN_EMAIL=… RPMS_ADMIN_PASSWORD=… node scripts/verify-live.mjs …`
 - A 401 on login with the seed credentials usually means the password was

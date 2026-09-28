@@ -141,6 +141,100 @@ for (const path of ['/tenants', '/rent', '/water-meter', '/users']) {
   }
 }
 
+// ------------------------------------------------- SEO surface (crawlers) --
+// robots.txt / sitemap.xml / og.jpg / OG meta tags — the crawler-and-social
+// layer the landing SEO work added (vite seoFiles plugin + index.html tags).
+// The SPA fallback serves index.html (200, text/html) for ANY missing path,
+// so "the file exists" is judged by content type and content sniffing, never
+// by status code alone — a missing robots.txt looks like a 200 otherwise.
+let robotsBody = null;
+try {
+  const res = await get('/robots.txt');
+  const body = await res.text();
+  const isHtml = /text\/html/.test(res.headers.get('content-type') ?? '');
+  const looksLikeRobots = !isHtml && /^user-agent:/im.test(body);
+  if (looksLikeRobots) robotsBody = body;
+  record(
+    'GET /robots.txt → crawler policy (not an SPA-fallback HTML page)',
+    looksLikeRobots,
+    isHtml
+      ? 'served index.html — robots.txt is missing from the deploy (seoFiles emission broken?)'
+      : (body.split('\n')[0] ?? '').trim().slice(0, 60)
+  );
+} catch (err) {
+  record('GET /robots.txt', false, err.message);
+}
+
+// The sitemap is emitted only when VITE_SITE_URL is set at build time (the
+// protocol requires absolute URLs; with no production domain it is skipped
+// honestly and the build log says so). Absence is therefore a failure ONLY
+// when robots.txt advertises a Sitemap that does not resolve — otherwise it
+// is the documented skip state, recorded as a pass with instructions.
+const sitemapAdvertised = robotsBody ? /^sitemap:\s*\S+$/im.test(robotsBody) : false;
+try {
+  const res = await get('/sitemap.xml');
+  const type = res.headers.get('content-type') ?? '';
+  const body = await res.text();
+  const isXml = /xml/.test(type) || /^\s*<\?xml/.test(body);
+  const locs = isXml ? [...body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]) : [];
+  if (res.status === 200 && isXml && locs.length > 0) {
+    const absolute = locs.every((u) => /^https?:\/\//.test(u));
+    const pointer = sitemapAdvertised ? (robotsBody.match(/^sitemap:\s*(.+)$/im)?.[1] ?? '') : null;
+    const pointerOk = pointer === null || /sitemap\.xml/i.test(pointer);
+    record(
+      `GET /sitemap.xml → ${locs.length} URLs, all absolute${pointer === null ? '' : pointerOk ? ', robots pointer matches' : ', ROBOTS POINTER MISMATCH'}`,
+      absolute && pointerOk,
+      absolute ? `first=${locs[0]}` : 'relative <loc> URLs found — the sitemap protocol requires absolute URLs'
+    );
+  } else if (sitemapAdvertised) {
+    record(
+      'GET /sitemap.xml',
+      false,
+      `robots.txt advertises a Sitemap but the file is missing (status=${res.status}, type=${type}) — the build wrote robots.txt from VITE_SITE_URL but never the sitemap itself`
+    );
+  } else {
+    record(
+      'GET /sitemap.xml → correctly absent',
+      true,
+      'no sitemap emitted (VITE_SITE_URL unset at build) and robots.txt advertises none — set VITE_SITE_URL on the deploy to emit one'
+    );
+  }
+} catch (err) {
+  record('GET /sitemap.xml', false, err.message);
+}
+
+try {
+  const res = await get('/og.jpg');
+  const type = res.headers.get('content-type') ?? '';
+  let len = Number(res.headers.get('content-length') ?? 0);
+  if (!len) len = (await res.arrayBuffer()).byteLength; // chunked / header stripped
+  // >10 KB: the generated 1200x630 card is ~120 KB; anything smaller that
+  // still claims to be an image is a placeholder or a truncated response.
+  record(
+    'GET /og.jpg → social preview card (real image, > 10 KB)',
+    res.status === 200 && type.startsWith('image/') && len > 10_000,
+    `status=${res.status} type=${type} bytes=${len || '?'}`
+  );
+} catch (err) {
+  record('GET /og.jpg', false, err.message);
+}
+
+// The static fallback tags live in index.html, so this audits what every
+// no-JS crawler actually receives on any route (the landing rewrites them
+// client-side; crawlers never run that code).
+try {
+  const res = await get('/');
+  const html = await res.text();
+  const missing = ['property="og:title"', 'property="og:image"', 'name="twitter:card"'].filter((t) => !html.includes(t));
+  record(
+    'GET / → OG + Twitter meta tags in the served HTML',
+    missing.length === 0,
+    missing.length === 0 ? 'og:title, og:image, twitter:card all present' : `missing: ${missing.join(', ')}`
+  );
+} catch (err) {
+  record('GET / → OG meta tags', false, err.message);
+}
+
 // --------------------------------------------- API 404 shape (router sanity) --
 try {
   const res = await get('/api/definitely-not-a-route');
