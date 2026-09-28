@@ -93,7 +93,7 @@ export default function Login() {
           gradient. Photo + scrim keeps the copy legible; srcset serves the
           right size per screen. Hidden on narrow screens, where it would only
           push the form below the fold. */}
-      <div className="relative hidden w-[42%] shrink-0 overflow-hidden bg-[#0b1f3a] lg:block">
+      <div className="relative hidden w-[42%] shrink-0 overflow-hidden bg-ink lg:block">
         <picture>
           <source
             type="image/webp"
@@ -112,7 +112,7 @@ export default function Login() {
           />
         </picture>
         {/* Scrim so the copy below stays legible over the photo. */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0b1f3a] via-[#0b1f3a]/75 to-[#0b1f3a]/25" aria-hidden />
+        <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/75 to-ink/25" aria-hidden />
         <div className="relative flex h-full flex-col justify-between p-10">
           <div className="flex items-center gap-3">
             <BrandLogo
@@ -126,8 +126,8 @@ export default function Login() {
             <Toon size={110} pose="wave" animated title="Olbano Plaza property manager mascot waving hello" />
             <div>
             <h1 className="max-w-xs text-3xl font-semibold leading-tight text-white">{branding.appNameLong}</h1>
-            {loginIdentityLine && <p className="mt-2 text-sm text-slate-300">{loginIdentityLine}</p>}
-            <p className="mt-4 max-w-xs text-sm leading-relaxed text-slate-400">
+            {loginIdentityLine && <p className="mt-2 text-sm text-silver">{loginIdentityLine}</p>}
+            <p className="mt-4 max-w-xs text-sm leading-relaxed text-silver">
               Every unit, rent payment and water bill, tracked in one place.
             </p>
             </div>
@@ -141,7 +141,7 @@ export default function Login() {
           {/* Wordmark — the mock's big brand name over the tabs. */}
           <div className="mb-7 flex flex-col items-center gap-2.5 text-center">
             <BrandLogo
-              className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-md shadow-brand-600/30"
+              className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-500 text-white shadow-md"
               iconSize={24}
             />
             <span className="text-2xl font-bold tracking-tight text-gray-900">{branding.appNameLong}</span>

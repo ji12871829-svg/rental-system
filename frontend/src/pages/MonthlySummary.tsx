@@ -247,7 +247,7 @@ export default function MonthlySummary() {
               <YAxis />
               <Tooltip formatter={(v: any) => money(v)} />
               <Legend />
-              <Bar dataKey="totalDue" fill="#cbd5e1" name="Total due" />
+              <Bar dataKey="totalDue" fill="#dcdcdc" name="Total due" />
               <Bar dataKey="totalCollected" fill="#10b981" name="Total collected" />
             </BarChart>
           </ResponsiveContainer>
@@ -263,7 +263,7 @@ export default function MonthlySummary() {
               <Legend />
               <Line type="monotone" dataKey="rentOutstanding" stroke="#ef4444" name="Rent outstanding" />
               <Line type="monotone" dataKey="waterOutstanding" stroke="#8b5cf6" name="Water outstanding" />
-              <Line type="monotone" dataKey="totalOutstanding" stroke="#1d6fd6" name="Total outstanding" />
+              <Line type="monotone" dataKey="totalOutstanding" stroke="#11a8ff" name="Total outstanding" />
             </LineChart>
           </ResponsiveContainer>
         </div>

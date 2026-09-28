@@ -41,7 +41,7 @@ export function BarChart(props: {
     el: b,
     key: b.props.dataKey,
     name: b.props.name ?? (typeof b.props.dataKey === 'string' ? b.props.dataKey : 'value'),
-    fill: b.props.fill ?? '#1d6fd6',
+    fill: b.props.fill ?? '#11a8ff',
     cells: (Children.toArray(b.props.children).filter(
       (c): c is ReactElement<CellConfig> => isValidElement(c) && c.type === Cell,
     )).map((c) => c.props.fill),

@@ -76,8 +76,8 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
 // Full-screen fallback for the first load and standalone pages (login, legal, 404).
 function RouteFallback() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100" role="status" aria-label="Loading page">
-      <Loader2 size={28} strokeWidth={1.75} className="animate-spin text-brand-600" aria-hidden />
+    <div className="flex min-h-screen items-center justify-center bg-white" role="status" aria-label="Loading page">
+      <Loader2 size={28} strokeWidth={1.75} className="animate-spin text-brand-500" aria-hidden />
     </div>
   );
 }

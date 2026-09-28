@@ -33,7 +33,7 @@ export function LineChart(props: {
   const series = lines.map((l) => ({
     key: l.props.dataKey,
     name: l.props.name ?? (typeof l.props.dataKey === 'string' ? l.props.dataKey : 'value'),
-    color: l.props.stroke ?? '#1d6fd6',
+    color: l.props.stroke ?? '#11a8ff',
     monotone: (l.props.type ?? 'linear') === 'monotone',
   }));
 

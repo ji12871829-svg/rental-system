@@ -9,7 +9,7 @@ export function applyBrandFavicon(initials: string | null): void {
   if (!initials) return;
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">` +
-    `<rect width="32" height="32" rx="7" fill="#1559b3"/>` +
+    `<rect width="32" height="32" rx="7" fill="#11a8ff"/>` +
     `<text x="16" y="16" text-anchor="middle" dominant-baseline="central" ` +
     `font-family="system-ui,-apple-system,'Segoe UI',sans-serif" ` +
     `font-size="14" font-weight="700" fill="#fff">${initials}</text>` +

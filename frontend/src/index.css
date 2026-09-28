@@ -6,6 +6,47 @@ html {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ==========================================================================
+   Voice — the Amie split: ONE typeface (Inter) for everything, weight and
+   letter-spacing carry the hierarchy. Display sizes tighten (-0.025em) into
+   confident blocks; body relaxes to 1.75 line-height. See
+   design/amie-DESIGN.md.
+   ========================================================================== */
+body {
+  font-family: Inter, "Inter var", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  letter-spacing: 0;
+}
+button, input, select, textarea {
+  font-family: inherit;
+}
+
+/* Display scale — Inter 700 with Amie's tight negative tracking. */
+.type-display {
+  font-weight: 700;
+  font-size: clamp(2.5rem, 5vw, 56px);
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+}
+.type-heading {
+  font-weight: 700;
+  font-size: clamp(2rem, 3.5vw, 40px);
+  line-height: 1.14;
+  letter-spacing: -0.012em;
+}
+.type-heading-sm {
+  font-weight: 600;
+  font-size: 20px;
+  line-height: 1.4;
+}
+.type-body {
+  font-size: 14px;
+  line-height: 1.75;
+}
+.type-caption {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* Headings break balanced; body text avoids orphans. */
 h1, h2, h3 {
   text-wrap: balance;
@@ -14,9 +55,12 @@ p {
   text-wrap: pretty;
 }
 
-/* Keep wide tables usable on small screens (spec §40). */
+/* Keep wide tables usable on small screens (spec §40). Elevation follows
+   Amie: the card floats on a shadow-as-border ring, no visible stroke. */
 .table-scroll {
-  @apply overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm;
+  @apply overflow-x-auto rounded-xl bg-white;
+  box-shadow: rgba(0, 0, 0, 0.06) 0px 0px 0px 1px, rgba(0, 0, 0, 0.06) 0px 1px 1px -0.5px,
+    rgba(0, 0, 0, 0.06) 0px 3px 3px -1.5px;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -44,13 +88,13 @@ p {
 
 /* Sticky first column: row identity (unit #, receipt #, tenant) stays visible
    while the rest of a wide table scrolls sideways on a phone. The background
-   must be opaque (content scrolls UNDER it) — hardcoded white here is what
-   broke dark mode, so it's a CSS variable that flips with the theme, and the
-   row-hover states match so the sticky cell follows its row. */
+   must be opaque (content scrolls UNDER it), so it's a CSS variable that
+   flips with the theme, and the row-hover states match so the sticky cell
+   follows its row. */
 .table-scroll {
   --sticky-bg: #ffffff;
-  --sticky-bg-hover: #f9fafb;
-  --sticky-hairline: #e5e7eb;
+  --sticky-bg-hover: #fafafa;
+  --sticky-hairline: #ebebeb;
 }
 .table-scroll thead th:first-child,
 .table-scroll tbody td:first-child {
@@ -67,9 +111,9 @@ p {
   background: var(--sticky-bg-hover);
 }
 html.dark .table-scroll {
-  --sticky-bg: #0d0f14;      /* card tone — the sticky cell must match its row */
-  --sticky-bg-hover: #161921; /* raised hover tone */
-  --sticky-hairline: #1d2027; /* dark border tone */
+  --sticky-bg: #17191d;      /* card tone — the sticky cell must match its row */
+  --sticky-bg-hover: #1f2227; /* raised hover tone */
+  --sticky-hairline: #23262b; /* dark border tone */
 }
 
 /* Scrollable but chrome-free — for the mobile nav rail. */
@@ -103,12 +147,12 @@ html.dark .table-scroll {
   animation: btn-check-draw 0.45s ease-out 0.1s forwards;
 }
 
-/* KPI value-change flash: a soft brand-colored pulse when a polled number
-   moves (see useCountUp in Dashboard.tsx). One-shot, never loops. */
+/* KPI value-change flash: a soft sky pulse when a polled number moves (see
+   useCountUp in Dashboard.tsx). One-shot, never loops. */
 @keyframes value-flash {
-  0% { text-shadow: 0 0 0 rgba(29, 111, 214, 0); }
-  35% { text-shadow: 0 0 14px rgba(29, 111, 214, 0.55); }
-  100% { text-shadow: 0 0 0 rgba(29, 111, 214, 0); }
+  0% { text-shadow: 0 0 0 rgba(17, 168, 255, 0); }
+  35% { text-shadow: 0 0 14px rgba(17, 168, 255, 0.55); }
+  100% { text-shadow: 0 0 0 rgba(17, 168, 255, 0); }
 }
 .value-flash {
   animation: value-flash 1s ease-out;
@@ -121,7 +165,7 @@ html.dark .table-scroll {
   to { opacity: 1; transform: translateY(0); }
 }
 .rise-in {
-  animation: rise-in 0.35s ease-out both;
+  animation: rise-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 /* Attention pulse for provider badges (low/empty wallet, pending email):
@@ -134,6 +178,41 @@ html.dark .table-scroll {
   animation: alert-pulse 1.6s ease-in-out infinite;
 }
 
+/* Amie motion: the social-proof strip drifts as a slow marquee (70s per
+   loop, linear — no easing pulses). Content duplicated in markup; the
+   reduced-motion guard below parks it. */
+@keyframes marquee-x {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.marquee-track {
+  animation: marquee-x 70s linear infinite;
+}
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+
+/* Amie imagery rule: secondary product imagery/logos sit at grayscale until
+   hovered, then bloom to full color. Opt in with .gray-reveal. */
+.gray-reveal {
+  filter: grayscale(1);
+  transition: filter 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.gray-reveal:hover,
+.gray-reveal:focus-visible,
+.group:hover .gray-reveal {
+  filter: grayscale(0);
+}
+
+/* Amie press physics: buttons and cards compress a touch on press, springs
+   back on release (expo-out). Applied via .press on interactive elements. */
+.press {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.press:active {
+  transform: scale(0.97);
+}
+
 /* Respect users who turn off animations at the OS level. */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -144,10 +223,16 @@ html.dark .table-scroll {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+  .marquee-track {
+    animation: none !important;
+  }
+  .gray-reveal {
+    filter: none !important;
+  }
 }
 
 /* ==========================================================================
-   Landing — Apple-style motion & materials (see pages/Landing.tsx)
+   Landing — Amie motion & materials (see pages/Landing.tsx)
    ========================================================================== */
 
 /* Anchor navigation glides instead of snapping; the reduced-motion guard
@@ -180,16 +265,15 @@ html:has(#create-account) {
   }
 }
 
-/* Translucent chrome: the sticky header reads as a material (blur + color
-   saturation + a bright top hairline where light catches it), not an opaque
-   bar. Dark mode keeps its own remap of bg-white/90 below. */
+/* Translucent chrome: the sticky header is the ONE place the design allows
+   backdrop blur (Amie: "blur appears only on the sticky nav at scroll"). */
 .landing-header-material {
-  background: rgb(255 255 255 / 0.72);
-  backdrop-filter: blur(16px) saturate(160%);
-  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  background: rgb(255 255 255 / 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 html.dark .landing-header-material {
-  background: rgb(13 15 20 / 0.78);
+  background: rgb(23 25 29 / 0.86);
 }
 
 /* Tighter cell padding on small screens so more columns fit before scrolling. */
@@ -201,75 +285,109 @@ html.dark .landing-header-material {
   }
 }
 /* ==========================================================================
+   Light-mode achromatic remap — the Amie neutral set. The app's light-first
+   gray utilities map here in one place: text sinks to ink/graphite/silver,
+   borders to ash/divider, surfaces to fog. bg-white stays pure white — the
+   design's page canvas (cards float via the shadow ring, not borders).
+   ========================================================================== */
+html:not(.dark) .text-gray-900 { color: #000000; }
+html:not(.dark) .text-gray-800 { color: #1a1a1a; }
+html:not(.dark) .text-gray-700 { color: #2e2e2e; }
+html:not(.dark) .text-gray-600 { color: #5c5c5c; }
+html:not(.dark) .text-gray-500 { color: #5c5c5c; }
+html:not(.dark) .text-gray-400 { color: #a0a0a0; }
+html:not(.dark) .text-gray-300 { color: #cdcdcd; }
+html:not(.dark) .border-gray-200 { border-color: #ebebeb; }
+html:not(.dark) .border-gray-300 { border-color: #cdcdcd; }
+html:not(.dark) .border-gray-100 { border-color: #f0f0f0; }
+html:not(.dark) .divide-gray-200 > :not([hidden]) ~ :not([hidden]) { border-color: #ebebeb; }
+html:not(.dark) .bg-gray-50 { background-color: #fafafa; }
+html:not(.dark) .bg-gray-100 { background-color: #f7f7f7; }
+html:not(.dark) .bg-gray-200 { background-color: #ebebeb; }
+html:not(.dark) .bg-gray-300 { background-color: #e0e0e0; }
+html:not(.dark) .hover\:bg-gray-50:hover { background-color: #fafafa; }
+html:not(.dark) .hover\:bg-gray-100:hover { background-color: #f0f0f0; }
+
+/* Native dropdown chrome follows the canvas, not the browser default. */
+select option {
+  background-color: #ffffff;
+  color: #000000;
+}
+html.dark select option {
+  background-color: #121417;
+  color: #f2f4f7;
+}
+
+/* ==========================================================================
    Dark mode
    The app is built with light-first utility classes (bg-white, text-gray-500,
    border-gray-200, …). Rather than adding dark: variants to ~400 call sites,
    these overrides remap the handful of utility classes the app actually uses
    whenever <html class="dark"> is set (theme.tsx toggles it). Specificity:
    each selector chains the base utility, so the dark declaration wins without
-   !important wars. One-off colored surfaces (red-50 alerts, emerald-100
-   badges…) are darkened in place with dark: variants where they appear.
+   !important wars.
 
-   Palette design — a true-black ramp with PROPER ELEVATION:
+   Palette design — a true-black COOL ramp with PROPER ELEVATION:
    light mode has page < card (gray-100 < white); dark mode keeps that
-   relationship (page pure black, raised cards barely lighter) so cards
-   read as elevated surfaces, not holes. This is the OLED-friendly end of
-   the dark-UI spectrum: pitch black page, near-black cards that lift by
-   ~4–5% luminance, borders the same step again — depth by inches, not
-   flashes. Text stays cool near-white; status hues keep their hues.
+   relationship (page near-black, raised cards barely lighter) so cards
+   read as elevated surfaces, not holes. Text stays cool near-white; status
+   hues keep their hues.
 
-     page          #000000   (app root, bg-gray-100 remap)
-     sunken/header #06070a   (bg-gray-50: table headers, input wells)
-     card          #0d0f14   (bg-white: cards, panels, modals)
-     hover/raised  #161921   (hover targets inside cards)
-     border        #1d2027 card edges · #2a2f3a input/strong edges
+     page          #0b0c0e   (app root, bg-gray-100 remap)
+     sunken/header #121417   (bg-gray-50: table headers, input wells)
+     card          #17191d   (bg-white: cards, panels, modals)
+     hover/raised  #1f2227   (hover targets inside cards)
+     border        #23262b card edges · #2d3138 input/strong edges
    ========================================================================== */
 html.dark {
   color-scheme: dark;
 }
 
-/* Surfaces — page pure black, cards lifted just above it */
-html.dark .bg-white { background-color: #0d0f14; }
-html.dark .bg-gray-50 { background-color: #06070a; }
-html.dark .bg-gray-100 { background-color: #000000; }
-html.dark .bg-gray-200 { background-color: #161921; }
-html.dark .bg-gray-300 { background-color: #22252e; }
+/* Surfaces — page near-black, cards lifted just above it */
+html.dark .bg-white { background-color: #17191d; }
+html.dark .bg-gray-50 { background-color: #121417; }
+html.dark .bg-gray-100 { background-color: #0b0c0e; }
+html.dark .bg-gray-200 { background-color: #1f2227; }
+html.dark .bg-gray-300 { background-color: #262a31; }
 html.dark .bg-gray-900\/60 { background-color: rgb(0 0 0 / 0.75); }
 html.dark .bg-gray-900\/95 { background-color: rgb(0 0 0 / 0.97); }
 
 /* Text — cool near-white primary, calm slate secondaries */
-html.dark .text-gray-900 { color: #eef2f7; }
-html.dark .text-gray-800 { color: #dbe3ee; }
-html.dark .text-gray-700 { color: #c3cddc; }
-html.dark .text-gray-600 { color: #9aa8bd; }
-html.dark .text-gray-500 { color: #8493aa; }
-html.dark .text-gray-400 { color: #6b7a93; }
-html.dark .text-gray-300 { color: #55637c; }
+html.dark .text-gray-900 { color: #f2f4f7; }
+html.dark .text-gray-800 { color: #dfe3e9; }
+html.dark .text-gray-700 { color: #c3c9d4; }
+html.dark .text-gray-600 { color: #9aa3b0; }
+html.dark .text-gray-500 { color: #848e9c; }
+html.dark .text-gray-400 { color: #6b7686; }
+html.dark .text-gray-300 { color: #555e6b; }
 
 /* Borders + hairlines — one step above card tone, never glowing */
-html.dark .border-gray-200 { border-color: #1d2027; }
-html.dark .border-gray-300 { border-color: #2a2f3a; }
-html.dark .border-gray-100 { border-color: #12141a; }
-html.dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) { border-color: #1d2027; }
+html.dark .border-gray-200 { border-color: #23262b; }
+html.dark .border-gray-300 { border-color: #2d3138; }
+html.dark .border-gray-100 { border-color: #17191d; }
+html.dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) { border-color: #23262b; }
 
 /* Inputs: dark surface, visible focus ring */
 html.dark .bg-white.border-gray-300,
 html.dark input.bg-white,
 html.dark select.bg-white,
-html.dark textarea.bg-white { background-color: #06070a; }
+html.dark textarea.bg-white { background-color: #121417; }
 
 /* Shadows: pure black shadows look smeared on dark surfaces — recolor them
-   toward navy and deepen slightly so elevation stays legible. */
+   toward slate and deepen slightly so elevation stays legible. */
 html.dark .shadow-sm { box-shadow: 0 1px 2px rgb(2 6 23 / 0.55); }
 html.dark .shadow-md { box-shadow: 0 3px 8px rgb(2 6 23 / 0.5); }
 html.dark .shadow-lg { box-shadow: 0 10px 28px rgb(2 6 23 / 0.6); }
+html.dark .shadow,
+html.dark .shadow-xl,
+html.dark .shadow-2xl { box-shadow: 0 0 0 1px rgb(255 255 255 / 0.04), 0 12px 32px rgb(2 6 23 / 0.55); }
 
 /* Status tones get desaturated dark variants where pages hardcode them. */
 html.dark .bg-red-50 { background-color: rgb(127 29 29 / 0.22); }
 html.dark .bg-green-50 { background-color: rgb(6 78 59 / 0.26); }
 html.dark .bg-amber-50 { background-color: rgb(120 53 15 / 0.26); }
 html.dark .bg-blue-50 { background-color: rgb(30 58 138 / 0.26); }
-html.dark .bg-brand-50 { background-color: rgb(21 89 179 / 0.18); }
+html.dark .bg-brand-50 { background-color: rgb(17 168 255 / 0.14); }
 html.dark .bg-emerald-50 { background-color: rgb(6 78 59 / 0.26); }
 html.dark .bg-emerald-100 { background-color: rgb(6 78 59 / 0.45); }
 html.dark .bg-red-100 { background-color: rgb(127 29 29 / 0.45); }
@@ -290,25 +408,20 @@ html.dark .bg-gray-100\/70 { background-color: rgb(255 255 255 / 0.07); }
 /* Interactive states also compile to separate classes (hover:bg-gray-50 is
    NOT .bg-gray-50) — without these, button/card hovers flash Tailwind's
    original near-white in dark mode. */
-html.dark .hover\:bg-gray-50:hover { background-color: #10141c; }
-html.dark .hover\:bg-gray-100:hover { background-color: #0b0d12; }
-html.dark .hover\:bg-brand-50:hover { background-color: rgb(21 89 179 / 0.22); }
+html.dark .hover\:bg-gray-50:hover { background-color: #1a1d22; }
+html.dark .hover\:bg-gray-100:hover { background-color: #101216; }
+html.dark .hover\:bg-brand-50:hover { background-color: rgb(17 168 255 / 0.2); }
 html.dark .hover\:bg-amber-100:hover { background-color: rgb(120 53 15 / 0.38); }
-html.dark .disabled\:bg-gray-50:disabled { background-color: #06070a; }
+html.dark .disabled\:bg-gray-50:disabled { background-color: #121417; }
 
-/* Cookie banner: translucent white → the card tone at near-full opacity so
-   the backdrop-blur still reads. */
-html.dark .bg-white\/95 { background-color: rgb(13 15 20 / 0.97); }
+/* Cookie banner + landing header: translucent white → the card tone at
+   near-full opacity so the backdrop-blur still reads. */
+html.dark .bg-white\/95 { background-color: rgb(23 25 29 / 0.97); }
+html.dark .bg-white\/90 { background-color: rgb(23 25 29 / 0.92); }
 
-/* Landing header: same translucent-white treatment as the cookie banner —
-   without it the sticky bar stays light over the dark page and the brand
-   text disappears. */
-html.dark .bg-white\/90 { background-color: rgb(13 15 20 / 0.92); }
-
-/* Sidebar + drawer (bg-slate-800 in Layout) join the black ramp — one
-   visible step lighter than the black page so the chrome still separates
-   from content, but firmly part of the same near-black family. */
-html.dark .bg-slate-800 { background-color: #0a0b0f; }
+/* Sidebar + drawer (dark chrome) join the black ramp — one visible step
+   lighter than the black page so the chrome still separates from content. */
+html.dark .bg-slate-800 { background-color: #101216; }
 html.dark .bg-slate-700\/60 { background-color: rgb(255 255 255 / 0.06); }
 html.dark .hover\:bg-slate-700\/60:hover { background-color: rgb(255 255 255 / 0.06); }
 
@@ -335,29 +448,29 @@ html.dark .to-white { --tw-gradient-to: transparent var(--tw-gradient-to-positio
    filter softens the animation's shimmer on dark). */
 html.dark .animate-pulse { filter: brightness(1.15); }
 
-/* Ghost comparison bars (#cbd5e1 — tuned as the muted bar on white cards)
+/* Ghost comparison bars (#dcdcdc — tuned as the muted bar on white cards)
    would be the brightest element on a dark card. The attribute selector
    beats the SVG presentation attribute and leaves the colored bars
    beside them untouched. */
-html.dark [fill="#cbd5e1"] { fill: #232b3b; }
+html.dark [fill="#dcdcdc"] { fill: #2a2e34; }
 
 /* ==========================================================================
    Chart theme variables — the SVG kit reads CSS vars so axes, grids, labels
    and tooltips follow the theme without re-render (charts.tsx).
    ========================================================================== */
 :root {
-  --chart-grid: #e5e7eb;
-  --chart-axis: #d1d5db;
-  --chart-tick: #6b7280;
+  --chart-grid: #ebebeb;
+  --chart-axis: #dcdcdc;
+  --chart-tick: #a0a0a0;
   --chart-surface: #ffffff;
-  --chart-text: #374151;
+  --chart-text: #2e2e2e;
 }
 html.dark {
-  --chart-grid: #1a1d24;
-  --chart-axis: #262a33;
-  --chart-tick: #8493aa;
-  --chart-surface: #0d0f14;
-  --chart-text: #dbe3ee;
+  --chart-grid: #1d2025;
+  --chart-axis: #2a2e34;
+  --chart-tick: #848e9c;
+  --chart-surface: #17191d;
+  --chart-text: #dfe3e9;
 }
 
 /* Dark-mode status TEXT: the darkened colored surfaces above pair with
@@ -370,8 +483,8 @@ html.dark .text-green-700 { color: #86efac; }
 html.dark .text-amber-800,
 html.dark .text-amber-700 { color: #fcd34d; }
 html.dark .text-blue-800 { color: #93c5fd; }
-html.dark .text-brand-700 { color: #7db4e8; }
-html.dark .text-brand-600 { color: #6aa9e6; }
+html.dark .text-brand-700 { color: #b0e6ff; }
+html.dark .text-brand-600 { color: #7ad4ff; }
 html.dark .text-amber-900 { color: #fcd34d; }
 html.dark .text-red-800,
 html.dark .text-red-900 { color: #fca5a5; }

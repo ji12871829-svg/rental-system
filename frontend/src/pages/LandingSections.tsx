@@ -14,7 +14,10 @@
 //
 // Dark mode comes free from the app-wide global overrides, same as Login.
 import { useEffect, useLayoutEffect, useState, type FormEvent } from 'react';
-import { CalendarClock, Check, ChevronDown, Loader2, Mail, MessageCircle, Phone } from 'lucide-react';
+import {
+  CalendarClock, Check, ChevronDown, Droplets, Loader2, Mail, MessageCircle, Phone,
+  ReceiptText, ShieldCheck, Smartphone, UserRound, Wallet,
+} from 'lucide-react';
 import { api } from '../lib/api';
 import { useBranding } from '../lib/BrandingContext';
 import { Button, TextInput } from '../components/ui';
@@ -49,6 +52,54 @@ export function useLandingReveal(): void {
   }, []);
 }
 
+// ---------------------------------------------------------- TrustMarquee ---
+// Amie social-proof strip (design/amie-DESIGN.md): chips sit directly on the
+// white page — no card container — and drift on a 70s linear marquee that
+// pauses on hover and parks for reduced-motion users. Every chip renders
+// desaturated via the .gray-reveal filter and blooms to its category color
+// on hover, per the design's imagery rule. Content is the product's REAL
+// capabilities — no invented customer logos.
+const TRUST_ITEMS: { icon: typeof Wallet; label: string; accent: string }[] = [
+  { icon: Smartphone, label: 'M-Pesa STK push & PayBill', accent: 'border-brand-300 text-brand-600' },
+  { icon: Droplets, label: 'Per-unit water meters', accent: 'border-mint/40 text-mint' },
+  { icon: UserRound, label: 'Tenant self-service portal', accent: 'border-violet/40 text-violet' },
+  { icon: ReceiptText, label: 'Numbered receipts, every payment', accent: 'border-amber-300 text-amber-600' },
+  { icon: Wallet, label: 'Live arrears ledger', accent: 'border-emerald-300 text-emerald-600' },
+  { icon: ShieldCheck, label: 'Audit trail & access control', accent: 'border-ash text-charcoal' },
+];
+
+export function TrustMarquee() {
+  return (
+    <section aria-label="What the system handles" className="py-10">
+      {/* Caption: Inter 12px graphite, left-aligned — the .md's strip label. */}
+      <div className="mx-auto max-w-6xl px-5">
+        <p className="text-xs font-medium uppercase tracking-wide text-graphite">Everything the ledger touches</p>
+      </div>
+      {/* Full-bleed drift with soft edge fade; the track carries two copies
+          of the list so the -50% translate loops seamlessly (second copy is
+          aria-hidden — screen readers read the list once). */}
+      <div className="mt-4 overflow-hidden [-webkit-mask-image:linear-gradient(to_right,transparent,black_8%,black_92%,transparent)] [mask-image:linear-gradient(to_right,transparent,black_8%,black_92%,transparent)]">
+        <div className="marquee-track flex w-max items-center gap-3 pr-3">
+          {[0, 1].map((copy) => (
+            <ul key={copy} aria-hidden={copy === 1} className="flex items-center gap-3">
+              {TRUST_ITEMS.map(({ icon: Icon, label, accent }) => (
+                <li
+                  key={label}
+                  tabIndex={copy === 0 ? 0 : undefined}
+                  className={`gray-reveal flex items-center gap-2 whitespace-nowrap rounded-full border bg-white px-4 py-1.5 text-sm font-medium ${accent}`}
+                >
+                  <Icon size={15} strokeWidth={1.75} aria-hidden />
+                  {label}
+                </li>
+              ))}
+            </ul>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ----------------------------------------------------------- HowItWorks ---
 const STEPS = [
   {
@@ -80,15 +131,15 @@ export function HowItWorks() {
         <div className="grid items-center gap-10 lg:grid-cols-[1.15fr_0.85fr]">
           <div>
             <div className="mx-auto max-w-2xl text-center lg:text-left">
-              <h2 className="text-3xl font-semibold tracking-tight text-gray-900">Get started in under an hour</h2>
+              <h2 className="type-heading text-gray-900">Get started in under an hour</h2>
               <p className="mt-3 text-base text-gray-500">
                 No training needed. Your first rent payment can land the same day you sign in.
               </p>
             </div>
             <ol data-reveal className="mt-10 grid gap-5 sm:grid-cols-2">
             {STEPS.map((s) => (
-              <li key={s.n} className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                <span className="text-3xl font-bold text-brand-200" aria-hidden>
+              <li key={s.n} className="rounded-xl border border-ash bg-white p-6 shadow-sm">
+                <span className="text-3xl font-bold text-brand-400" aria-hidden>
                   {s.n}
                 </span>
                 <h3 className="mt-2 text-base font-semibold text-gray-900">{s.title}</h3>
@@ -100,7 +151,7 @@ export function HowItWorks() {
           {/* Move-in moment — the photo this system exists for: keys changing
               hands, rent flowing into the ledger instead of a notebook. */}
           <figure data-reveal className="relative mx-auto w-full max-w-md lg:max-w-none">
-            <div className="absolute -inset-4 rounded-[2rem] bg-brand-500/10 blur-2xl" aria-hidden />
+            <div className="absolute -inset-4 rounded-[2rem] bg-pale/40 blur-2xl" aria-hidden />
             {/* Intrinsic dimensions reserved (photo is 1400×1051) so the image's
                 load never shifts the layout — CLS budget, not decoration. */}
             <img
@@ -108,7 +159,7 @@ export function HowItWorks() {
               alt="Keys handed over at a move-in"
               width={1400}
               height={1051}
-              className="relative w-full rounded-2xl object-cover shadow-xl ring-1 ring-black/5"
+              className="gray-reveal relative w-full rounded-xl object-cover shadow-md ring-1 ring-black/5"
               loading="lazy"
               decoding="async"
             />
@@ -148,7 +199,7 @@ export function Pricing({ currency = 'KSh' }: { currency?: string }) {
     <section id="pricing" className="scroll-mt-20 border-t border-gray-100 bg-gray-50">
       <div className="mx-auto max-w-6xl px-5 py-16 lg:py-20">
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="text-3xl font-semibold tracking-tight text-gray-900">Room prices</h2>
+          <h2 className="type-heading text-gray-900">Room prices</h2>
           <p className="mt-3 text-base text-gray-500">
             Transparent, straight from our rent ledger — what you see is what our tenants pay, per month.
           </p>
@@ -171,7 +222,7 @@ export function Pricing({ currency = 'KSh' }: { currency?: string }) {
             {rows.map((r) => (
               <article
                 key={r.unitType}
-                className="relative flex flex-col rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
+                className="relative flex flex-col rounded-xl border border-ash bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
               >
                 {r.vacant > 0 && (
                   <span className="absolute -top-2.5 right-4 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
@@ -192,7 +243,7 @@ export function Pricing({ currency = 'KSh' }: { currency?: string }) {
                 </p>
                 <a
                   href="#demo"
-                  className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700 transition-[background-color,color,transform] hover:bg-brand-100 active:scale-[0.98] active:bg-brand-100"
+                  className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg border border-ash bg-white px-4 py-2 text-sm font-semibold text-gray-900 transition-[background-color,color,transform] hover:bg-fog active:scale-[0.98] active:bg-fog"
                 >
                   <CalendarClock size={15} aria-hidden /> Request a viewing
                 </a>
@@ -285,7 +336,7 @@ export function DemoRequest({ contactEmail }: { contactEmail?: string | null }) 
     <section id="demo" className="scroll-mt-20 border-t border-gray-100">
       <div className="mx-auto max-w-6xl px-5 py-16 lg:py-20">
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="text-3xl font-semibold tracking-tight text-gray-900">Get in touch</h2>
+          <h2 className="type-heading text-gray-900">Get in touch</h2>
           <p className="mt-3 text-base text-gray-500">
             Questions? Want a walkthrough on your own numbers? Reach out — we usually reply the same day.
           </p>
@@ -299,12 +350,12 @@ export function DemoRequest({ contactEmail }: { contactEmail?: string | null }) 
               <img
                 src="/photos/unit-viewing.jpg"
                 alt="An agent showing a couple around a bright, empty unit"
-                className="h-40 w-full object-cover"
+                className="gray-reveal h-40 w-full object-cover"
                 loading="lazy"
                 decoding="async"
               />
             </figure>
-            <div className="flex-1 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="flex-1 rounded-xl border border-ash bg-white p-6 shadow-sm">
               <h3 className="text-base font-semibold text-gray-900">Reach us directly</h3>
               <div className="mt-4 space-y-4">
                 {showWhatsApp && (
@@ -356,7 +407,7 @@ export function DemoRequest({ contactEmail }: { contactEmail?: string | null }) 
           </div>
 
           {/* Demo / contact form */}
-          <form onSubmit={submit} noValidate className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
+          <form onSubmit={submit} noValidate className="rounded-xl border border-ash bg-white p-6 shadow-sm sm:p-8">
             <h3 className="text-base font-semibold text-gray-900">Request a demo</h3>
             <p className="mt-1 text-sm text-gray-500">
               Book a free walkthrough of the dashboard, tenant portal and M-Pesa flow — no commitment.
@@ -385,7 +436,7 @@ export function DemoRequest({ contactEmail }: { contactEmail?: string | null }) 
                 <select
                   value={form.unitsCount}
                   onChange={setField('unitsCount')}
-                  className="flex min-h-[44px] w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none transition-colors focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                  className="flex min-h-[44px] w-full rounded-lg border border-ash bg-white px-3 py-2 text-sm text-gray-900 outline-none transition-colors focus:border-brand-400 focus:ring-2 focus:ring-brand-300/40"
                 >
                   {UNITS_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -399,7 +450,7 @@ export function DemoRequest({ contactEmail }: { contactEmail?: string | null }) 
                   onChange={setField('message')}
                   rows={3}
                   maxLength={2000}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none transition-colors placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                  className="w-full rounded-lg border border-ash bg-white px-3 py-2 text-sm text-gray-900 outline-none transition-colors placeholder:text-silver focus:border-brand-400 focus:ring-2 focus:ring-brand-300/40"
                   placeholder="e.g. we bill water per meter and collect rent via M-Pesa…"
                 />
               </label>
@@ -461,13 +512,13 @@ export function FaqSection() {
     <section id="faq" className="scroll-mt-20 border-t border-gray-100 bg-gray-50">
       <div className="mx-auto max-w-3xl px-5 py-16 lg:py-20">
         <div className="text-center">
-          <h2 className="text-3xl font-semibold tracking-tight text-gray-900">Frequently asked questions</h2>
+          <h2 className="type-heading text-gray-900">Frequently asked questions</h2>
           <p className="mt-3 text-base text-gray-500">
-            Everything you need to know about how the system works. Anything else — <a href="#demo" className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800">ask us</a>.
+            Everything you need to know about how the system works. Anything else — <a href="#demo" className="font-medium text-brand-600 underline underline-offset-2 hover:text-brand-700">ask us</a>.
           </p>
         </div>
 
-        <div data-reveal className="mt-8 divide-y divide-gray-200 rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div data-reveal className="mt-8 divide-y divide-gray-200 rounded-xl border border-ash bg-white shadow-sm">
           {FAQS.map((item, i) => {
             const isOpen = open === i;
             return (
@@ -521,11 +572,9 @@ export function SectionLinks({ className = '' }: { className?: string }) {
     { href: '#create-account', label: 'Create account' },
   ];
   return (
-    <nav aria-label="Page sections" className={className}>
-      {/* Light-footer palette: slate-300/white-hover was a dark-theme leftover
-          here — 1.35:1 against bg-gray-50, effectively invisible. */}
+    <nav aria-label="Page sections" className={className}>          {/* Dark-footer palette — links sit on the ink footer band. */}
       {links.map((l) => (
-        <a key={l.href} href={l.href} className="whitespace-nowrap text-sm text-gray-500 transition-colors hover:text-gray-900">
+        <a key={l.href} href={l.href} className="whitespace-nowrap text-sm text-silver transition-colors hover:text-white">
           {l.label}
         </a>
       ))}

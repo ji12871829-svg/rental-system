@@ -195,17 +195,17 @@ export default function Layout() {
               aria-controls={`${id}-menu`}
               aria-expanded={openSections[section.title] ?? false}
               onClick={() => setOpenSections((current) => ({ ...current, [section.title as string]: !(current[section.title as string] ?? false) }))}
-              className="group flex min-h-6 w-full items-center justify-between rounded-md px-2 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-300 transition-colors hover:bg-slate-700/60 hover:text-white"
+              className="group flex min-h-6 w-full items-center justify-between rounded-md px-2 text-left text-[11px] font-semibold uppercase tracking-[0.12em] text-silver transition-colors hover:bg-white/10 hover:text-white"
             >
               <span className="flex min-w-0 items-center gap-1.5">
-                {section.icon && <section.icon size={13} strokeWidth={1.75} aria-hidden className="shrink-0 text-slate-400 group-hover:text-slate-300" />}
+                {section.icon && <section.icon size={13} strokeWidth={1.75} aria-hidden className="shrink-0 text-silver group-hover:text-white" />}
                 <span className="truncate">{section.title}</span>
               </span>
               {/* Item count — tells you what the dropdown hides before clicking.
                   Derived from the role-filtered list, so it matches what will
                   actually render when the tab opens. */}
-              <span className="ml-1 font-normal text-slate-500 group-hover:text-slate-400">({section.items.length})</span>
-              <ChevronDown size={14} strokeWidth={2} className={`ml-auto text-slate-500 transition-transform duration-150 group-hover:text-slate-300 ${openSections[section.title] ?? false ? '' : '-rotate-90'}`} aria-hidden />
+              <span className="ml-1 font-normal text-gray-500 group-hover:text-silver">({section.items.length})</span>
+              <ChevronDown size={14} strokeWidth={2} className={`ml-auto text-gray-500 transition-transform duration-150 group-hover:text-silver ${openSections[section.title] ?? false ? '' : '-rotate-90'}`} aria-hidden />
             </button>
             );
           })()}
@@ -220,8 +220,8 @@ export default function Layout() {
                   className={({ isActive }) =>
                     `group flex min-h-[24px] items-center gap-1.5 rounded-md px-2.5 py-0.5 text-xs leading-tight font-medium transition-colors duration-150 ${
                       isActive
-                        ? 'bg-brand-600 text-white shadow-sm'
-                        : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
+                        ? 'bg-brand-500 text-white shadow-sm'
+                        : 'text-silver hover:bg-white/10 hover:text-white'
                     }`
                   }
                 >
@@ -237,18 +237,18 @@ export default function Layout() {
   );
 
   const userCard = (
-    <div className="border-t border-slate-700 p-4">
+    <div className="border-t border-white/10 p-4">
       <div className="flex items-center gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-500 text-sm font-bold text-white">
           {(user?.name ?? '?').charAt(0).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-white">{user?.name}</div>
-          <div className="text-xs text-slate-400">{user?.role.replace('_', ' ')}</div>
+          <div className="text-xs text-silver">{user?.role.replace('_', ' ')}</div>
         </div>
         <button
           onClick={handleLogout}
-          className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 transition-colors duration-150 hover:bg-slate-700 hover:text-white active:scale-95"
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-silver transition-colors duration-150 hover:bg-white/10 hover:text-white active:scale-95"
           title="Logout"
           aria-label="Logout"
         >
@@ -261,7 +261,7 @@ export default function Layout() {
   return (
     <div className="flex h-[100dvh] bg-gray-100">
       {/* Desktop sidebar */}
-      <aside className="hidden w-60 shrink-0 flex-col bg-slate-800 md:flex">
+      <aside className="hidden w-60 shrink-0 flex-col bg-ink md:flex">
         {/* Logo links home. */}
         <Link to="/" className="flex items-center gap-2.5 px-4 py-4 transition-opacity duration-150 hover:opacity-90" aria-label={`${branding.appName} — go to dashboard`}>
           <BrandLogo className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500 text-white" iconSize={18} />
@@ -278,12 +278,12 @@ export default function Layout() {
       {mobileOpen && (
         <div className="fixed inset-0 z-40 md:hidden">
           <div className="absolute inset-0 bg-gray-900/60 animate-in fade-in duration-200" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute left-0 top-0 flex h-full w-64 flex-col bg-slate-800 shadow-2xl animate-in slide-in-from-left-64 duration-200">
+          <aside className="absolute left-0 top-0 flex h-full w-64 flex-col bg-ink shadow-2xl animate-in slide-in-from-left-64 duration-200">
             <div className="flex items-center justify-between px-4 py-4">
               <span className="text-sm font-bold text-white">Olbano Plaza</span>
               <button
                 onClick={() => setMobileOpen(false)}
-                className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-300 transition-colors duration-150 hover:bg-slate-700 hover:text-white"
+                className="flex h-10 w-10 items-center justify-center rounded-lg text-silver transition-colors duration-150 hover:bg-white/10 hover:text-white"
                 aria-label="Close menu"
               >
                 <X size={18} strokeWidth={1.75} aria-hidden />
@@ -309,13 +309,13 @@ export default function Layout() {
             </button>
             <div className="flex items-center gap-2 md:hidden">
               <Link to="/" className="flex items-center gap-2" aria-label={`${branding.appName} — go to dashboard`}>
-                <BrandLogo className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-600 text-white" iconSize={16} />
+                <BrandLogo className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-500 text-white" iconSize={16} />
                 <span className="text-sm font-bold text-gray-900">Olbano Plaza</span>
               </Link>
             </div>
           </div>
           <div className="hidden items-center gap-2 text-sm font-medium text-gray-500 md:flex">
-            <BarChart3 size={16} strokeWidth={1.75} className="text-brand-600" aria-hidden />
+            <BarChart3 size={16} strokeWidth={1.75} className="text-brand-500" aria-hidden />
             {branding.appNameFull}
           </div>
           <div className="flex items-center gap-3">
@@ -338,7 +338,7 @@ export default function Layout() {
             <Suspense
               fallback={
                 <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-label="Loading page">
-                  <Loader2 size={28} strokeWidth={1.75} className="animate-spin text-brand-600" aria-hidden />
+                  <Loader2 size={28} strokeWidth={1.75} className="animate-spin text-brand-500" aria-hidden />
                 </div>
               }
             >

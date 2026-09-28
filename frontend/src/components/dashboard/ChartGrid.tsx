@@ -14,7 +14,7 @@ import { MONTHS, money, methodLabel } from '../../lib/format';
 import { Badge, ChartCard, OutstandingList, SectionHead } from './primitives';
 import type { DashboardData } from '@rpms/shared';
 
-const PIE_COLORS = ['#1d6fd6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#14b8a6'];
+const PIE_COLORS = ['#11a8ff', '#01ca45', '#f59e0b', '#a050ff', '#ef4444', '#14b8a6'];
 
 // Charts mount one tick after the KPI strip paints: first paint shows the
 // skeleton grid, then a short timer flips to the real charts. A timeout (not
@@ -80,8 +80,8 @@ export function ChartGrid({ charts, currency, reportingYear, water }: {
               <YAxis />
               <Tooltip formatter={(v: any) => money(v, currency)} />
               <Legend />
-              <Bar dataKey="expected" fill="#cbd5e1" name="Expected" />
-              <Bar dataKey="collected" fill="#1d6fd6" name="Rent collected" />
+              <Bar dataKey="expected" fill="#dcdcdc" name="Expected" />
+              <Bar dataKey="collected" fill="#11a8ff" name="Rent collected" />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -102,7 +102,7 @@ export function ChartGrid({ charts, currency, reportingYear, water }: {
                   outerRadius={92}
                   label={false}
                 >
-                  <Cell fill="#1d6fd6" />
+                  <Cell fill="#11a8ff" />
                   <Cell fill="#f59e0b" />
                 </Pie>
                 <Tooltip />
@@ -168,7 +168,7 @@ export function ChartGrid({ charts, currency, reportingYear, water }: {
               <YAxis />
               <Tooltip formatter={(v: any) => money(v, currency)} />
               <Legend />
-              <Bar dataKey="billed" fill="#60a5fa" name="Billed" />
+              <Bar dataKey="billed" fill="#7ad4ff" name="Billed" />
               <Bar dataKey="collected" fill="#10b981" name="Collected" />
             </BarChart>
           </ResponsiveContainer>

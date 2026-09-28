@@ -40,7 +40,7 @@ export default function Register() {
   return (
     <div className="flex min-h-screen w-full bg-white">
       {/* Left facade — same treatment as Login */}
-      <div className="relative hidden w-[42%] shrink-0 overflow-hidden bg-[#0b1f3a] lg:block">
+      <div className="relative hidden w-[42%] shrink-0 overflow-hidden bg-ink lg:block">
         <picture>
           <source
             type="image/webp"
@@ -56,7 +56,7 @@ export default function Register() {
             {...{ fetchpriority: 'high' } as Record<string, string>}
           />
         </picture>
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0b1f3a] via-[#0b1f3a]/75 to-[#0b1f3a]/25" aria-hidden />
+        <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/75 to-ink/25" aria-hidden />
         <div className="relative flex h-full flex-col justify-between p-10">
           <Link to="/" className="flex items-center gap-3" aria-label="Back to the landing page">
             <BrandLogo

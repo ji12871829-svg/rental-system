@@ -38,7 +38,7 @@ export default function CookieBanner() {
         </p>
         <button
           onClick={accept}
-          className="inline-flex min-h-[36px] items-center rounded-lg bg-brand-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-[background-color,transform] duration-150 hover:bg-brand-700 active:scale-[0.96]"
+          className="inline-flex min-h-[36px] items-center rounded-lg bg-brand-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-[background-color,transform] duration-150 hover:bg-brand-600 active:scale-[0.96]"
         >
           Got it
         </button>

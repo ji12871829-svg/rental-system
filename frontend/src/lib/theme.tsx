@@ -18,8 +18,8 @@ const STORAGE_KEY = 'rpms-theme';
 
 // Browser chrome background, kept in step with the app surface.
 const THEME_COLOR: Record<ThemeMode, string> = {
-  light: '#f9fafb',
-  dark: '#000000',
+  light: '#ffffff',
+  dark: '#0b0c0e',
 };
 
 function storedTheme(): ThemeMode | null {

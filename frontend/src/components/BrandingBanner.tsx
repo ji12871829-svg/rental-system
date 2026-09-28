@@ -28,21 +28,21 @@ export default function BrandingBanner() {
     <div
       role="status"
       aria-label="Missing business details"
-      className="border-b border-amber-200 bg-amber-50"
+      className="border-b border-ash bg-sun"
     >
-      <div className="mx-auto flex w-full max-w-7xl flex-wrap items-start gap-x-3 gap-y-1 px-4 py-2.5 text-sm text-amber-900 md:px-6">
-        <ListChecks size={18} strokeWidth={1.75} className="mt-0.5 shrink-0 text-amber-700" aria-hidden />
+      <div className="mx-auto flex w-full max-w-7xl flex-wrap items-start gap-x-3 gap-y-1 px-4 py-2.5 text-sm text-charcoal md:px-6">
+        <ListChecks size={18} strokeWidth={1.75} className="mt-0.5 shrink-0 text-charcoal" aria-hidden />
         <p className="min-w-0 flex-1 leading-5">
           <strong>{missingLabels.length} business detail{missingLabels.length === 1 ? ' is' : 's are'} still missing:</strong>{' '}
           {missingLabels.join(', ')}.{' '}
-          <Link to="/settings" className="font-semibold underline underline-offset-2 hover:text-amber-700">
+          <Link to="/settings" className="font-semibold underline underline-offset-2 hover:text-black">
             Fill them in Settings →
           </Link>{' '}
           Completing them activates the legal pages, printed receipts, footers, PDFs and SMS messages.
         </p>
         <button
           onClick={dismiss}
-          className="inline-flex min-h-[32px] shrink-0 items-center rounded-lg border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-900 transition-colors duration-150 hover:bg-amber-100 active:scale-[0.96]"
+          className="inline-flex min-h-[32px] shrink-0 items-center rounded-lg border border-ash bg-white px-3 py-1 text-xs font-semibold text-charcoal transition-colors duration-150 hover:bg-fog active:scale-[0.96]"
         >
           Dismiss
         </button>

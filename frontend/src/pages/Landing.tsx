@@ -42,7 +42,7 @@ import { useBranding } from '../lib/BrandingContext';
 import { branding } from '../lib/branding';
 import { useAuth } from '../lib/auth';
 import { usePortalAuth } from '../lib/portalAuth';
-import { DemoRequest, FaqSection, HowItWorks, Pricing, SectionLinks, useLandingReveal } from './LandingSections';
+import { DemoRequest, FaqSection, HowItWorks, Pricing, SectionLinks, TrustMarquee, useLandingReveal } from './LandingSections';
 
 // The pain→answer pairs. Left column is the landlord's old month; right is
 // the same job in this system. Copy stays within what RPMS genuinely does —
@@ -174,7 +174,7 @@ export default function Landing() {
           <div className="flex min-w-0 items-center gap-6">
             <Link to="/landing" className="flex min-w-0 items-center gap-2.5">
               <BrandLogo
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white shadow-sm shadow-brand-500/30 sm:h-10 sm:w-10"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white shadow-sm sm:h-10 sm:w-10"
                 iconSize={18}
                 textClassName="text-sm font-bold sm:text-base"
               />
@@ -190,7 +190,7 @@ export default function Landing() {
                 <a
                   key={l.href}
                   href={l.href}
-                  className="inline-flex min-h-[44px] items-center whitespace-nowrap text-sm font-medium text-gray-600 transition-colors hover:text-gray-900"
+                  className="inline-flex min-h-[44px] items-center whitespace-nowrap text-sm font-medium text-graphite transition-colors hover:text-black"
                 >
                   {l.label}
                 </a>
@@ -216,20 +216,20 @@ export default function Landing() {
             <Link
               to="/login"
               aria-label="Staff sign in"
-              className="hidden min-h-[44px] items-center whitespace-nowrap rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-[background-color,color,transform] hover:bg-gray-50 active:scale-[0.97] sm:flex"
+              className="hidden min-h-[44px] items-center whitespace-nowrap rounded-xl border border-ash px-4 py-2 text-sm font-medium text-graphite transition-[background-color,color,transform] hover:bg-fog active:scale-[0.97] sm:flex"
             >
               Sign in
             </Link>
             <Link
               to="/login"
               aria-label="Staff sign in"
-              className="flex min-h-[44px] w-11 items-center justify-center rounded-lg border border-gray-200 text-gray-700 transition-[background-color,color,transform] hover:bg-gray-50 active:scale-[0.97] sm:hidden"
+              className="flex min-h-[44px] w-11 items-center justify-center rounded-xl border border-ash text-graphite transition-[background-color,color,transform] hover:bg-fog active:scale-[0.97] sm:hidden"
             >
               <KeyRound size={17} aria-hidden />
             </Link>
             <Link
               to="/register"
-              className="flex min-h-[44px] items-center whitespace-nowrap rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white shadow-sm shadow-brand-600/25 transition-[background-color,color,transform] hover:bg-brand-700 active:scale-[0.97] sm:px-4"
+              className="flex min-h-[44px] items-center whitespace-nowrap rounded-xl bg-brand-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-[background-color,color,transform] hover:bg-brand-600 active:scale-[0.97] sm:px-4"
             >
               <span className="hidden sm:inline">Create account</span>
               <span className="sm:hidden">Sign up</span>
@@ -267,7 +267,7 @@ export default function Landing() {
       </header>
 
       {/* ------------------------------------------------------------ hero */}
-      <section className="relative overflow-hidden bg-[#0b1f3a]">
+      <section className="relative overflow-hidden bg-ink">
         {/* Same facade photo the login page uses — the building this software
             actually runs — with a deep navy scrim for copy legibility. */}
         <picture aria-hidden>
@@ -286,20 +286,20 @@ export default function Landing() {
         {/* Scrim: heavy only behind the copy (top-left) so the white headline
             keeps AAA contrast while the building itself stays clearly visible
             on the right — the photo is the point, not a texture. */}
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0b1f3a]/95 via-[#0b1f3a]/60 to-[#0b1f3a]/20" aria-hidden />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0b1f3a]/70 via-transparent to-transparent" aria-hidden />
+        <div className="absolute inset-0 bg-gradient-to-br from-ink/95 via-ink/60 to-ink/20" aria-hidden />
+        <div className="absolute inset-0 bg-gradient-to-t from-ink/70 via-transparent to-transparent" aria-hidden />
 
         <div className="relative mx-auto max-w-6xl px-5 py-16 lg:py-24">
           {/* Left: pitch */}
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-medium tracking-wide text-slate-200 backdrop-blur-sm">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-medium tracking-wide text-silver backdrop-blur-sm">
               <Building2 size={14} aria-hidden />
               Property management for Olbano Plaza
             </div>
-            <h1 className="mt-5 text-4xl font-semibold leading-[1.1] tracking-tight text-white sm:text-5xl">
-              Automate rent collection. Track water. Run your property from anywhere.
+            <h1 className="type-display mt-5 max-w-3xl text-white">
+              Automate rent collection. <span className="bg-sun px-1 text-ink">Track water.</span> Run your property from anywhere.
             </h1>
-            <p className="mt-4 max-w-lg text-base leading-relaxed text-slate-300">
+            <p className="mt-4 max-w-lg text-base leading-relaxed text-silver">
               RPMS keeps landlords, managers and tenants working from the same truth: live arrears,
               metered water billing, M-Pesa payments, receipts and messages.
             </p>
@@ -307,7 +307,7 @@ export default function Landing() {
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
                 to="/register"
-                className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-600/30 transition-[background-color,box-shadow,color,transform] hover:bg-brand-700 active:scale-[0.98]"
+                className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-[background-color,box-shadow,color,transform] hover:bg-brand-600 active:scale-[0.98]"
               >
                 Create an account <ArrowRight size={16} aria-hidden />
               </Link>
@@ -322,7 +322,7 @@ export default function Landing() {
             {/* Trust chips — the reference site's "setup in 2 minutes" strip */}
             <ul className="mt-7 flex flex-wrap gap-x-5 gap-y-2">
               {['M-Pesa built in', 'Works on your phone', 'No training needed'].map((t) => (
-                <li key={t} className="flex items-center gap-1.5 text-xs font-medium text-slate-300">
+                <li key={t} className="flex items-center gap-1.5 text-xs font-medium text-silver">
                   <Check size={13} className="text-brand-400" aria-hidden /> {t}
                 </li>
               ))}
@@ -331,23 +331,26 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* ------------------------------------------------- trust marquee */}
+      <TrustMarquee />
+
       {/* ------------------------------------------ problem → solution */}
       <section className="mx-auto max-w-6xl px-5 py-16 lg:py-20">
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="text-3xl font-semibold tracking-tight text-gray-900">Sound familiar?</h2>
+          <h2 className="type-heading text-gray-900">Sound familiar?</h2>
           <p className="mt-3 text-base text-gray-500">
             Every landlord faces these problems. This system solves each one.
           </p>
         </div>
         <div data-reveal className="mt-10 grid gap-4 md:grid-cols-2">
           {PROBLEMS.map(({ pain, fix }) => (
-            <div key={pain} className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm md:flex-row md:items-stretch">
+            <div key={pain} className="flex flex-col overflow-hidden rounded-xl border border-ash bg-white shadow-sm md:flex-row md:items-stretch">
               <div className="flex flex-1 items-start gap-3 p-5">
                 <X size={16} className="mt-0.5 shrink-0 text-red-500" aria-hidden />
                 <p className="text-sm text-gray-600">{pain}</p>
               </div>
               <div className="flex flex-1 items-start gap-3 border-t border-brand-100 bg-brand-50 p-5 md:border-l md:border-l-brand-200 md:border-t-0">
-                <Check size={16} className="mt-0.5 shrink-0 text-brand-600" aria-hidden />
+                <Check size={16} className="mt-0.5 shrink-0 text-brand-500" aria-hidden />
                 <p className="text-sm font-medium text-gray-900">{fix}</p>
               </div>
             </div>
@@ -359,7 +362,7 @@ export default function Landing() {
       <section id="features" className="scroll-mt-20 border-t border-gray-100 bg-gray-50">
         <div className="mx-auto max-w-6xl px-5 py-16 lg:py-20">
           <div className="mx-auto max-w-2xl text-center">
-            <h2 className="text-3xl font-semibold tracking-tight text-gray-900">Everything you need to run your property</h2>
+            <h2 className="type-heading text-gray-900">Everything you need to run your property</h2>
             <p className="mt-3 text-base text-gray-500">
               From M-Pesa rent collection to metered water billing — the tools landlords and
               managers actually use, in one place.
@@ -367,7 +370,7 @@ export default function Landing() {
           </div>
           <div data-reveal className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map(({ icon: Icon, title, body, badge }) => (
-              <article key={title} className="relative flex flex-col rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
+              <article key={title} className="relative flex flex-col rounded-xl border border-ash bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
                 {badge && (
                   <span className="absolute -top-2.5 right-4 rounded-full bg-brand-600 px-2.5 py-0.5 text-xs font-semibold text-white">
                     {badge}
@@ -376,7 +379,7 @@ export default function Landing() {
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
                   <Icon size={22} aria-hidden />
                 </div>
-                <h3 className="mt-4 text-base font-semibold text-gray-900">{title}</h3>
+                <h3 className="mt-4 font-sans text-base font-semibold text-gray-900">{title}</h3>
                 <p className="mt-2 flex-1 text-sm leading-relaxed text-gray-500">{body}</p>
               </article>
             ))}
@@ -388,15 +391,15 @@ export default function Landing() {
       <HowItWorks />
 
       {/* ---------------------------------------------- M-Pesa deep-dive */}
-      <section id="mpesa" className="scroll-mt-20 bg-[#0b1f3a]">
+      <section id="mpesa" className="scroll-mt-20 bg-ink">
         <div className="mx-auto max-w-6xl px-5 py-16 lg:py-20">
           <div className="grid items-center gap-10 lg:grid-cols-2">
             <div>
-              <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-slate-200 ring-1 ring-white/15">
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-silver ring-1 ring-white/15">
                 <Smartphone size={13} aria-hidden /> M-Pesa built in
               </span>
               <h2 className="mt-4 text-3xl font-semibold text-white">Rent collection that actually works</h2>
-              <p className="mt-3 text-base leading-relaxed text-slate-300">
+              <p className="mt-3 text-base leading-relaxed text-silver">
                 No more chasing tenants. No more &ldquo;I sent but it didn&rsquo;t reflect.&rdquo; Payments land on the
                 ledger the moment they are made.
               </p>
@@ -420,10 +423,10 @@ export default function Landing() {
             {/* A stylised phone frame with the payment moment — echoes the
                 reference's app screenshots without pretending we have one. */}
             <div className="mx-auto w-full max-w-xs">
-              <div className="rounded-[2rem] border-[6px] border-gray-900 bg-gray-50 shadow-2xl">
+              <div className="rounded-b-[2rem] rounded-t-[2.5rem] border-[6px] border-charcoal bg-fog shadow-2xl">
                 <div className="rounded-[1.6rem] bg-white p-5">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Tenant portal</p>
-                  <p className="mt-1 text-sm font-semibold text-gray-900">Unit B4 · April rent</p>
+                  <p className="mt-1 font-sans text-sm font-semibold text-gray-900">Unit B4 · April rent</p>
                   <p className="mt-3 text-3xl font-bold tracking-tight tabular-nums text-gray-900">KSh 9,000</p>
                   <p className="text-xs text-gray-500">Balance due in 12 days</p>
                   <div className="mt-4 rounded-xl bg-emerald-50 p-3">
@@ -444,7 +447,7 @@ export default function Landing() {
       {/* ------------------------------------------------- create account */}
       <section id="create-account" className="mx-auto max-w-6xl px-5 py-16 lg:py-20">
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="text-3xl font-semibold tracking-tight text-gray-900">Built for every role</h2>
+          <h2 className="type-heading text-gray-900">Built for every role</h2>
           <p className="mt-3 text-base text-gray-500">
             Two doors, one system. Tenants get instant access; landlord and agent accounts are
             approved by an administrator before they go live.
@@ -453,11 +456,11 @@ export default function Landing() {
 
         <div data-reveal className="mt-10 grid gap-6 md:grid-cols-2">
           {/* Tenants */}
-          <div className="flex flex-col rounded-2xl border border-gray-200 bg-white p-7 shadow-sm transition-shadow hover:shadow-md">
+          <div className="flex flex-col rounded-xl border border-ash bg-white p-7 shadow-sm transition-shadow hover:shadow-md">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
               <UserRound size={24} aria-hidden />
             </div>
-            <h3 className="mt-4 text-xl font-semibold text-gray-900">I'm a tenant</h3>
+            <h3 className="mt-4 font-sans text-xl font-semibold text-gray-900">I'm a tenant</h3>
             <p className="mt-2 flex-1 text-sm leading-relaxed text-gray-500">
               Your property manager adds your tenancy first — then you claim portal access with the
               email on file and set your own password. Instant, self-serve, nothing to wait for.
@@ -484,11 +487,11 @@ export default function Landing() {
           </div>
 
           {/* Landlords */}
-          <div className="flex flex-col rounded-2xl border border-gray-200 bg-white p-7 shadow-sm transition-shadow hover:shadow-md">
+          <div className="flex flex-col rounded-xl border border-ash bg-white p-7 shadow-sm transition-shadow hover:shadow-md">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-900 text-white">
               <Users size={24} aria-hidden />
             </div>
-            <h3 className="mt-4 text-xl font-semibold text-gray-900">I'm a landlord or agent</h3>
+            <h3 className="mt-4 font-sans text-xl font-semibold text-gray-900">I'm a landlord or agent</h3>
             <p className="mt-2 flex-1 text-sm leading-relaxed text-gray-500">
               Request a staff account for the management dashboard. An administrator reviews and
               activates it — nobody gets into the money side of the system uninvited.
@@ -526,19 +529,19 @@ export default function Landing() {
       <FaqSection />
 
       {/* ----------------------------------------------------- final CTA */}
-      <section className="bg-[#0b1f3a]">
+      <section className="bg-ink">
         <div className="mx-auto max-w-6xl px-5 py-16 text-center lg:py-20">
           <h2 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
             Stop chasing rent. Start seeing every shilling.
           </h2>
-          <p className="mx-auto mt-4 max-w-xl text-base text-slate-300">
+          <p className="mx-auto mt-4 max-w-xl text-base text-silver">
             Create your account, bring your property on, and let the ledger, water meters and
             M-Pesa receipts do the chasing for you.
           </p>
         <div data-reveal className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link
               to="/register"
-              className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-brand-600/30 transition-[background-color,box-shadow,color,transform] hover:bg-brand-700 active:scale-[0.98]"
+              className="inline-flex items-center gap-2 rounded-xl bg-brand-500 px-6 py-3 text-sm font-semibold text-white shadow-lg transition-[background-color,box-shadow,color,transform] hover:bg-brand-600 active:scale-[0.98]"
             >
               Create an account <ArrowRight size={16} aria-hidden />
             </Link>
@@ -563,20 +566,20 @@ export default function Landing() {
       </section>
 
       {/* --------------------------------------------------------- footer */}
-      <footer className="border-t border-gray-100 bg-gray-50">
+      <footer className="border-t border-white/10 bg-ink">
         <div className="mx-auto max-w-6xl px-5 py-10">
           {/* Section anchors repeated here — every section one click away. */}
           <SectionLinks className="flex flex-wrap gap-x-6 gap-y-2" />
           <div className="mt-6 flex flex-col gap-4 border-t border-gray-200 pt-6 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-silver">
               {identity?.legalName ?? branding.appName}
-              {identity?.address && <span className="block text-xs text-gray-500">{identity.address}</span>}
+              {identity?.address && <span className="block text-xs text-silver">{identity.address}</span>}
             </div>
-            <nav className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-gray-500">
-              <Link to="/privacy" className="hover:text-gray-800">Privacy Policy</Link>
-              <Link to="/terms" className="hover:text-gray-800">Terms &amp; Conditions</Link>
-              <Link to="/cookies" className="hover:text-gray-800">Cookies &amp; Storage</Link>
-              <Link to="/refunds" className="hover:text-gray-800">Refund Policy</Link>
+            <nav className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-silver">
+              <Link to="/privacy" className="hover:text-white">Privacy Policy</Link>
+              <Link to="/terms" className="hover:text-white">Terms &amp; Conditions</Link>
+              <Link to="/cookies" className="hover:text-white">Cookies &amp; Storage</Link>
+              <Link to="/refunds" className="hover:text-white">Refund Policy</Link>
             </nav>
           </div>
         </div>

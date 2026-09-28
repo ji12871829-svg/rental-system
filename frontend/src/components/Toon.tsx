@@ -15,13 +15,13 @@
  */
 const SKIN = '#f4c9a3';
 const HAIR = '#2b2126';
-const BLAZER = '#2563eb';
-const BLAZER_DARK = '#1d4ed8';
-const SKIRT = '#17306b';
-const LEG_DARK = '#1e293b';
-const LEG_LIGHT = '#243247';
-const SHOE_DARK = '#0f172a';
-const SHOE_LIGHT = '#111c33';
+const BLAZER = '#0b8ede';
+const BLAZER_DARK = '#0c73b8';
+const SKIRT = '#134e76';
+const LEG_DARK = '#3d3d3a';
+const LEG_LIGHT = '#524d44';
+const SHOE_DARK = '#292927';
+const SHOE_LIGHT = '#3d3d3a';
 
 /** One shared SVG body; `pose` only changes the raised arm's transform. */
 function poseTransform(pose: 'idle' | 'wave' | 'point'): string {
@@ -81,8 +81,8 @@ export function Toon({
       {/* torso: blazer, tee, lanyard + badge */}
       <g>
         <rect x="67" y="138" width="66" height="74" rx="18" fill={BLAZER} />
-        <path d="M100,140 L88,150 L100,166 L112,150 Z" fill="#f8fafc" />
-        <rect x="93" y="156" width="15" height="20" rx="2.5" fill="#f8fafc" stroke="#cbd5e1" />
+        <path d="M100,140 L88,150 L100,166 L112,150 Z" fill="#faf9f5" />
+        <rect x="93" y="156" width="15" height="20" rx="2.5" fill="#faf9f5" stroke="#cccbc8" />
         <path d="M93,156 L100,146 L108,156" stroke={BLAZER_DARK} strokeWidth="2.5" fill="none" />
       </g>
       <rect x="92" y="126" width="16" height="16" fill={SKIN} />

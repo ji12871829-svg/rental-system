@@ -51,7 +51,7 @@ export function PieChart(props: {
         d,
         name,
         value,
-        color: cells[i] ?? '#1d6fd6',
+        color: cells[i] ?? '#11a8ff',
         start,
         end: angle,
       };
