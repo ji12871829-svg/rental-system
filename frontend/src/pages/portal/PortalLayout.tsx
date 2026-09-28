@@ -110,9 +110,7 @@ export default function PortalLayout() {
         </header>
 
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 md:px-8">
-          <div className="rise-in">
-            <Outlet />
-          </div>
+          <Outlet />
         </main>
 
         <footer className="border-t border-gray-200 px-4 py-4 text-center text-xs text-gray-400 md:px-8">

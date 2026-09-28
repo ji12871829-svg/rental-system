@@ -176,7 +176,7 @@ function MeterSection({ formOpen, setFormOpen }: { formOpen: boolean; setFormOpe
                   <td>{r.tenant_name ?? '—'}</td>
                   <td>{MONTHS[r.billing_month - 1].slice(0, 3)} {r.billing_year}</td>
                   <td>{Number(r.previous_reading)}
-                    {Number(r.previous_reading) === 0 && <span className="ml-1 rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700">FIRST READING</span>}
+                    {Number(r.previous_reading) === 0 && <span className="ml-1 rounded bg-violet/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet">FIRST READING</span>}
                   </td>
                   <td>{Number(r.current_reading)}</td>
                   <td className="font-medium">{Number(r.consumption)}</td>
@@ -279,7 +279,7 @@ function ReadingForm({ open, units, prefillUnitId, onClose, onSaved }: { open: b
         <Field label="Previous Reading (optional)" hint="Leave empty to use the latest reading automatically. For a FIRST READING you can establish the meter's starting value here.">
           <TextInput type="number" min={0} step={0.001} value={previousReading} onChange={(e) => setPreviousReading(e.target.value)} placeholder="Auto-filled if left empty" />
         </Field>
-        <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">
+        <p className="rounded-lg bg-fog px-3 py-2 text-xs text-graphite">
           The bill is calculated as (Current − Previous) × the current water rate from Settings. A current reading below the previous reading is rejected.
         </p>
         <div className="flex justify-end gap-2">
@@ -496,7 +496,7 @@ function WaterPaymentForm({ open, tenants, onClose, onSaved }: { open: boolean; 
           </Field>
           <Field label="Notes"><TextInput value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
         </div>
-        <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">
+        <p className="rounded-lg bg-fog px-3 py-2 text-xs text-graphite">
           A water payment can be recorded only for a unit with water billing enabled. Multiple payments per month are supported (e.g. 500 + 500 + 1,000 = PAID on a 2,000 bill).
         </p>
         <div className="flex justify-end gap-2">
@@ -719,7 +719,7 @@ function PurchaseForm({ open, purchase, onClose, onSaved }: { open: boolean; pur
           <Field label="Reference"><TextInput value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} /></Field>
           <Field label="Notes"><TextInput value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
         </div>
-        <div className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
+        <div className="rounded-lg bg-fog px-3 py-2 text-sm text-graphite">
           Total cost: <b>{money(totalCost)}</b> (quantity × cost per unit — calculated automatically).
         </div>
         <div className="flex justify-end gap-2">

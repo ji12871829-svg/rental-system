@@ -208,11 +208,11 @@ export default function RentCollection() {
               </Select>
             </Field>
             {selectedTenant && (
-              <div className="rounded-lg bg-blue-50 px-3 py-2 text-sm">
-                <div className="font-semibold text-blue-900">{selectedTenant.full_name}</div>
-                <div className="text-blue-800">Unit {selectedTenant.unit_number} · Expected rent: <b>{money(selectedTenant.monthly_rent)}</b></div>
+              <div className="rounded-lg bg-fog px-3 py-2 text-sm">
+                <div className="font-semibold text-gray-900">{selectedTenant.full_name}</div>
+                <div className="text-graphite">Unit {selectedTenant.unit_number} · Expected rent: <b>{money(selectedTenant.monthly_rent)}</b></div>
                 {mostInArrears?.tenantId === selectedTenant.id && mostInArrears.totalOutstanding > 0 && (
-                  <div className="mt-0.5 text-xs text-blue-700">Largest outstanding balance — {money(mostInArrears.totalOutstanding)}</div>
+                  <div className="mt-0.5 text-xs text-graphite">Largest outstanding balance — {money(mostInArrears.totalOutstanding)}</div>
                 )}
               </div>
             )}

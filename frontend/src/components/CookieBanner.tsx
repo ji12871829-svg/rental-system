@@ -24,7 +24,7 @@ export default function CookieBanner() {
     <div
       role="region"
       aria-label="Storage notice"
-      className="fixed inset-x-0 bottom-0 z-[70] border-t border-gray-200 bg-white/95 p-3 shadow-[0_-4px_16px_rgb(0_0_0/0.06)] backdrop-blur animate-in fade-in slide-in-from-bottom-2 duration-200"
+      className="fixed inset-x-0 bottom-0 z-[70] border-t border-gray-200 bg-white/95 p-3 shadow-[0_-4px_16px_rgb(0_0_0/0.06)] backdrop-blur animate-in slide-in-from-bottom-2 duration-200"
       style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
     >
       <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-1 sm:px-4">

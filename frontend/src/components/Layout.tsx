@@ -277,8 +277,11 @@ export default function Layout() {
       {/* Mobile drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 md:hidden">
-          <div className="absolute inset-0 bg-gray-900/60 animate-in fade-in duration-200" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute left-0 top-0 flex h-full w-64 flex-col bg-ink shadow-2xl animate-in slide-in-from-left-64 duration-200">
+          <div className="absolute inset-0 bg-gray-900/60" onClick={() => setMobileOpen(false)} />
+          {/* Nudge entrance (1rem), not a full off-screen slide: a frozen
+              animation clock must at worst hold a small offset, never hide
+              the mobile nav (same rule as .rise-in in index.css). */}
+          <aside className="absolute left-0 top-0 flex h-full w-64 flex-col bg-ink shadow-2xl animate-in slide-in-from-left-4 duration-200">
             <div className="flex items-center justify-between px-4 py-4">
               <span className="text-sm font-bold text-white">Olbano Plaza</span>
               <button

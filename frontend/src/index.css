@@ -158,11 +158,13 @@ html.dark .table-scroll {
   animation: value-flash 1s ease-out;
 }
 
-/* Section entrance: gentle rise-and-fade on first mount only — sections
-   then update in place on every poll, so this never replays. */
+/* Section entrance: gentle rise on first mount only — sections then update
+   in place on every poll, so this never replays. Transform-only by design:
+   content must never depend on an animation clock to become visible (a
+   stalled or throttled compositor would otherwise hold it at opacity 0). */
 @keyframes rise-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { transform: translateY(8px); }
+  to { transform: translateY(0); }
 }
 .rise-in {
   animation: rise-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -242,26 +244,27 @@ html:has(#create-account) {
   scroll-behavior: smooth;
 }
 
-/* Reveal-on-scroll: sections marked data-reveal start slightly lowered and
-   transparent ONLY when JS adds .landing-reveal (below-fold elements at
-   mount), then rise in once when they enter the viewport. Compositor-only
-   properties; no replay, no scroll handlers. */
+/* Reveal-on-scroll: sections marked data-reveal start slightly lowered ONLY
+   when JS adds .landing-reveal (below-fold elements at mount), then rise in
+   once when they enter the viewport. TRANSFORM-ONLY by the same rule as
+   .rise-in: content visibility must never depend on an animation clock — a
+   stalled or throttled compositor must at worst hold a 14px offset, never
+   hide the section. No replay, no scroll handlers. */
 .landing-reveal {
-  opacity: 0;
   transform: translateY(14px);
 }
 .landing-reveal-in {
   animation: landing-reveal-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 @keyframes landing-reveal-in {
-  from { opacity: 0; transform: translateY(14px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { transform: translateY(14px); }
+  to { transform: translateY(0); }
 }
 /* Reduced motion: the hook never adds .landing-reveal, but belt-and-braces
-   in case markup changes later — never hide content behind a fade. */
+   in case markup changes later — never move content the user didn't ask to
+   move. */
 @media (prefers-reduced-motion: reduce) {
   .landing-reveal {
-    opacity: 1;
     transform: none;
   }
 }

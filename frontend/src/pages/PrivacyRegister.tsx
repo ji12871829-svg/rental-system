@@ -28,9 +28,11 @@ const TYPE_LABELS: Record<RegisterRow['request_type'], string> = {
 };
 
 const TYPE_STYLES: Record<RegisterRow['request_type'], string> = {
-  EXPORT_JSON: 'bg-brand-100 text-brand-800',
-  EXPORT_CSV: 'bg-sky-100 text-sky-800',
-  ERASURE: 'bg-purple-100 text-purple-800',
+  // Request-type tags: semantic triad (good / attention / destructive) —
+  // no sky fills, reserved for action buttons (design/amie-DESIGN.md).
+  EXPORT_JSON: 'bg-emerald-100 text-emerald-800',
+  EXPORT_CSV: 'bg-amber-100 text-amber-800',
+  ERASURE: 'bg-red-100 text-red-800',
 };
 
 const OUTCOME_STYLES: Record<RegisterRow['outcome'], string> = {

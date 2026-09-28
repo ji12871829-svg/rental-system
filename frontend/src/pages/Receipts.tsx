@@ -49,9 +49,12 @@ interface EmailNotification {
 }
 
 const TYPE_STYLES: Record<string, string> = {
-  RENT: 'bg-brand-100 text-brand-800',
-  WATER: 'bg-sky-100 text-sky-800',
-  COMBINED: 'bg-purple-100 text-purple-800',
+  // Receipt-type tags: filled tints stay in the semantic families (good /
+  // attention) plus the design's violet tag tint — no sky fills, which are
+  // reserved for action buttons (design/amie-DESIGN.md).
+  RENT: 'bg-emerald-100 text-emerald-800',
+  WATER: 'bg-amber-100 text-amber-800',
+  COMBINED: 'bg-violet/15 text-violet',
 };
 
 // Full standalone document for one receipt — used both for the in-modal
@@ -350,7 +353,7 @@ function EmailModal({ receipt, provider, live, from, onClose }: {
               onChange={(e) => setToEmail(e.target.value)}
             />
           </Field>
-          <p className={`rounded-lg px-3 py-2 text-xs ${provider === 'mock' ? 'bg-amber-50 text-amber-800' : 'bg-blue-50 text-blue-800'}`}>
+          <p className={`rounded-lg px-3 py-2 text-xs ${provider === 'mock' ? 'bg-amber-50 text-amber-800' : 'bg-fog text-graphite'}`}>
             {provider === 'mock'
               ? 'Email provider is in simulated mode — the send is recorded in history but not delivered. Set EMAIL_PROVIDER=brevo with BREVO_API_KEY, EMAIL_FROM, and BREVO_TEST_RECIPIENTS for safe testing.'
               : live
@@ -414,7 +417,7 @@ function GenerateModal({ open, tenants, onClose, onSaved }: { open: boolean; ten
           </Field>
           <Field label="Billing Year"><TextInput type="number" value={billingYear} onChange={(e) => setBillingYear(Number(e.target.value))} /></Field>
         </div>
-        <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">
+        <p className="rounded-lg bg-fog px-3 py-2 text-xs text-graphite">
           Aggregates every rent and water payment the tenant made in that month into one RWC-YYYY-#### receipt. Generating twice reuses the same receipt.
         </p>
         <div className="flex justify-end gap-2">

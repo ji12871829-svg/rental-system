@@ -239,11 +239,11 @@ export function Modal({ open, title, onClose, children, wide, shakeSignal = 0 }:
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex flex-col overflow-y-auto bg-gray-900/50 p-4 animate-in fade-in" onClick={onClose} role="dialog" aria-modal="true" aria-label={title}>
+    <div className="fixed inset-0 z-50 flex flex-col overflow-y-auto bg-gray-900/50 p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label={title}>
       <div
         ref={panelRef}
         tabIndex={-1}
-        className={`mx-auto my-auto w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} rounded-2xl bg-white shadow-xl outline-none animate-in fade-in slide-in-from-bottom-4 zoom-in-95 duration-200 md:mt-12 md:mb-auto`}
+        className={`mx-auto my-auto w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} rounded-2xl bg-white shadow-xl outline-none animate-in slide-in-from-bottom-4 duration-200 md:mt-12 md:mb-auto`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3.5">
@@ -424,7 +424,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={t.id}
             role={t.type === 'success' ? 'status' : 'alert'}
-            className={`pointer-events-auto flex items-start gap-2.5 rounded-xl px-4 py-3 text-sm font-medium text-white shadow-lg animate-in fade-in slide-in-from-right-4 duration-200 ${
+            className={`pointer-events-auto flex items-start gap-2.5 rounded-xl px-4 py-3 text-sm font-medium text-white shadow-lg animate-in slide-in-from-right-4 duration-200 ${
               t.type === 'success' ? 'bg-emerald-700' : 'bg-red-600'
             }`}
           >
