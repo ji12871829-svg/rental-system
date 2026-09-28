@@ -97,6 +97,82 @@ describe('M-Pesa callback gate', () => {
     expect(Number(replayed[0].count)).toBe(Number(after[0].count));
   });
 
+  it('creates exactly one rent payment when the same confirmation is replayed five times', async () => {
+    // Daraja replays a confirmation when our 200 response is lost (timeout,
+    // redeploy). Each replay runs the FULL pipeline — store, match, allocate,
+    // post — so the ledger must absorb the storm as exactly one payment.
+    // The TransID is byte-identical across all five posts, as Safaricom sends.
+    env.mpesaShortcode = '4100100';
+    const transId = `RREPLAY${Date.now()}`;
+    const body = {
+      TransID: transId,
+      // 1 KSh: the allocation engine splits an amount across several months'
+      // arrears when it spans them — an amount this small always fits one
+      // allocation slice, so "one posting" and "one rent_payments row" are
+      // the same statement and the assertion below is exact.
+      TransAmount: '1',
+      BusinessShortCode: '4100100',
+      BillRefNumber: '1',
+      TransTime: '20260919120003',
+      MSISDN: '254700000000',
+    };
+
+    try {
+      const responses = [];
+      for (let i = 0; i < 5; i++) {
+        responses.push(await request(app).post('/api/mpesa/c2b/confirm').send(body));
+      }
+      // Daraja treats non-zero ResultCode as failure and retries forever, so
+      // every replay — not just the first — must be accepted.
+      for (const res of responses) {
+        expect(res.status).toBe(200);
+        expect(res.body.ResultCode).toBe(0);
+      }
+
+      // Exactly one payment carries the confirmation's reference...
+      const payments = await query<{ id: number }>(
+        `SELECT id FROM rent_payments WHERE payment_reference = $1`,
+        [transId]
+      );
+      expect(payments).toHaveLength(1);
+      // ...the transaction is stored once and marked POSTED...
+      const stored = await query<{ status: string; rent_payment_id: number | null }>(
+        `SELECT status, rent_payment_id FROM mpesa_transactions WHERE transaction_id = $1`,
+        [transId]
+      );
+      expect(stored).toHaveLength(1);
+      expect(stored[0].status).toBe('POSTED');
+      expect(stored[0].rent_payment_id).toBe(payments[0].id);
+      // ...and no orphan payment rows exist beyond that one.
+      const tenantId = await tenantIdForUnit('1');
+      const total = await query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM rent_payments WHERE tenant_id = $1 AND payment_reference = $2`,
+        [tenantId, transId]
+      );
+      expect(Number(total[0].count)).toBe(1);
+    } finally {
+      // Same teardown chain as the unmatched-alert suite: children first,
+      // then the payment, then the mpesa_transactions row.
+      await query(
+        `DELETE FROM sms_notifications WHERE receipt_id IN (
+           SELECT r.id FROM receipts r
+           WHERE r.receipt_number IN (SELECT receipt_number FROM rent_payments WHERE payment_reference = $1 AND receipt_number IS NOT NULL)
+         )`,
+        [transId]
+      );
+      await query(
+        `DELETE FROM receipts WHERE id IN (
+           SELECT r.id FROM receipts r
+           WHERE r.receipt_number IN (SELECT receipt_number FROM rent_payments WHERE payment_reference = $1 AND receipt_number IS NOT NULL)
+         )`,
+        [transId]
+      );
+      await query(`UPDATE mpesa_transactions SET rent_payment_id = NULL WHERE rent_payment_id IN (SELECT id FROM rent_payments WHERE payment_reference = $1)`, [transId]);
+      await query(`DELETE FROM rent_payments WHERE payment_reference = $1`, [transId]);
+      await query(`DELETE FROM mpesa_transactions WHERE transaction_id = $1`, [transId]);
+    }
+  });
+
   it('rejects callback bodies naming a different business shortcode', async () => {
     env.mpesaShortcode = '4100100';
     const res = await request(app)
