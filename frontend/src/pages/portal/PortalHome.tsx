@@ -58,8 +58,8 @@ export default function PortalHome() {
       />
 
       <div
-        className={`rounded-xl border px-4 py-4 ${
-          owing ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'
+        className={`rounded-xl border border-ash bg-white px-4 py-4 ${
+          owing ? 'border-l-4 border-l-red-500' : 'border-l-4 border-l-emerald-500'
         }`}
       >
         <p className="text-sm font-medium text-gray-600">
@@ -74,7 +74,7 @@ export default function PortalHome() {
           as at {s.reportingYear}
         </p>
         {owing && (
-          <Link to="/portal/payments" className="mt-2 inline-block text-sm font-medium text-brand-700 hover:underline">
+          <Link to="/portal/payments" className="press mt-2 inline-block rounded text-sm font-medium text-brand-600 hover:underline active:scale-[0.98]">
             Send money to clear this →
           </Link>
         )}

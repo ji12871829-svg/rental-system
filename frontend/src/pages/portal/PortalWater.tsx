@@ -29,7 +29,7 @@ export default function PortalWater() {
     <div className="space-y-6">
       <PageHeader title="Water" subtitle="Meter readings and charges for your unit" />
 
-      <div className="rounded-xl border border-gray-200 bg-white">
+      <div className="rounded-xl border border-ash bg-white">
         <div className="border-b border-gray-200 px-4 py-3">
           <h3 className="text-sm font-semibold text-gray-900">Reading history</h3>
         </div>

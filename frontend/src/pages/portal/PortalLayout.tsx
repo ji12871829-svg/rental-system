@@ -30,9 +30,9 @@ export default function PortalLayout() {
           end={end}
           onClick={() => setMobileOpen(false)}
           className={({ isActive }) =>
-            `flex min-h-[40px] items-center gap-3 rounded-lg px-3 text-sm font-medium transition ${
+            `flex min-h-[40px] items-center gap-3 rounded-lg px-3 text-sm font-medium transition-[background-color,color,transform] duration-150 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)] active:scale-[0.98] ${
               isActive
-                ? 'bg-brand-600/15 text-white'
+                ? 'bg-brand-500 text-white shadow-sm'
                 : 'text-gray-400 hover:bg-white/5 hover:text-white'
             }`
           }
@@ -46,7 +46,7 @@ export default function PortalLayout() {
           await logout();
           navigate('/portal/login', { replace: true });
         }}
-        className="mt-auto flex min-h-[40px] items-center gap-3 rounded-lg px-3 text-sm font-medium text-gray-400 transition hover:bg-white/5 hover:text-white"
+        className="mt-auto flex min-h-[40px] items-center gap-3 rounded-lg px-3 text-sm font-medium text-gray-400 transition-[background-color,color,transform] duration-150 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)] hover:bg-white/5 hover:text-white active:scale-[0.98]"
       >
         <LogOut className="h-4 w-4 shrink-0" />
         Sign out
@@ -57,9 +57,9 @@ export default function PortalLayout() {
   return (
     <div className="flex min-h-screen bg-gray-100">
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col bg-gray-900 md:flex">
+      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col bg-ink md:flex">
         <div className="flex items-center gap-2 px-4 py-5">
-          <BrandLogo className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white" iconSize={16} />
+          <BrandLogo className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500 text-white" iconSize={16} />
           <div>
             <p className="text-sm font-semibold text-white">Tenant Portal</p>
             <p className="text-xs text-gray-400">RMS</p>
@@ -76,10 +76,10 @@ export default function PortalLayout() {
             onClick={() => setMobileOpen(false)}
             aria-hidden
           />
-          <aside className="absolute inset-y-0 left-0 flex w-64 flex-col bg-gray-900 shadow-xl">
+          <aside className="absolute inset-y-0 left-0 flex w-64 flex-col bg-ink shadow-xl">
             <div className="flex items-center justify-between px-4 py-5">
               <div className="flex items-center gap-2">
-                <BrandLogo className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white" iconSize={16} />
+                <BrandLogo className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500 text-white" iconSize={16} />
                 <p className="text-sm font-semibold text-white">Tenant Portal</p>
               </div>
               <button
@@ -110,7 +110,9 @@ export default function PortalLayout() {
         </header>
 
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 md:px-8">
-          <Outlet />
+          <div className="rise-in">
+            <Outlet />
+          </div>
         </main>
 
         <footer className="border-t border-gray-200 px-4 py-4 text-center text-xs text-gray-400 md:px-8">

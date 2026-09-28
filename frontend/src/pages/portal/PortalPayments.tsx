@@ -91,9 +91,9 @@ export default function PortalPayments() {
       <PageHeader title="Payments" subtitle="Pay rent and review everything you have paid" />
 
       {stkConfig?.enabled && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+        <div className="rounded-xl border border-ash bg-white p-4">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-            <Smartphone className="h-4 w-4" /> Pay with M-Pesa
+            <Smartphone className="h-4 w-4 text-brand-500" /> Pay with M-Pesa
           </h3>
           <p className="mt-1 text-sm text-gray-600">
             Enter the amount and we'll send an M-Pesa request to your phone ({stkConfig.targetPhone}). Enter your PIN to complete the payment — your balance updates automatically.
@@ -108,20 +108,20 @@ export default function PortalPayments() {
               onChange={(e) => stk.updateAmount(e.target.value)}
               placeholder="Amount to pay"
               aria-label="Amount to pay"
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 sm:max-w-xs"
+              className="w-full rounded-lg border border-ash bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-silver focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 sm:max-w-xs"
             />
             <button
               type="button"
               onClick={stk.startPush}
               disabled={stk.pushing || stk.awaitingConfirmation || !Number(stk.amount)}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="press inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {stk.pushing ? 'Sending request…' : 'Send M-Pesa request'}
             </button>
           </div>
           {stk.pushError && <p className="mt-2 text-sm text-red-700">{stk.pushError}</p>}
           {stk.pushResult && (
-            <div className="mt-3 rounded-lg border border-emerald-300 bg-white p-3 text-sm">
+            <div className="mt-3 rounded-lg border border-ash bg-white p-3 text-sm">
               {stk.awaitingConfirmation ? (
                 <p className="text-gray-700">
                   <span className="font-medium">Request sent to {stk.pushResult.phone}.</span> Check your phone and enter your M-Pesa PIN. This page refreshes your balance automatically for a few minutes while M-Pesa confirms.
@@ -140,7 +140,7 @@ export default function PortalPayments() {
       )}
 
       {instructionsData?.data.number && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <div className="rounded-xl border border-ash bg-white p-4">
           <h3 className="text-sm font-semibold text-gray-900">Send money via M-Pesa</h3>
           <p className="mt-1 text-sm text-gray-600">
             Send the amount you owe to the details below, using the exact account reference for what you are paying (rent or water). The payment reflects on your account once it is confirmed.
@@ -177,7 +177,7 @@ export default function PortalPayments() {
 
       {timelineRows.length > 0 && <PaymentTimeline rows={timelineRows} fmt={fmt} />}
 
-      <div className="rounded-xl border border-gray-200 bg-white">
+      <div className="rounded-xl border border-ash bg-white">
         <div className="border-b border-gray-200 px-4 py-3">
           <h3 className="text-sm font-semibold text-gray-900">Payment history</h3>
         </div>
@@ -226,7 +226,7 @@ function AmountRow({ label, amount, fmt, positive }: {
   positive: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-3 py-2">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-ash bg-white px-3 py-2">
       <span className="text-gray-500">{label}</span>
       <b className={positive ? 'text-red-700' : 'text-green-700'}>{positive ? fmt(amount) : 'Nothing — you are up to date'}</b>
     </div>
@@ -240,9 +240,9 @@ function CopyRow({ label, value, onCopy, copied }: {
   copied: string | null;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-3 py-2">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-ash bg-white px-3 py-2">
       <span><span className="text-gray-500">{label}:</span> <b className="text-gray-900">{value}</b></span>
-      <button type="button" onClick={() => onCopy(label, value)} className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-900" aria-label={`Copy ${label}`}>
+      <button type="button" onClick={() => onCopy(label, value)} className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700" aria-label={`Copy ${label}`}>
         {copied === label ? <Check size={14} /> : <Copy size={14} />}
         {copied === label ? 'Copied' : 'Copy'}
       </button>

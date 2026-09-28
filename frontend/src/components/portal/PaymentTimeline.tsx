@@ -40,7 +40,7 @@ function timelineStageIndex(stage: PaymentStatusRow['stage']): number {
 
 export function PaymentTimeline({ rows, fmt }: { rows: PaymentStatusRow[]; fmt: (n: number) => string }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white" aria-label="Payment status">
+    <div className="rounded-xl border border-ash bg-white" aria-label="Payment status">
       <div className="border-b border-gray-200 px-4 py-3">
         <h3 className="text-sm font-semibold text-gray-900">Payment status</h3>
         <p className="mt-0.5 text-xs text-gray-500">Your recent M-Pesa payments and where they are</p>
@@ -71,19 +71,19 @@ export function PaymentTimeline({ rows, fmt }: { rows: PaymentStatusRow[]; fmt: 
                           <span
                             className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
                               done || isPosted
-                                ? 'bg-emerald-600 text-white'
+                                ? 'bg-brand-500 text-white'
                                 : current
-                                  ? 'animate-pulse bg-emerald-100 text-emerald-700 ring-2 ring-emerald-500'
+                                  ? 'animate-pulse bg-brand-50 text-brand-600 ring-2 ring-brand-400'
                                   : 'bg-gray-100 text-gray-400'
                             }`}
                             aria-current={current ? 'step' : undefined}
                           >
                             {done || isPosted ? '✓' : i + 1}
                           </span>
-                          <span className={`whitespace-nowrap text-[10px] leading-tight ${done || isPosted ? 'text-emerald-700' : current ? 'font-medium text-emerald-700' : 'text-gray-400'}`}>{stage.label}</span>
+                          <span className={`whitespace-nowrap text-[10px] leading-tight ${done || isPosted ? 'text-brand-600' : current ? 'font-medium text-brand-600' : 'text-gray-400'}`}>{stage.label}</span>
                         </div>
                         {i < TIMELINE_STAGES.length - 1 && (
-                          <span className={`mx-1 h-px flex-1 ${i < stageIndex ? 'bg-emerald-400' : 'bg-gray-200'}`} aria-hidden />
+                          <span className={`mx-1 h-px flex-1 ${i < stageIndex ? 'bg-brand-300' : 'bg-gray-200'}`} aria-hidden />
                         )}
                       </li>
                     );
