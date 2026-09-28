@@ -7,6 +7,7 @@ import { useAuth } from './lib/auth';
 import { useBranding } from './lib/BrandingContext';
 import { PortalAuthProvider, usePortalAuth } from './lib/portalAuth';
 import { routeChunks } from './lib/routeChunks';
+import { ErrorBoundaryWithReset } from './components/ErrorBoundary';
 
 // Route-level code splitting: every page is its own chunk, fetched on first
 // visit. The initial bundle stays small; heavy pages (charts) don't slow down
@@ -131,6 +132,11 @@ export default function App() {
       <TitleManager />
       <CookieBanner />
       <Suspense fallback={<RouteFallback />}>
+        {/* Root boundary: no render error anywhere can white-screen the app.
+            Route-level boundaries below catch first, keeping the damage
+            narrow; this one is the last resort. Remounts on navigation, so
+            browser-back recovers from a crashed deep page. */}
+        <ErrorBoundaryWithReset surface="app" shell>
         <Routes>
           {/* Public surfaces — reachable before any sign-in. Wrapped in the
               portal auth provider so an already-signed-in tenant skips the
@@ -170,7 +176,9 @@ export default function App() {
           <Route
             element={
               <RequireAuth>
-                <Layout />
+                <ErrorBoundaryWithReset surface="dashboard" shell>
+                  <Layout />
+                </ErrorBoundaryWithReset>
               </RequireAuth>
             }
           >
@@ -233,18 +241,52 @@ export default function App() {
             element={
               <PortalAuthProvider>
                 <RequirePortalAuth>
-                  <PortalLayout />
+                  <ErrorBoundaryWithReset surface="tenant portal">
+                    <PortalLayout />
+                  </ErrorBoundaryWithReset>
                 </RequirePortalAuth>
               </PortalAuthProvider>
             }
           >
-            <Route index element={<PortalHome />} />
-            <Route path="payments" element={<PortalPayments />} />
-            <Route path="water" element={<PortalWater />} />
-            <Route path="statement" element={<PortalStatement />} />
+            {/* Page-level boundaries: a crash in one portal page leaves the
+                drawer and the rest of the portal usable — the fallback's
+                "Back to portal home" is a real recovery path. */}
+            <Route
+              index
+              element={
+                <ErrorBoundaryWithReset surface="portal home">
+                  <PortalHome />
+                </ErrorBoundaryWithReset>
+              }
+            />
+            <Route
+              path="payments"
+              element={
+                <ErrorBoundaryWithReset surface="portal payments">
+                  <PortalPayments />
+                </ErrorBoundaryWithReset>
+              }
+            />
+            <Route
+              path="water"
+              element={
+                <ErrorBoundaryWithReset surface="portal water">
+                  <PortalWater />
+                </ErrorBoundaryWithReset>
+              }
+            />
+            <Route
+              path="statement"
+              element={
+                <ErrorBoundaryWithReset surface="portal statement">
+                  <PortalStatement />
+                </ErrorBoundaryWithReset>
+              }
+            />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </ErrorBoundaryWithReset>
       </Suspense>
     </>
   );
