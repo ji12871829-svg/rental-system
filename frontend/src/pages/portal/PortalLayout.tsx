@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { CreditCard, Droplets, FileText, Home, LogOut, Menu, X } from 'lucide-react';
 import { usePortalAuth } from '../../lib/portalAuth';
+import { branding } from '../../lib/branding';
 import { BrandLogo } from '../../components/BrandLogo';
 import { ThemeToggle } from '../../components/ThemeToggle';
 
@@ -62,7 +63,9 @@ export default function PortalLayout() {
           <BrandLogo className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500 text-white" iconSize={16} />
           <div>
             <p className="text-sm font-semibold text-white">Tenant Portal</p>
-            <p className="text-xs text-gray-400">RMS</p>
+            {/* The operator's real business name — 'RMS' was a pre-rebrand
+                leftover the landing redesign's identity rules surfaced. */}
+            <p className="text-xs text-gray-400">{branding.appName}</p>
           </div>
         </div>
         {nav}

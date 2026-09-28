@@ -31,7 +31,7 @@ function LegalShell({ title, children }: { title: string; children: ReactNode })
         </Link>
         <article className="mt-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-10">
           <div className="flex items-center gap-2.5">
-            <BrandMark className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white" iconSize={18} />
+            <BrandMark className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500 text-white" iconSize={18} />
             <div className="leading-tight">
               <div className="text-sm font-bold text-gray-900">{branding.appName}</div>
               {legalNameDisplay && <div className="text-[11px] text-gray-500">Operated by {legalNameDisplay}</div>}

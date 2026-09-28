@@ -10,7 +10,7 @@ export default function NotFound() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-100 p-4 text-center">
-      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-lg shadow-brand-600/30">
+      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-500 text-white shadow-md">
         <Building2 size={26} strokeWidth={1.75} aria-hidden />
       </span>
       <p className="mt-6 text-sm font-semibold uppercase tracking-widest text-brand-600">Error 404</p>
@@ -21,7 +21,7 @@ export default function NotFound() {
       <div className="mt-6 flex flex-wrap justify-center gap-2">
         <Link
           to="/"
-          className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-[background-color,transform] duration-150 hover:bg-brand-700 active:scale-[0.96]"
+          className="press inline-flex min-h-[40px] items-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-[background-color,transform] duration-150 hover:bg-brand-600 active:scale-[0.96]"
         >
           <Home size={16} strokeWidth={1.75} aria-hidden />
           {token ? 'Back to Dashboard' : 'Back to Sign in'}

@@ -56,7 +56,7 @@ export default function Water() {
             onClick={() => setTab(t.id)}
             className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors duration-150 ${
               tab === t.id
-                ? 'bg-brand-600 text-white shadow-sm'
+                ? 'bg-brand-500 text-white shadow-sm'
                 : 'bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50 hover:text-gray-900'
             }`}
           >

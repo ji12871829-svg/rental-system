@@ -346,7 +346,7 @@ export default function MonthlySummary() {
                   aria-selected={ownerChannel === value}
                   onClick={() => setOwnerChannel(value)}
                   className={`min-h-[38px] rounded-lg px-2 text-sm font-semibold transition-colors ${
-                    ownerChannel === value ? 'bg-brand-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                    ownerChannel === value ? 'bg-brand-500 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
                   {label}

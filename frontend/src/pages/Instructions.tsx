@@ -69,7 +69,7 @@ export default function Instructions() {
       <PageHeader title="Instructions / Help" subtitle="A short guide to the daily use of the system — this page is the full reference" />
 
       {/* Onboarding welcome hosted by the mascot from the launch video. */}
-      <div className="mb-4 flex items-center gap-5 rounded-xl border border-brand-100 bg-brand-50/60 p-5">
+      <div className="mb-4 flex items-center gap-5 rounded-xl border border-ash bg-fog p-5">
         <Toon size={88} pose="point" className="shrink-0" />
         <div>
           <h2 className="text-base font-semibold text-gray-900">Karibu! New here? Start with the daily workflow.</h2>
@@ -84,7 +84,7 @@ export default function Instructions() {
         {SECTIONS.map((s) => (
           <div key={s.title} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow duration-200 hover:shadow-md">
             <h2 className="mb-3 flex items-center gap-2.5 text-base font-semibold text-gray-900">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-fog text-gray-700">
                 <s.icon size={17} strokeWidth={1.75} aria-hidden />
               </span>
               {s.title}

@@ -375,8 +375,8 @@ function PortalAccessModal({ tenant, onClose, onDone }: {
             rent via M-Pesa.
           </p>
           {credentials && (
-            <div className="rounded-lg border border-brand-200 bg-brand-50 p-3">
-              <div className="font-medium text-brand-800">Share these credentials now — shown only once:</div>
+            <div className="rounded-lg border border-ash bg-fog p-3">
+              <div className="font-medium text-gray-900">Share these credentials now — shown only once:</div>
               <div className="mt-2 font-mono text-xs text-gray-800">Email: {credentials.email}</div>
               <div className="font-mono text-xs text-gray-800">Password: {credentials.password}</div>
               {credentials.emailed === 'sent' && (
@@ -702,7 +702,7 @@ function ReminderModal({ request, busy, onClose, onDone, onError, setBusy }: {
             aria-selected={channel === value}
             onClick={() => setChannel(value)}
             className={`min-h-[38px] rounded-lg px-2 text-sm font-semibold transition-colors ${
-              channel === value ? 'bg-brand-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+              channel === value ? 'bg-brand-500 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
             }`}
           >
             {label}

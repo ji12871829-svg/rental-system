@@ -55,7 +55,7 @@ export default function Users() {
                 <tr key={u.id}>
                   <td className="font-semibold text-gray-900">
                     {u.name}
-                    {u.id === me?.id && <span className="ml-2 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-semibold text-brand-700">YOU</span>}
+                    {u.id === me?.id && <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600">YOU</span>}
                   </td>
                   <td>{u.email}</td>
                   <td>{u.phone ?? '—'}</td>

@@ -79,7 +79,7 @@ export default function EmailCampaign() {
             </Field>
             <Field label="Subject"><TextInput value={subject} onChange={(event) => setSubject(event.target.value)} /></Field>
             <Field label="Message" hint="Use {{name}} and {{unit}} for each tenant's name and unit number.">
-              <textarea value={message} onChange={(event) => setMessage(event.target.value)} rows={9} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 md:text-sm" />
+              <textarea value={message} onChange={(event) => setMessage(event.target.value)} rows={9} className="w-full rounded-lg border border-ash bg-white px-3 py-2 text-base text-gray-900 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 md:text-sm" />
             </Field>
             <div className="rounded-lg bg-fog px-3 py-2 text-sm text-graphite">
               This will send to <strong>{selectedCount}</strong> tenant{selectedCount === 1 ? '' : 's'} with email addresses. Emails are recorded in Email History.

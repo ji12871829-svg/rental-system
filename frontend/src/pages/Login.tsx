@@ -158,7 +158,7 @@ export default function Login() {
               aria-controls="signin-panel"
               onClick={() => { setTab('landlord'); setError(''); }}
               className={`min-h-[44px] rounded-lg px-3 text-sm font-semibold transition-colors active:scale-[0.98] ${
-                !isTenant ? 'bg-brand-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                !isTenant ? 'bg-brand-500 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
               }`}
             >
               Landlord / Manager
@@ -171,7 +171,7 @@ export default function Login() {
               aria-controls="signin-panel"
               onClick={() => { setTab('tenant'); setError(''); }}
               className={`min-h-[44px] rounded-lg px-3 text-sm font-semibold transition-colors active:scale-[0.98] ${
-                isTenant ? 'bg-brand-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                isTenant ? 'bg-brand-500 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
               }`}
             >
               Tenant

@@ -192,7 +192,7 @@ function TenantForm() {
 
   return (
     <form ref={shakeRef} onSubmit={submit} className="space-y-4">
-      <div className="flex items-start gap-2.5 rounded-xl bg-brand-50 px-3.5 py-3 text-sm text-brand-800">
+      <div className="flex items-start gap-2.5 rounded-xl border border-ash bg-fog px-3.5 py-3 text-sm text-graphite">
         <Building2 size={17} className="mt-0.5 shrink-0" aria-hidden />
         <p>
           Your tenancy must already exist — your property manager adds it with your email address.
@@ -270,8 +270,8 @@ function LandlordForm() {
 
   if (bootstrapped) {
     return (
-      <div className="rounded-2xl border border-brand-100 bg-brand-50 p-6 text-center" role="status">
-        <CheckCircle2 size={40} className="mx-auto text-brand-600" aria-hidden />
+      <div className="rounded-xl border border-ash bg-white p-6 text-center shadow-lg" role="status">
+        <CheckCircle2 size={40} className="mx-auto text-brand-500" aria-hidden />
         <h3 className="mt-3 text-lg font-semibold text-gray-900">Welcome aboard!</h3>
         <p className="mt-2 text-sm leading-relaxed text-gray-600">
           Your administrator account is ready — taking you to the dashboard…
@@ -282,8 +282,8 @@ function LandlordForm() {
 
   if (done) {
     return (
-      <div className="rounded-2xl border border-brand-100 bg-brand-50 p-6 text-center" role="status">
-        <CheckCircle2 size={40} className="mx-auto text-brand-600" aria-hidden />
+      <div className="rounded-xl border border-ash bg-white p-6 text-center shadow-lg" role="status">
+        <CheckCircle2 size={40} className="mx-auto text-brand-500" aria-hidden />
         <h3 className="mt-3 text-lg font-semibold text-gray-900">Request received</h3>
         <p className="mt-2 text-sm leading-relaxed text-gray-600">
           An administrator will review and activate your account. Once approved, sign in with the
@@ -292,13 +292,13 @@ function LandlordForm() {
         <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
           <Link
             to="/login"
-            className="inline-flex min-h-[40px] items-center justify-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+            className="press inline-flex min-h-[40px] items-center justify-center rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-[background-color,color] hover:bg-brand-600"
           >
             Go to sign in
           </Link>
           <Link
             to="/"
-            className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="press inline-flex min-h-[40px] items-center justify-center rounded-xl border border-ash bg-white px-4 py-2 text-sm font-medium text-graphite transition-[background-color,color] hover:bg-fog"
           >
             Back to home
           </Link>
