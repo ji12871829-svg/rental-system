@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { usePortalAuth } from '../../lib/portalAuth';
 import { portalApi } from '../../lib/portalApi';
+import { branding } from '../../lib/branding';
 import { Toon } from '../../components/Toon';
 
 export default function PortalLogin() {
@@ -69,8 +70,8 @@ export default function PortalLogin() {
         <div className="mb-6 flex flex-col items-center gap-2">
           {/* The same waving welcome the staff sign-in gives — tenants get
               the mascot too, not a bare icon. */}
-          <Toon size={110} pose="wave" animated title="Olbano Plaza property manager mascot waving hello" />
-          <h1 className="text-xl font-semibold text-gray-900">Tenant Portal</h1>
+          <Toon size={110} pose="wave" animated title={`${branding.appName} property manager mascot waving hello`} />
+          <h1 className="text-xl font-semibold text-gray-900">{branding.appName} — Tenant Portal</h1>
           <p className="text-sm text-gray-500">Sign in with the email your landlord registered</p>
         </div>
         <form onSubmit={onSubmit} className="space-y-4 rounded-xl border border-ash bg-white p-6">

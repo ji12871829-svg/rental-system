@@ -105,7 +105,7 @@ export default function Login() {
           />
           <img
             src="/building/building-1-800.webp"
-            alt="The building managed with RPMS — modern residential facade"
+            alt={`The building managed with ${branding.appName} — modern residential facade`}
             className="absolute inset-0 h-full w-full object-cover"
             loading="eager"
             decoding="async"
@@ -126,12 +126,12 @@ export default function Login() {
             <span className="text-lg font-semibold text-white">{branding.appName}</span>
           </div>
           <div className="flex items-end gap-4">
-            <Toon size={110} pose="wave" animated title="Olbano Plaza property manager mascot waving hello" />
+            <Toon size={110} pose="wave" animated title={`${branding.appName} property manager mascot waving hello`} />
             <div>
             <h1 className="max-w-xs text-3xl font-semibold leading-tight text-white">{branding.appNameLong}</h1>
             {loginIdentityLine && <p className="mt-2 text-sm text-silver">{loginIdentityLine}</p>}
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-silver">
-              Every unit, rent payment and water bill, tracked in one place.
+              Every unit, rent payment and water bill at {branding.appName}, tracked in one place.
             </p>
             </div>
           </div>
