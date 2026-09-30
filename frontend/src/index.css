@@ -23,7 +23,11 @@ button, input, select, textarea {
 /* Display scale — Inter 700 with Amie's tight negative tracking. */
 .type-display {
   font-weight: 700;
-  font-size: clamp(2.5rem, 5vw, 56px);
+  /* 36px floor, not 40: the highlighted property name in the landing hero is
+     nowrap (it must not split mid-highlight), and at 40px that line overflows
+     a 320px phone. 36px keeps "Run <name>" on one line at 360px and lets the
+     name drop whole to its own line on narrower phones. */
+  font-size: clamp(2.25rem, 5vw, 56px);
   line-height: 1.05;
   letter-spacing: -0.025em;
 }

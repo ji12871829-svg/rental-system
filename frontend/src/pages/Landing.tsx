@@ -333,17 +333,17 @@ export default function Landing() {
 
         <div className="relative mx-auto max-w-6xl px-5 pb-16 pt-14 text-center lg:pb-24 lg:pt-20">
           {/* Eyebrow — the design's inline label, not a pill. */}
-          <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-graphite">
+          <p className="inline-flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs font-semibold uppercase tracking-[0.14em] text-graphite">
             <Building2 size={14} strokeWidth={1.75} className="text-brand-500" aria-hidden />
-            Property management for{' '}
-            <strong className="font-extrabold text-gray-900">{branding.appName}</strong>
+            <span className="whitespace-nowrap">Property management for</span>{' '}
+            <strong className="whitespace-nowrap font-extrabold text-gray-900">{branding.appName}</strong>
           </p>
 
           {/* Display headline: Inter 700, tight tracking, ONE amber highlight
               per the design's inline-highlight rule. Centered like the photo-led
               hero: message first, the building itself as the visual anchor. */}
           <h1 className="type-display mx-auto mt-5 max-w-3xl text-gray-900">
-            Run <span className="bg-sun px-1">{branding.appName}</span> from one ledger.
+            Run <span className="whitespace-nowrap bg-sun px-1">{branding.appName}</span> from one ledger.
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-graphite">
             Rent, water, receipts and messages for every unit at{' '}
