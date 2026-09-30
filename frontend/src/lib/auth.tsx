@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api } from './api';
-import { installStaffKeepalive } from './sessionKeepalive';
+import { installStaffKeepalive, uninstallStaffKeepalive } from './sessionKeepalive';
 
 type Role = 'ADMIN' | 'PROPERTY_MANAGER' | 'STAFF';
 
@@ -52,6 +52,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setTokenState(false);
     setReady(true);
     setUser(null);
+    // Symmetry with the portal fix: stop renewing a dead session, or the
+    // keepalive's next 401 hard-reloads the login form out from under the
+    // user.
+    uninstallStaffKeepalive();
   }, []);
 
   const value = useMemo<AuthState>(() => ({

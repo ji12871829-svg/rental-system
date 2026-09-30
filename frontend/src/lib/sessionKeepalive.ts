@@ -11,56 +11,70 @@
 //     visibility — no churn in the background.
 // Both staff and portal apps install it with their own refresh endpoint; each
 // refresh mints a fresh cookie and nothing else about the session changes.
+//
+// Uninstall symmetry: logout() must stop the keepalive, because after the
+// session cookie is gone every renewal 401s — and a 401 triggers the http
+// client's hard redirect to the login page, reloading the form out from
+// under the user (the "stuck in /portal/login" bug). Each install returns
+// nothing; uninstall is by name.
 
-let installedStaff = false;
-let installedPortal = false;
+type Refresher = () => void;
+
+interface KeepaliveHandle {
+  intervalId: number;
+  onVisible: () => void;
+}
 
 const RENEW_INTERVAL_MS = 30 * 60 * 1000;
 
-function scheduleStaff(): void {
+function startRenewing(
+  refreshUrl: string,
+  refresher: Refresher,
+  setHandle: (h: KeepaliveHandle) => void,
+): void {
   const run = () => {
-    void fetch('/api/auth/refresh', {
-      method: 'POST',
-      credentials: 'include',
-    }).catch(() => undefined);
+    void fetch(refreshUrl, { method: 'POST', credentials: 'include' }).catch(() => undefined);
   };
   run();
-  window.setInterval(() => {
+  const intervalId = window.setInterval(() => {
     if (document.visibilityState === 'visible') run();
   }, RENEW_INTERVAL_MS);
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') refresher();
+  };
+  document.addEventListener('visibilitychange', onVisible);
+  setHandle({ intervalId, onVisible });
 }
 
-function schedulePortal(): void {
-  const run = () => {
-    void fetch('/api/portal/refresh', {
-      method: 'POST',
-      credentials: 'include',
-    }).catch(() => undefined);
-  };
-  run();
-  window.setInterval(() => {
-    if (document.visibilityState === 'visible') run();
-  }, RENEW_INTERVAL_MS);
+function stopRenewing(handle: KeepaliveHandle | null): void {
+  if (!handle) return;
+  window.clearInterval(handle.intervalId);
+  document.removeEventListener('visibilitychange', handle.onVisible);
 }
+
+let staffHandle: KeepaliveHandle | null = null;
+let portalHandle: KeepaliveHandle | null = null;
 
 export function installStaffKeepalive(): void {
-  if (installedStaff) return;
-  installedStaff = true;
-  scheduleStaff();
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      void fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' }).catch(() => undefined);
-    }
-  });
+  if (staffHandle) return;
+  startRenewing('/api/auth/refresh', () => {
+    void fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' }).catch(() => undefined);
+  }, (h) => { staffHandle = h; });
+}
+
+export function uninstallStaffKeepalive(): void {
+  stopRenewing(staffHandle);
+  staffHandle = null;
 }
 
 export function installPortalKeepalive(): void {
-  if (installedPortal) return;
-  installedPortal = true;
-  schedulePortal();
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      void fetch('/api/portal/refresh', { method: 'POST', credentials: 'include' }).catch(() => undefined);
-    }
-  });
+  if (portalHandle) return;
+  startRenewing('/api/portal/refresh', () => {
+    void fetch('/api/portal/refresh', { method: 'POST', credentials: 'include' }).catch(() => undefined);
+  }, (h) => { portalHandle = h; });
+}
+
+export function uninstallPortalKeepalive(): void {
+  stopRenewing(portalHandle);
+  portalHandle = null;
 }

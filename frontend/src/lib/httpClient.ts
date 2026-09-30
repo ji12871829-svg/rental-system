@@ -97,7 +97,15 @@ export function createHttpClient(config: HttpApiConfig) {
         if (refreshed) return requestWithRetry<T>(path, options, true);
       }
       if (!exempt) {
-        window.location.href = config.loginRedirect;
+        // The hard redirect is how this client hands the browser to the login
+        // page — but it must never fire while the browser is ALREADY on that
+        // page. A straggler 401 landing after sign-out (slow in-flight
+        // request, a keepalive tick that raced the uninstall) would otherwise
+        // reload the login form mid-typing, over and over: the "stuck in
+        // /portal/login" bug. Same page → just surface the error.
+        const alreadyThere = window.location.pathname === config.loginRedirect
+          || window.location.pathname.startsWith(config.loginRedirect + '/');
+        if (!alreadyThere) window.location.href = config.loginRedirect;
       }
       if (exempt && config.exemptUsesParsedMessage) {
         const body = await parseErrorBody(res);

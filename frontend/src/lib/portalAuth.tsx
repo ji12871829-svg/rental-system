@@ -4,7 +4,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { portalApi } from './portalApi';
-import { installPortalKeepalive } from './sessionKeepalive';
+import { installPortalKeepalive, uninstallPortalKeepalive } from './sessionKeepalive';
 
 export interface PortalTenant {
   tenantId: number;
@@ -59,6 +59,11 @@ export function PortalAuthProvider({ children }: { children: ReactNode }) {
       await portalApi.post('/api/portal/logout');
     } finally {
       setTenant(null);
+      // Stop renewing a session that no longer exists: the keepalive would
+      // 401 on its next tick and the http client answers every 401 with a
+      // hard reload to /portal/login — reloading the login form out from
+      // under the user (the "stuck in /portal/login" bug).
+      uninstallPortalKeepalive();
     }
   }, []);
 
