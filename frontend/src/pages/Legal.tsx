@@ -684,85 +684,284 @@ export function Terms() {
 }
 
 // -------------------------------------------------------- Cookies & storage
+// The same numbered, contents-first structure as the other legal pages,
+// applied to the narrowest policy of the four: what sits in your browser,
+// why, for how long, and how to clear it.
+const COOKIES_TOC: { id: string; title: string }[] = [
+  { id: 'cookies-scope', title: 'What this policy covers' },
+  { id: 'cookies-tracking', title: 'No tracking' },
+  { id: 'cookies-session', title: 'Sign-in session cookies' },
+  { id: 'cookies-csrf', title: 'Request-protection cookies' },
+  { id: 'cookies-local', title: 'Preferences in local storage' },
+  { id: 'cookies-sessionstorage', title: 'Update flags in session storage' },
+  { id: 'cookies-never', title: 'What is never stored' },
+  { id: 'cookies-lifetimes', title: 'How long each item lasts' },
+  { id: 'cookies-clearing', title: 'Clearing stored data' },
+  { id: 'cookies-contact', title: 'Updates and contact' },
+];
+
 export function Cookies() {
+  const { identity } = useBranding();
   return (
     <LegalShell title="Cookie & Storage Policy">
-      <Section heading="No tracking">
+      <p>
+        {branding.appName} stores a small amount of data in your browser so that sign-in works and your choices are
+        remembered. This policy lists exactly what is stored, why, and for how long. For what we collect on the
+        server and how it is used, see the <Link to="/privacy">Privacy Policy</Link>.
+      </p>
+      <nav aria-label="Table of contents" className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Contents</p>
+        <ol className="mt-2 list-decimal space-y-0.5 pl-5 text-sm sm:columns-2 sm:gap-6">
+          {COOKIES_TOC.map(({ id, title }) => (
+            <li key={id}>
+              <a href={`#${id}`} className="text-brand-600 transition-colors duration-150 hover:text-brand-700 hover:underline">
+                {title}
+              </a>
+            </li>
+          ))}
+        </ol>
+      </nav>
+      <Section heading="1. What this policy covers" id="cookies-scope">
         <p>
-          {branding.appName} does <strong>not</strong> use advertising cookies, analytics services, social-media pixels, or any
-          third-party tracking. Nothing you do here is shared with advertisers or data brokers.
+          This policy covers every cookie and browser-storage item the system writes on this device — for staff
+          sign-in, the tenant portal, and the public pages. All of it is functional, not behavioural: it exists only
+          to make sign-in and payments work and remember your choices on this device.
         </p>
       </Section>
-      <Section heading="What we do store in your browser">
-        <ul className="list-disc space-y-1 pl-5">
-          <li><strong>Sign-in session cookies (required):</strong> after you sign in — as staff or as a tenant — a secure HttpOnly cookie keeps that session signed in. Signing out removes it.</li>
-          <li><strong>Request-protection cookies (required):</strong> a matching token cookie for each session, read by the app itself to validate that changes you make genuinely come from the app (cross-site request forgery protection). It holds no personal data.</li>
-          <li><strong>Preferences in local storage:</strong> your light/dark theme choice, and whether you have dismissed the storage notice and identity banners.</li>
-          <li><strong>Update flags (session storage):</strong> transient markers the app uses once after a new deployment, so a stale page can refresh itself cleanly. They are cleared when you close the tab.</li>
-        </ul>
-        <p>These are functional, not behavioural: they exist only to make sign-in and payments work and remember your choices on this device.</p>
+      <Section heading="2. No tracking" id="cookies-tracking">
+        <p>
+          {branding.appName} does <strong>not</strong> use advertising cookies, analytics services, social-media
+          pixels, or any third-party tracking. Nothing you do here is shared with advertisers or data brokers, and
+          no other website can read what is stored here.
+        </p>
       </Section>
-      <Section heading="Clearing stored data">
+      <Section heading="3. Sign-in session cookies" id="cookies-session">
+        <p>
+          After you sign in — as staff or as a tenant — a secure HttpOnly cookie keeps that session signed in. It
+          cannot be read by scripts in the page, and signing out removes it. The staff app and the tenant portal
+          each keep their own separate session, so being signed in to one does not sign you in to the other.
+        </p>
+      </Section>
+      <Section heading="4. Request-protection cookies" id="cookies-csrf">
+        <p>
+          A matching token cookie is set for each session and read by the app itself to validate that changes you
+          make genuinely come from the app (cross-site request forgery protection). It holds no personal data.
+        </p>
+      </Section>
+      <Section heading="5. Preferences in local storage" id="cookies-local">
+        <p>
+          Your light/dark theme choice, and whether you have dismissed the storage notice and identity banners, are
+          kept in your browser&rsquo;s local storage so the app looks the way you left it on your next visit.
+        </p>
+      </Section>
+      <Section heading="6. Update flags in session storage" id="cookies-sessionstorage">
+        <p>
+          Transient markers the app uses once after a new deployment, so a stale page can refresh itself cleanly.
+          They are cleared when you close the tab.
+        </p>
+      </Section>
+      <Section heading="7. What is never stored" id="cookies-never">
+        <p>
+          No advertising or analytics identifiers, no tracking beacons or pixels, no social widgets, no device
+          fingerprinting, and no data about your activity on other sites. M-Pesa details are never stored in your
+          browser — payments are processed by Safaricom to the operator&rsquo;s account.
+        </p>
+      </Section>
+      <Section heading="8. How long each item lasts" id="cookies-lifetimes">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-left text-xs sm:text-sm">
+            <thead>
+              <tr className="border-b border-gray-300 text-gray-900">
+                <th className="py-2 pr-3 font-semibold">Item</th>
+                <th className="py-2 pr-3 font-semibold">Purpose</th>
+                <th className="py-2 pr-3 font-semibold">Personal data?</th>
+                <th className="py-2 font-semibold">Lifetime</th>
+              </tr>
+            </thead>
+            <tbody className="align-top">
+              <tr className="border-b border-gray-200">
+                <td className="py-2 pr-3">Sign-in session cookie (HttpOnly)</td>
+                <td className="py-2 pr-3">Keeps you signed in after sign-in</td>
+                <td className="py-2 pr-3">A signed session reference only</td>
+                <td className="py-2">Until you sign out, or the session expires</td>
+              </tr>
+              <tr className="border-b border-gray-200">
+                <td className="py-2 pr-3">Request-protection cookie</td>
+                <td className="py-2 pr-3">Confirms changes come from the app (CSRF protection)</td>
+                <td className="py-2 pr-3">No</td>
+                <td className="py-2">Same as the session it protects</td>
+              </tr>
+              <tr className="border-b border-gray-200">
+                <td className="py-2 pr-3">Local storage: preferences</td>
+                <td className="py-2 pr-3">Remembers your theme and dismissed banners</td>
+                <td className="py-2 pr-3">No</td>
+                <td className="py-2">Until you clear site data</td>
+              </tr>
+              <tr>
+                <td className="py-2 pr-3">Session storage: update flags</td>
+                <td className="py-2 pr-3">Lets a stale page refresh cleanly after a deployment</td>
+                <td className="py-2 pr-3">No</td>
+                <td className="py-2">Until you close the tab</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Section>
+      <Section heading="9. Clearing stored data" id="cookies-clearing">
         <p>
           Signing out removes your session and request-protection cookies. You can also clear site data at any time
           through your browser&rsquo;s settings (&ldquo;Clear browsing data&rdquo; &rarr; &ldquo;Cookies and other
           site data&rdquo;). The next visit will simply ask you to sign in again and reset your theme preference.
         </p>
       </Section>
+      <Section heading="10. Updates and contact" id="cookies-contact">
+        <p>
+          This policy may be updated when what the system stores changes; the &ldquo;last updated&rdquo; date at
+          the top of this page shows the latest revision. Questions about anything stored on your device can go to
+          the operator:
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          {identity?.contactPhone && (<li>Phone: <Phone phone={identity.contactPhone} /></li>)}
+          {identity?.contactEmail && (<li>Email: <Email email={identity.contactEmail} /></li>)}
+          {!identity?.contactPhone && !identity?.contactEmail && (
+            <li>Through the contact links on the <Link to="/landing#demo">landing page</Link>.</li>
+          )}
+        </ul>
+        <p>We usually reply the same day.</p>
+      </Section>
     </LegalShell>
   );
 }
 
 // -------------------------------------------------------------------- Refund
+// Numbered like the other legal pages: what is covered, the principles every
+// refund follows, each refundable case, what is not covered, and how to
+// request one. Windows, channels and property scope come from the live
+// business_branding record.
+const REFUND_TOC: { id: string; title: string }[] = [
+  { id: 'refund-scope', title: 'What this policy covers' },
+  { id: 'refund-principles', title: 'How refunds work' },
+  { id: 'refund-overpayments', title: 'Rent overpayments' },
+  { id: 'refund-water', title: 'Water billing corrections' },
+  { id: 'refund-deposits', title: 'Security deposits' },
+  { id: 'refund-errors', title: 'Duplicate or erroneous payments' },
+  { id: 'refund-mpesa', title: 'Failed or incomplete M-Pesa requests' },
+  { id: 'refund-notcovered', title: 'What this policy does not cover' },
+  { id: 'refund-request', title: 'How to request a refund' },
+  { id: 'refund-contact', title: 'Questions and contact' },
+];
+
 export function Refund() {
   const { identity } = useBranding();
   return (
     <LegalShell title="Refund Policy">
-      <Section heading="Scope">
+      <p>
+        This policy explains when and how money recorded in {branding.appName} is returned or corrected — covering
+        rent payments, water billings, and deposits
+        {identity?.propertyScope && (<> for <strong>{identity.propertyScope}</strong></>)}, paid via{' '}
+        <strong>{identity?.paymentChannels ?? 'the payment channels stated on your receipts'}</strong>, including
+        M-Pesa payments initiated from the tenant portal. It works alongside the{' '}
+        <Link to="/terms">Terms &amp; Conditions</Link> and your tenancy agreement.
+      </p>
+      <nav aria-label="Table of contents" className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Contents</p>
+        <ol className="mt-2 list-decimal space-y-0.5 pl-5 text-sm sm:columns-2 sm:gap-6">
+          {REFUND_TOC.map(({ id, title }) => (
+            <li key={id}>
+              <a href={`#${id}`} className="text-brand-600 transition-colors duration-150 hover:text-brand-700 hover:underline">
+                {title}
+              </a>
+            </li>
+          ))}
+        </ol>
+      </nav>
+      <Section heading="1. What this policy covers" id="refund-scope">
         <p>
-          This policy covers rent payments, water billings, and deposits recorded in {branding.appName}
-          {identity?.propertyScope && (<> for <strong>{identity.propertyScope}</strong></>)}, paid via{' '}
-          <strong>{identity?.paymentChannels ?? 'the payment channels stated on your receipts'}</strong> — including
-          M-Pesa payments initiated from the tenant portal.
+          Refunds and corrections for rent payments, water billings, and deposits recorded in the system
+          {identity?.propertyScope && (<> for <strong>{identity.propertyScope}</strong></>)} — whether paid over the
+          counter, through the tenant portal, or by M-Pesa. It applies to current and former tenants, and to anyone
+          who made a payment on a tenant&rsquo;s behalf.
         </p>
       </Section>
-      <Section heading="Rent overpayments">
+      <Section heading="2. How refunds work" id="refund-principles">
+        <p>Every refund or correction follows the same principles:</p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li><strong>Verified first.</strong> We check the ledger, receipts and M-Pesa records before anything is returned.</li>
+          <li><strong>Credit before cash.</strong> Where an amount can stand against future rent, it is credited to your ledger first; a cash refund is available on request.</li>
+          <li><strong>Original method.</strong> Where possible, money goes back the way it came — an M-Pesa payment is refunded to the number that paid.</li>
+          <li><strong>No fees.</strong> We do not charge for processing a refund or correction.</li>
+          <li><strong>Visible in the records.</strong> Corrections land on the ledger, and a corrected or reversed receipt is issued.</li>
+        </ul>
+      </Section>
+      <Section heading="3. Rent overpayments" id="refund-overpayments">
         <p>
           If a tenant pays more than the amount due, the surplus is first credited against future months on the
           tenant&rsquo;s ledger. A cash refund of the surplus can be requested and is made through the original payment
           method within <strong>{identity?.refundWindowDays ?? '7–14'} days</strong> of the request being verified.
         </p>
       </Section>
-      <Section heading="Water billing corrections">
+      <Section heading="4. Water billing corrections" id="refund-water">
         <p>
           Water is billed from metered readings. If a reading or tariff is recorded in error, the correction is
           applied to the next monthly statement, or refunded if the tenancy has ended. Meter readings can be
           re-verified on request.
         </p>
       </Section>
-      <Section heading="Security deposits">
+      <Section heading="5. Security deposits" id="refund-deposits">
         <p>
           Deposits are held and returned in line with the tenancy agreement and applicable law. Any deductions are
-          itemised in writing at the end of the tenancy.
+          itemised in writing at the end of the tenancy. This policy does not change what your tenancy agreement
+          says about deposits — it only records that the return of a deposit, like every other payment, is tracked
+          in the system.
         </p>
       </Section>
-      {(identity?.contactEmail || identity?.contactPhone) && (
-        <Section heading="Duplicate or erroneous payments">
-          <p>
-            If a payment is recorded twice or in the wrong amount, contact <Email email={identity?.contactEmail ?? null} />
-            {identity?.contactEmail && identity?.contactPhone ? ' or ' : ''}
-            <Phone phone={identity?.contactPhone ?? null} /> with the unit number, receipt number, amount, payment date, and
-            method. Verified errors are reversed promptly and a corrected receipt issued. Where possible the refund
-            is made to the original payment method — for an M-Pesa payment, to the number that paid.
-          </p>
-        </Section>
-      )}
-      <Section heading="Failed M-Pesa requests">
+      <Section heading="6. Duplicate or erroneous payments" id="refund-errors">
+        <p>
+          If a payment is recorded twice or in the wrong amount, the verified error is reversed promptly and a
+          corrected receipt issued. Where possible the refund is made to the original payment method — for an
+          M-Pesa payment, to the number that paid. See section 9 for how to raise it.
+        </p>
+      </Section>
+      <Section heading="7. Failed or incomplete M-Pesa requests" id="refund-mpesa">
         <p>
           A payment request sent to your phone that you do not complete, cancel, or that expires is never charged.
           If money left your M-Pesa account but no receipt appears in your portal, contact us with the M-Pesa
           confirmation code and the payment will be traced and either posted to your ledger or returned.
         </p>
+      </Section>
+      <Section heading="8. What this policy does not cover" id="refund-notcovered">
+        <p>
+          Rent properly due under your tenancy agreement is not a refund matter — a refund corrects an error or
+          returns an overpayment; it is not a way to withhold charges that are correct. If you disagree with a
+          charge, start with the contacts in section 10: we would rather check the ledger together than argue.
+          Deposit deductions, rent disputes, and anything else governed by the tenancy agreement follow that
+          agreement and applicable law.
+        </p>
+      </Section>
+      <Section heading="9. How to request a refund" id="refund-request">
+        <p>Contact the operator (section 10) with as many of these as you have:</p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>the unit number and tenant name;</li>
+          <li>the receipt number, if one was issued;</li>
+          <li>the amount, payment date, and method;</li>
+          <li>the M-Pesa confirmation code, for M-Pesa payments.</li>
+        </ul>
+        <p>
+          We verify the request against the ledger and the payment records, then confirm what will happen: a
+          ledger credit, a refund to the original method, or a corrected receipt. If a request is refused, we
+          explain why, with the records we relied on.
+        </p>
+      </Section>
+      <Section heading="10. Questions and contact" id="refund-contact">
+        <p>To raise a refund, correct a record, or ask about this policy, reach the operator:</p>
+        <ul className="list-disc space-y-1 pl-5">
+          {identity?.contactPhone && (<li>Phone: <Phone phone={identity.contactPhone} /></li>)}
+          {identity?.contactEmail && (<li>Email: <Email email={identity.contactEmail} /></li>)}
+          {!identity?.contactPhone && !identity?.contactEmail && (
+            <li>Through the contact links on the <Link to="/landing#demo">landing page</Link>.</li>
+          )}
+        </ul>
+        <p>We usually reply the same day.</p>
       </Section>
     </LegalShell>
   );
