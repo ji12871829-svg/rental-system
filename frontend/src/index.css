@@ -371,6 +371,26 @@ html.dark .border-gray-300 { border-color: #2d3138; }
 html.dark .border-gray-100 { border-color: #17191d; }
 html.dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) { border-color: #23262b; }
 
+/* Custom achromatic tokens (tailwind.config.js single-value keys) have no
+   dark: variants at call sites, so they kept their LIGHT values on dark
+   surfaces — graphite body text at ~2.4:1 was unreadable and the sun
+   highlight stayed pale-yellow under near-white text. Remap them to the
+   same cool ramp as the gray utilities above. silver and ink are left
+   alone on purpose: silver labels the always-dark sidebars and ink is
+   black-on-light text, so remapping either would make those worse. */
+html.dark .text-graphite { color: #9aa3b0; }
+html.dark .text-charcoal { color: #c3c9d4; }
+html.dark .bg-fog { background-color: #121417; }
+html.dark .hover\:bg-fog:hover { background-color: #1a1d22; }
+html.dark .border-ash { border-color: #2d3138; }
+html.dark .border-divider { border-color: #23262b; }
+/* The hero's amber highlight becomes a dark mustard so the near-white
+   display text sitting on it keeps its contrast. */
+html.dark .bg-sun { background-color: #4a4122; }
+/* Light-mode hover targets sink to black; on dark surfaces that would
+   vanish the text — hover to white instead. */
+html.dark .hover\:text-black:hover { color: #ffffff; }
+
 /* Inputs: dark surface, visible focus ring */
 html.dark .bg-white.border-gray-300,
 html.dark input.bg-white,
