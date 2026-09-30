@@ -42,40 +42,35 @@ only door. These steps switch it on (and back off, instantly).
 ## 3. Map staff users to Clerk accounts
 
 The bridge trusts nothing on its own: a Clerk session maps to a local user
-only through the `user_external_ids` table. Two ways to fill it:
+only through the `user_external_ids` table (unique on `('clerk', external_id)`
+and `('clerk', user_id)` — one Clerk identity per staff user, one staff user
+per Clerk identity).
 
-**A. Self-serve first sign-in (recommended for small teams).** After the
-backend has `CLERK_SECRET_KEY`, run this one-off on the production database
-(SQL editor in Neon / psql) to auto-map any Clerk sign-in whose email matches
-an ACTIVE staff user:
-
-```sql
--- Run once with Clerk enabled; see §5 for removing the trigger afterwards.
-CREATE OR REPLACE FUNCTION map_clerk_user() RETURNS trigger AS $$
-BEGIN
-  INSERT INTO user_external_ids (user_id, provider, external_id)
-  SELECT u.id, 'clerk', NEW.external_id
-    FROM users u
-   WHERE u.email = lower(NEW.email) AND u.status = 'ACTIVE'
-  ON CONFLICT DO NOTHING;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-```
-
-Then let each staff member sign in once via the Clerk card — the mapping row
-is created from their verified email. (This assumes the Clerk account's email
-matches the staff email on file; Clerk verifies emails before the session
-exists.)
-
-**B. Pre-provision from the Clerk dashboard.** In Clerk → **Users**, open a
-user and copy their User ID (`user_…`), then insert the mapping directly:
+**Pre-provision from the Clerk dashboard (the supported path).** In Clerk →
+**Users**, create or open each staff member's user, copy their User ID
+(`user_…`), then insert the mapping directly (SQL editor in Neon / psql on the
+production database):
 
 ```sql
 INSERT INTO user_external_ids (user_id, provider, external_id)
 VALUES (<users.id>, 'clerk', 'user_…')
 ON CONFLICT DO NOTHING;
 ```
+
+Tips: `SELECT id, email FROM users WHERE status = 'ACTIVE' ORDER BY id;` lists
+the local users to map, and one `INSERT … SELECT` per row (or a `VALUES` list)
+can map the whole team at once. Mapping rows can be added any time — a staff
+member who signs in before their row exists simply gets the password form
+until you add it.
+
+> **A note on self-serve mapping:** an earlier revision of this runbook
+> suggested a `map_clerk_user()` trigger function. As written it could not
+> work — it created a function but never attached a `CREATE TRIGGER` to any
+> table, and the schema has no Clerk-events table for one to fire on. There
+> is also no webhook endpoint in the backend. Self-serve mapping by verified
+> email would need a Clerk webhook handler (`user.created` → look up the
+> local user by email → insert the mapping); until that is built, dashboard
+> pre-provisioning above is the only supported path.
 
 Unmapped or INACTIVE users get a generic 401 from the bridge and can still
 use the password form — nobody is locked out by a half-migration.
@@ -98,11 +93,8 @@ the Render environment and redeploy. `clerkAuth` and the bridge 401 again,
 `clerkMiddleware()` stops mounting, the staff tab reverts to the password
 form. Existing staff JWT sessions keep working — nobody is logged out.
 
-If you used the §3 trigger, drop it once all staff are mapped:
-
-```sql
-DROP FUNCTION IF EXISTS map_clerk_user();
-```
+Mapping rows in `user_external_ids` can stay — they are inert while Clerk is
+disabled and reactivate unchanged if you enable it again later.
 
 ## 6. Going live (production keys)
 
