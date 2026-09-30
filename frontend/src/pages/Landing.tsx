@@ -47,7 +47,7 @@ import { branding } from '../lib/branding';
 import { useLandingSeo } from '../lib/seo';
 import { useAuth } from '../lib/auth';
 import { usePortalAuth } from '../lib/portalAuth';
-import { DemoRequest, FaqSection, HowItWorks, Pricing, TrustMarquee, useLandingReveal, usePublicUnits } from './LandingSections';
+import { DemoRequest, FaqSection, HowItWorks, Pricing, TrustMarquee, useLandingReveal, usePublicUnits, BrandName } from './LandingSections';
 
 // Header navigation — every section one click from the top of the page.
 const NAV_LINKS = [
@@ -343,7 +343,7 @@ export default function Landing() {
               per the design's inline-highlight rule. Centered like the photo-led
               hero: message first, the building itself as the visual anchor. */}
           <h1 className="type-display mx-auto mt-5 max-w-3xl text-gray-900">
-            Run <span className="whitespace-nowrap bg-sun px-1">{branding.appName}</span> from one ledger.
+            Run <BrandName /> from one ledger.
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-graphite">
             Rent, water, receipts and messages for every unit at{' '}
@@ -450,7 +450,8 @@ export default function Landing() {
           <div className="max-w-2xl">
             <h2 className="type-heading text-gray-900">Everything the ledger touches</h2>
             <p className="mt-3 text-base text-graphite">
-              Six jobs a landlord does every month — the system does all of them in one place.
+              Six jobs a landlord does every month — <BrandName className="font-extrabold" /> does all of
+              them in one place.
             </p>
           </div>
           <div data-reveal className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -484,8 +485,8 @@ export default function Landing() {
               </span>
               <h2 className="type-heading mt-4 text-white">Payments that post themselves</h2>
               <p className="mt-3 max-w-lg text-base leading-relaxed text-silver">
-                No more &ldquo;I sent but it didn&rsquo;t reflect.&rdquo; The moment a payment lands,
-                the ledger knows — and so does the tenant.
+                No more &ldquo;I sent but it didn&rsquo;t reflect.&rdquo; At <BrandName />, the moment a
+                payment lands, the ledger knows — and so does the tenant.
               </p>
               <ul className="mt-6 space-y-4">
                 {[
@@ -544,8 +545,8 @@ export default function Landing() {
           <div className="max-w-2xl">
             <h2 className="type-heading text-gray-900">Two doors, one system</h2>
             <p className="mt-3 text-base text-graphite">
-              Tenants get instant self-service. Landlord and agent accounts are approved by an
-              administrator before they touch money.
+              Tenants at <BrandName className="font-extrabold" /> get instant self-service. Landlord and
+              agent accounts are approved by an administrator before they touch money.
             </p>
           </div>
 

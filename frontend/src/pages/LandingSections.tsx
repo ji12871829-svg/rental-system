@@ -20,6 +20,7 @@ import {
   ReceiptText, ShieldCheck, Smartphone, UserRound, Wallet,
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { branding } from '../lib/branding';
 import { useBranding } from '../lib/BrandingContext';
 import { Button, TextInput } from '../components/ui';
 // Apple-style restrained reveal: sections below the fold rise-and-fade in
@@ -129,6 +130,21 @@ export function TrustMarquee() {
   );
 }
 
+// ---------------------------------------------------------- BrandName ---
+// The landing's brand treatment: the property name inside the amber
+// highlight pill, exactly as the hero headline spotlights it. Section
+// intros reuse it so the name recurs with the same emphasis everywhere —
+// the pill inherits the surrounding size and takes its weight from the
+// className (the hero inherits the display weight; body intros ask for
+// extrabold). Dark mode rides the bg-sun/text-gray-900 remaps in index.css.
+export function BrandName({ className = '' }: { className?: string }) {
+  return (
+    <span className={`whitespace-nowrap bg-sun px-1 text-gray-900 ${className}`}>
+      {branding.appName}
+    </span>
+  );
+}
+
 // ----------------------------------------------------------- HowItWorks ---
 const STEPS = [
   {
@@ -163,9 +179,9 @@ export function HowItWorks() {
           <div className="lg:sticky lg:top-24 lg:self-start">
             <h2 className="type-heading text-gray-900">Live in four steps</h2>
             <p className="mt-3 text-base text-graphite">
-              No training needed. Your first rent payment can land the same day you
-              sign in — bring the building on, invite the tenants, switch on M-Pesa
-              and let the ledger take it from there.
+              No training needed. Your first rent payment at <BrandName className="font-extrabold" /> can
+              land the same day you sign in — bring the building on, invite the tenants,
+              switch on M-Pesa and let the ledger take it from there.
             </p>
             <a
               href="#demo"
@@ -226,8 +242,8 @@ export function Pricing({ currency = 'KSh' }: { currency?: string }) {
           <div className="max-w-2xl">
             <h2 className="type-heading text-gray-900">Available units</h2>
             <p className="mt-3 text-base text-graphite">
-              Real rates from our rent ledger — what tenants pay, per month, with
-              live availability. Book a viewing or message us on WhatsApp.
+              Real rates from the <BrandName className="font-extrabold" /> rent ledger — what tenants
+              pay, per month, with live availability. Book a viewing or message us on WhatsApp.
             </p>
           </div>
           {rows && rows.length > 0 && (
