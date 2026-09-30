@@ -198,7 +198,9 @@ export default function Landing() {
     <div className="min-h-screen bg-white">
       {/* ---------------------------------------------------------- header */}
       <header className="landing-header-material sticky top-0 z-40 border-b border-gray-200">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-5 sm:py-3.5">
+        {/* Below 400px the row tightens (padding + gap) — the reclaimed 12px
+            is what lets the full wordmark fit beside theme, menu and CTA. */}
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-3 py-3 min-[400px]:gap-3 min-[400px]:px-4 sm:px-5 sm:py-3.5">
           {/* LEFT END: wordmark + section anchors — the page's own table of
               contents reads as one unit with the brand. Below xl the inline
               list hides (the hamburger menu owns it). */}
@@ -233,11 +235,11 @@ export default function Landing() {
               visitor; the sky CTA is the page's single filled action. */}
           <nav className="flex shrink-0 items-center gap-2">
             <LandingThemeToggle />
-            {/* Sign in is ALWAYS visible: a ghost text link on sm+ (full
-                label) and an icon button on the smallest phones, where four
-                full-size controls would truncate the wordmark. The menu
-                sheet keeps a Sign in row too — it costs one line and covers
-                the open-menu browsing flow. */}
+            {/* Sign in is ALWAYS reachable: a ghost text link on sm+ (full
+                label) and an icon button down to 400px, where four full-size
+                controls would truncate the wordmark. Below 400px the icon
+                yields its slot to the brand — the menu sheet keeps a Sign in
+                row, so the action is one tap away on any phone. */}
             <Link
               to="/login"
               aria-label="Sign in"
@@ -248,7 +250,7 @@ export default function Landing() {
             <Link
               to="/login"
               aria-label="Sign in"
-              className="press flex min-h-[44px] w-11 items-center justify-center rounded-xl border border-ash text-graphite transition-[background-color,color] hover:bg-fog sm:hidden"
+              className="press hidden min-h-[44px] w-11 items-center justify-center rounded-xl border border-ash text-graphite transition-[background-color,color] hover:bg-fog min-[400px]:flex sm:hidden"
             >
               <KeyRound size={17} aria-hidden />
             </Link>
@@ -264,10 +266,14 @@ export default function Landing() {
             </button>
             <Link
               to="/register"
+              aria-label="Get started"
               className="press flex min-h-[44px] items-center whitespace-nowrap rounded-xl bg-brand-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-[background-color,color] hover:bg-brand-600 sm:px-4"
             >
               <span className="hidden sm:inline">Get started</span>
-              <span className="sm:hidden">Start</span>
+              <span className="sm:hidden max-[400px]:hidden">Start</span>
+              <span className="hidden min-[401px]:block">
+                <ArrowRight size={16} aria-hidden />
+              </span>
             </Link>
           </nav>
         </div>
@@ -718,7 +724,7 @@ export default function Landing() {
       >
         <a
           href="#demo"
-          className="press flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl border border-ash bg-white px-4 text-sm font-semibold text-gray-900 transition-[background-color,color,transform] hover:bg-fog"
+          className="press flex min-h-[44px] flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-ash bg-white px-3 text-sm font-semibold text-gray-900 transition-[background-color,color,transform] hover:bg-fog min-[400px]:px-4"
         >
           <CalendarClock size={16} aria-hidden /> Book viewing
         </a>
@@ -727,7 +733,7 @@ export default function Landing() {
             href={waHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="press flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm transition-[background-color,color,transform] hover:bg-emerald-700"
+            className="press flex min-h-[44px] flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-emerald-600 px-3 text-sm font-semibold text-white shadow-sm transition-[background-color,color,transform] hover:bg-emerald-700 min-[400px]:px-4"
           >
             <MessageCircle size={16} aria-hidden /> WhatsApp
           </a>
