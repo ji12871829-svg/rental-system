@@ -115,80 +115,222 @@ const Email = ({ email }: { email: string | null }) => <Contact kind="email" val
 const Phone = ({ phone }: { phone: string | null }) => <Contact kind="phone" value={phone} />;
 
 // -------------------------------------------------------------------- Privacy
+// Structured like a standard privacy notice — what we collect, why, sharing,
+// cookies, retention, security, minors, rights, updates, contact, review —
+// but stating only what this system truly does: no trackers, no ad tech, no
+// social logins, and M-Pesa payments the operator never sees card data for.
+// Operator identity, retention periods and response times come from the live
+// business_branding record.
+const PRIVACY_TOC: { id: string; title: string }[] = [
+  { id: 'privacy-collect', title: 'What information we collect' },
+  { id: 'privacy-use', title: 'How we use your information' },
+  { id: 'privacy-share', title: 'Will your information be shared?' },
+  { id: 'privacy-cookies', title: 'Cookies and tracking technologies' },
+  { id: 'privacy-social', title: 'Social logins' },
+  { id: 'privacy-retention', title: 'How long we keep your information' },
+  { id: 'privacy-security', title: 'How we keep your information safe' },
+  { id: 'privacy-minors', title: 'Information from minors' },
+  { id: 'privacy-rights', title: 'Your privacy rights' },
+  { id: 'privacy-dnt', title: 'Do-Not-Track signals' },
+  { id: 'privacy-updates', title: 'Updates to this notice' },
+  { id: 'privacy-contact', title: 'Contacting us about this notice' },
+  { id: 'privacy-review', title: 'Reviewing, updating or deleting your data' },
+];
+
 export function Privacy() {
   const { identity } = useBranding();
+  const privacyEmail = identity?.privacyEmail ?? identity?.contactEmail ?? null;
   return (
     <LegalShell title="Privacy Policy">
-      <Section heading="Who we are">
-        <p>
-          {branding.appName} ({branding.appNameFull}) is operated by <strong>{identity?.legalName ?? branding.appNameLong}</strong>
-          {identity?.registrationNumber && (<> , registered under no. <strong>{identity.registrationNumber}</strong></>)}
-          {identity?.address && (<> , of <strong>{identity.address}</strong></>)}.
-          {(identity?.privacyEmail || identity?.contactPhone) && (
-            <>
-              {' '}For any privacy question or request, contact <Email email={identity?.privacyEmail ?? null} />
-              {identity?.privacyEmail && identity?.contactPhone ? ' or ' : ''}
-              <Phone phone={identity?.contactPhone ?? null} />.
-            </>
-          )}
-        </p>
-      </Section>
-      <Section heading="What data we collect">
+      <p>
+        Thank you for trusting <strong>{identity?.legalName ?? branding.appNameLong}</strong>
+        {identity?.registrationNumber && (<> (registration no. <strong>{identity.registrationNumber}</strong>)</>) }
+        {identity?.address && (<> , of <strong>{identity.address}</strong></>) }
+        , the operator of {branding.appName} ({branding.appNameFull}). We are committed to protecting your personal
+        information and your right to privacy.
+      </p>
+      <p>
+        This privacy notice describes how we collect and use your information when you visit the site, request a
+        demo, sign in as staff, or use the tenant portal (together, the &ldquo;services&rdquo;). It explains, in the
+        clearest way we can, what information we collect, how we use it, and what rights you have in relation to it.
+        <strong> Please read it carefully</strong> — if there is anything here you do not agree with, please stop
+        using the services. These terms work alongside the <Link to="/terms">Terms &amp; Conditions</Link>.
+      </p>
+      <nav aria-label="Table of contents" className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Contents</p>
+        <ol className="mt-2 list-decimal space-y-0.5 pl-5 text-sm sm:columns-2 sm:gap-6">
+          {PRIVACY_TOC.map(({ id, title }) => (
+            <li key={id}>
+              <a href={`#${id}`} className="text-brand-600 transition-colors duration-150 hover:text-brand-700 hover:underline">
+                {title}
+              </a>
+            </li>
+          ))}
+        </ol>
+      </nav>
+      <Section heading="1. What information we collect" id="privacy-collect">
+        <p>We collect personal information you give us — directly, through sign-in, the tenant record the office keeps, or a form on this site. It includes:</p>
         <ul className="list-disc space-y-1 pl-5">
           <li><strong>Staff accounts:</strong> name, email, phone number, and a password stored only as a cryptographic hash. Staff accounts are requested publicly but created and activated by an administrator.</li>
           <li><strong>Tenant records:</strong> full name, phone number, email (optional), move-in/move-out dates, security deposit, unit assignment, and notes.</li>
           <li><strong>Tenant portal accounts:</strong> the tenant&rsquo;s email and a password stored only as a cryptographic hash, used to sign in to the self-service portal.</li>
-          <li><strong>Property &amp; financial records:</strong> units, rent payments (including M-Pesa transactions), water meter readings and bills, water purchase costs, expenses, receipts, and a log of SMS notifications sent to tenants.</li>
-          <li><strong>Enquiries:</strong> if you request a demo or contact us through the public site, we keep the name, email, phone number and property details you submit so we can respond.</li>
-          <li><strong>Audit trail:</strong> which user created, changed, or deleted a record and when.</li>
+          <li><strong>Property &amp; financial records:</strong> units, rent payments, water meter readings and bills, water purchase costs, expenses, receipts, and a log of SMS notifications sent to tenants.</li>
+          <li><strong>Enquiries:</strong> if you request a demo or contact us through the public site, the name, email, phone number and property details you submit.</li>
+          <li><strong>Audit trail:</strong> which user created, changed, or deleted a record, and when.</li>
+        </ul>
+        <p>
+          <strong>We never collect card numbers or M-Pesa credentials.</strong> Rent paid through M-Pesa is
+          processed by Safaricom straight to the operator&rsquo;s own account; the system records only the payment
+          result and reference. All information you provide must be true, complete and accurate, and you should
+          tell us when it changes.
+        </p>
+      </Section>
+      <Section heading="2. How we use your information" id="privacy-use">
+        <p>We use your information to run the property and deliver the services — on the grounds of performing our agreement with you, our legitimate business interests, our legal obligations, and your consent where required:</p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li><strong>Property administration:</strong> collecting rent, billing water from metered readings, issuing numbered receipts, tracking arrears and expenses, and keeping the financial records required for accounting and tax purposes.</li>
+          <li><strong>Delivering the services:</strong> giving staff the tools to manage units and records, and giving tenants self-service access to their own balance, payments, water bills, statements and M-Pesa payments.</li>
+          <li><strong>Account management:</strong> creating, securing and administering staff and portal accounts, verifying sign-ins, and keeping sessions working.</li>
+          <li><strong>Administrative communications:</strong> sending receipts, statements, and service notices by SMS or email — messages that are necessary for your tenancy or account, not marketing blasts.</li>
+          <li><strong>Safety and fraud prevention:</strong> keeping the system secure, monitoring misuse, and maintaining the audit trail.</li>
+          <li><strong>Responding to you:</strong> answering enquiries, demo requests and support questions.</li>
+          <li><strong>Complying with legal obligations:</strong> retaining records as the law requires and responding to lawful requests.</li>
+        </ul>
+        <p>
+          Tenant contact details are stored with the tenant&rsquo;s consent, confirmed through the consent checkbox
+          on the tenant record form. We do <strong>not</strong> sell your data, run advertising, build behavioural
+          profiles, or send promotional campaigns. If you asked for a demo, we may follow up on that enquiry; you
+          can ask us to stop at any time.
+        </p>
+      </Section>
+      <Section heading="3. Will your information be shared?" id="privacy-share">
+        <p>
+          <strong>We do not sell or rent your personal information — ever.</strong> We share it only in these
+          situations:
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li><strong>Service providers we rely on:</strong> SMS delivery through <strong>{branding.smsProviderName}</strong> when SMS is configured, the operator&rsquo;s chosen email delivery service, and our hosting provider — each processing data only on the operator&rsquo;s behalf, to run the services.</li>
+          <li><strong>Payments:</strong> M-Pesa payments are processed by Safaricom to the operator&rsquo;s own account; the payment result is recorded in the ledger.</li>
+          <li><strong>Legal obligations:</strong> where disclosure is required by law, a court order, or a lawful request from an authority (including under the Kenya Data Protection Act, 2019).</li>
+          <li><strong>Protection of rights:</strong> to investigate or prevent fraud, misuse, or threats to any person&rsquo;s safety.</li>
+          <li><strong>Business transfers:</strong> if the property or the business operating it is sold or transferred, tenant records may pass to the successor, who must honour this notice.</li>
         </ul>
       </Section>
-      <Section heading="Why we collect it">
+      <Section heading="4. Cookies and tracking technologies" id="privacy-cookies">
         <p>
-          To administer the rental property: collect rent and bill water per metered readings, issue receipts,
-          track arrears and expenses, keep the financial records required for accounting and tax purposes, and
-          communicate with tenants. Tenant contact details are stored with the tenant&rsquo;s consent, confirmed through
-          the consent checkbox on the tenant record form. Where a tenant portal account exists, the email is used to
-          give the tenant self-service access to their own balance, receipts, water bills and statements, and to let
-          them pay rent via M-Pesa without visiting the office.
+          The services use no advertising cookies, analytics services, social-media pixels or third-party tracking
+          of any kind. The only things stored in your browser are strictly functional: your sign-in session, request
+          protection against cross-site forgery, and your interface preferences. Exactly what is stored, and how to
+          clear it, is set out in the <Link to="/cookies">Cookie &amp; Storage Policy</Link>.
         </p>
       </Section>
-      <Section heading="Where the data lives">
+      <Section heading="5. Social logins" id="privacy-social">
         <p>
-          All data is stored in a PostgreSQL database controlled by the operator. The system does
-          <strong> not</strong> use third-party analytics, advertising networks, or social-media trackers, and sends
-          no data to external services beyond what operating the product requires. SMS messages are logged in the
-          system; actual delivery is performed by the operator&rsquo;s chosen provider <strong>{branding.smsProviderName}</strong> when SMS sending is configured.
-          Rent payments made through M-Pesa are processed by Safaricom&rsquo;s M-Pesa service to the operator&rsquo;s
-          own account; the payment result is recorded in the ledger.
+          The services have no social logins. You cannot — and need not — sign in with Facebook, Google or any
+          other third-party account. Access works only through accounts issued or activated by the operator, using
+          an email address and password. We therefore receive no profile data from social media providers.
         </p>
       </Section>
-      <Section heading="How long we keep it">
+      <Section heading="6. How long we keep your information" id="privacy-retention">
         <p>
           Records for an active tenancy are kept while the tenant resides at the property. Financial records are
-          retained for <strong>{identity?.retentionPeriod ?? 'the period required'}</strong> as required for accounting and tax purposes.
-          Former tenants may request deletion of their contact details at any time; a portal access account is
-          deactivated when a tenancy ends.
+          retained for <strong>{identity?.retentionPeriod ?? 'the period required'}</strong>, as required for
+          accounting and tax purposes. A portal access account is deactivated when a tenancy ends. Enquiries are
+          kept only as long as needed to respond and follow up.
+        </p>
+        <p>
+          When we have no ongoing need to process your personal information — and no legal obligation to keep it —
+          we delete or anonymise it. Where financial records must be retained, an erasure request removes your
+          personal identifiers (name, phone, email, notes, message history) while the records are preserved without
+          them. Data recently deleted may persist briefly in routine backup archives until those backups cycle.
         </p>
       </Section>
-      <Section heading="Your rights">
+      <Section heading="7. How we keep your information safe" id="privacy-security">
         <p>
-          You may request a copy of your data, correction of inaccurate data, or deletion of data we are not
-          legally required to keep, by writing to <Email email={identity?.privacyEmail ?? null} />. We respond within
-          <strong>{identity?.responseDays ?? '30'} days</strong>. A copy of your data is provided as a machine-readable (JSON)
-          file. Where financial records must be retained for accounting and tax purposes, an erasure request removes
-          your personal identifiers (name, phone, email, notes, message history) while those records are preserved
-          without them. This policy is prepared with the Kenya Data Protection Act, 2019 in mind;
-          where the GDPR or another law applies to you, equivalent rights are honoured.
+          We apply technical and organisational measures to protect your information: passwords are hashed (never
+          stored in plain text), access is limited by role (admin / manager / staff), and every change to a
+          financial record is written to an audit log. Tenant portal accounts see only their own unit, balance,
+          payments, water readings and statements — never other tenants&rsquo; data, staff records, expenses or
+          reports. Sessions are kept in secure HttpOnly cookies with cross-site request forgery protection, and the
+          database is accessible only to the operator.
+        </p>
+        <p>
+          No electronic transmission or storage is ever 100% secure; despite our safeguards, we cannot guarantee
+          that unauthorised parties will never defeat our measures. Access the services only in a secure
+          environment, and tell us promptly if you suspect anything is wrong.
         </p>
       </Section>
-      <Section heading="How we protect it">
+      <Section heading="8. Information from minors" id="privacy-minors">
         <p>
-          Passwords are hashed (never stored in plain text), access is limited by role (admin / manager / staff),
-          and every change to a financial record is written to an audit log. Tenant portal accounts see only their
-          own unit, balance, payments, water readings and statements — never other tenants&rsquo; data, staff records,
-          expenses or reports. Sessions are kept in secure HttpOnly cookies with cross-site request forgery
-          protection, and the database is accessible only to the operator.
+          The services are not directed at children, and we do not knowingly collect data from anyone under 18
+          years of age. By using the services you confirm you are at least 18. If we learn that personal information
+          from a person under 18 has been collected, we will deactivate the account and take reasonable measures to
+          delete the data promptly. If you believe a minor&rsquo;s data may have reached us, contact us using the
+          details in section 12.
+        </p>
+      </Section>
+      <Section heading="9. Your privacy rights" id="privacy-rights">
+        <p>
+          This notice is prepared with the <strong>Kenya Data Protection Act, 2019</strong> in mind. Subject to that
+          law, you may: request <strong>access</strong> to the personal data we hold about you and a copy of it;
+          request <strong>correction</strong> of inaccurate data; request <strong>erasure</strong> of data we are
+          not legally required to keep; <strong>object</strong> to processing, or ask that it be restricted;
+          request your data in a portable, machine-readable format; and <strong>withdraw consent</strong> where
+          processing rests on consent — without affecting the lawfulness of processing already carried out. Where
+          the GDPR or another law applies to you, equivalent rights are honoured.
+        </p>
+        <p>
+          To exercise any right, write to us using the contacts in section 12. We respond within{' '}
+          <strong>{identity?.responseDays ?? '30'} days</strong> after verifying who you are — a step we take to
+          make sure we never release or erase someone&rsquo;s data at a stranger&rsquo;s request. If you are not
+          satisfied with how we handle your data, you may complain to the Office of the Data Protection Commissioner
+          in Kenya. We will never treat you differently for exercising your rights.
+        </p>
+      </Section>
+      <Section heading="10. Do-Not-Track signals" id="privacy-dnt">
+        <p>
+          Some browsers offer a Do-Not-Track (&ldquo;DNT&rdquo;) signal. Because the services contain no tracking
+          technologies to begin with — no analytics, no advertising, no cross-site tracking — there is nothing for
+          DNT to switch off. If a tracking standard we would have to honour is ever adopted, we will say so in an
+          updated version of this notice.
+        </p>
+      </Section>
+      <Section heading="11. Updates to this notice" id="privacy-updates">
+        <p>
+          We may update this privacy notice from time to time, for example when the services change or the law
+          requires it. The updated version takes effect as soon as it is posted, and the &ldquo;last updated&rdquo;
+          date at the top of this page tells you when it was last revised. Material changes may also be announced
+          in the app or by message. We encourage you to review this notice whenever you use the services.
+        </p>
+      </Section>
+      <Section heading="12. Contacting us about this notice" id="privacy-contact">
+        <p>
+          If you have questions or comments about this notice or our handling of your personal information, contact
+          the operator:
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          {identity?.legalName && <li><strong>{identity.legalName}</strong></li>}
+          {identity?.address && <li>{identity.address}</li>}
+          {identity?.contactPhone && (<li>Phone: <Phone phone={identity.contactPhone} /></li>)}
+          {privacyEmail && (<li>Email: <Email email={privacyEmail} /></li>)}
+          {!identity?.contactPhone && !privacyEmail && (
+            <li>Through the contact links on the <Link to="/landing#demo">landing page</Link>.</li>
+          )}
+        </ul>
+        <p>We usually reply the same day.</p>
+      </Section>
+      <Section heading="13. Reviewing, updating or deleting your data" id="privacy-review">
+        <p>
+          You may request a copy of the personal data we hold about you, ask us to correct it, or ask us to delete
+          what we are not legally required to keep, by writing to <Email email={privacyEmail} />. A copy of your
+          data is provided as a machine-readable (JSON) file. As a tenant, you can also see — and correct the
+          essentials of — your own information any time in the portal: your balance, payment history, water
+          readings, receipts and statements.
+        </p>
+        <p>
+          Where financial records must be retained for accounting and tax purposes, an erasure request removes your
+          personal identifiers while those records are preserved without them. We may retain limited information
+          where needed to prevent fraud, resolve disputes, enforce our terms, or comply with the law.
         </p>
       </Section>
     </LegalShell>
