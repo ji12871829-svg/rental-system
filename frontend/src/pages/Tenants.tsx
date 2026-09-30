@@ -179,7 +179,7 @@ export default function Tenants() {
                           event.currentTarget.value = '';
                           void handleTenantAction(action, t);
                         }}
-                        className="min-h-9 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 shadow-sm outline-none transition-colors hover:border-gray-300 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                        className="min-h-[44px] rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 shadow-sm outline-none transition-colors hover:border-gray-300 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
                       >
                         <option value="" disabled>Actions</option>
                         <option value="view">View details</option>

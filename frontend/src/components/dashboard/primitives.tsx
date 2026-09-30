@@ -59,7 +59,7 @@ export function KpiCard({
           {linkTo && (
             <Link
               to={linkTo}
-              className="text-[11px] font-semibold text-brand-700 underline-offset-2 transition-colors hover:text-brand-800 hover:underline"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-end text-[11px] font-semibold text-brand-700 underline-offset-2 transition-colors hover:text-brand-800 hover:underline"
             >
               {linkLabel} →
             </Link>

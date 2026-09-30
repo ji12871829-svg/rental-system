@@ -103,7 +103,7 @@ export default function PortalLayout() {
         <header className="sticky top-0 z-30 flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3 md:hidden">
           <button
             onClick={() => setMobileOpen(true)}
-            className="rounded-lg p-2 text-gray-600 hover:bg-gray-100"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100"
             aria-label="Open menu"
           >
             <Menu className="h-5 w-5" />

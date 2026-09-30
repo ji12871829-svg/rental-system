@@ -147,7 +147,7 @@ async function assertUnitAvailable(unitId: number, excludeTenantId?: number): Pr
 
 export async function createTenant(input: TenantInput, userId: number): Promise<unknown> {
   return withTransaction(async (client) => {
-    let unitId: number | null = input.unitId ?? null;
+    const unitId: number | null = input.unitId ?? null;
     if (unitId) {
       await assertUnitAvailable(unitId);
     }

@@ -42,7 +42,7 @@ export default function BrandingBanner() {
         </p>
         <button
           onClick={dismiss}
-          className="inline-flex min-h-[32px] shrink-0 items-center rounded-lg border border-ash bg-white px-3 py-1 text-xs font-semibold text-charcoal transition-colors duration-150 hover:bg-fog active:scale-[0.96]"
+          className="inline-flex min-h-[44px] shrink-0 items-center rounded-lg border border-ash bg-white px-3 py-1 text-xs font-semibold text-charcoal transition-colors duration-150 hover:bg-fog active:scale-[0.96]"
         >
           Dismiss
         </button>

@@ -277,6 +277,9 @@ export default function Layout() {
       {/* Mobile drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 md:hidden">
+          {/* Mouse-only convenience: keyboard/screen-reader users close the
+              drawer with the visible Close button beside the brand. */}
+          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events */}
           <div className="absolute inset-0 bg-gray-900/60" onClick={() => setMobileOpen(false)} />
           {/* Nudge entrance (1rem), not a full off-screen slide: a frozen
               animation clock must at worst hold a small offset, never hide
@@ -304,14 +307,14 @@ export default function Layout() {
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 md:px-6">
           <div className="flex items-center gap-2.5">
             <button
-              className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 transition-colors duration-150 hover:bg-gray-100 active:scale-95 md:hidden"
+              className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 transition-colors duration-150 hover:bg-gray-100 active:scale-95 md:hidden"
               onClick={() => setMobileOpen(true)}
               aria-label="Open menu"
             >
               <Menu size={18} strokeWidth={1.75} aria-hidden />
             </button>
             <div className="flex items-center gap-2 md:hidden">
-              <Link to="/" className="flex items-center gap-2" aria-label={`${branding.appName} — go to dashboard`}>
+              <Link to="/" className="flex min-h-[44px] items-center gap-2" aria-label={`${branding.appName} — go to dashboard`}>
                 <BrandLogo className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-500 text-white" iconSize={16} />
                 <span className="text-sm font-bold text-gray-900">Olbano Plaza</span>
               </Link>
@@ -323,7 +326,9 @@ export default function Layout() {
           </div>
           <div className="flex items-center gap-3">
             <ThemeToggle />
-            <div className="text-sm text-gray-600">
+            {/* Decorative date: hidden below 400px, where it would squeeze
+                the theme toggle below its 44px touch width. */}
+            <div className="hidden max-[400px]:hidden min-[401px]:block text-sm text-gray-600">
               <span className="hidden sm:inline">
                 {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
               </span>
@@ -357,10 +362,12 @@ export default function Layout() {
               </span>
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                 <nav className="flex flex-wrap gap-4" aria-label="Legal">
-                  <Link to="/privacy" className="transition-colors duration-150 hover:text-gray-700">Privacy Policy</Link>
-                  <Link to="/terms" className="transition-colors duration-150 hover:text-gray-700">Terms &amp; Conditions</Link>
-                  <Link to="/cookies" className="transition-colors duration-150 hover:text-gray-700">Cookies &amp; Storage</Link>
-                  <Link to="/refunds" className="transition-colors duration-150 hover:text-gray-700">Refund Policy</Link>
+                  {/* py bumps these small footer links to a 44px tap row on
+                      touch screens without changing the desktop text size. */}
+                  <Link to="/privacy" className="inline-flex min-h-[44px] items-center transition-colors duration-150 hover:text-gray-700">Privacy Policy</Link>
+                  <Link to="/terms" className="inline-flex min-h-[44px] items-center transition-colors duration-150 hover:text-gray-700">Terms &amp; Conditions</Link>
+                  <Link to="/cookies" className="inline-flex min-h-[44px] items-center transition-colors duration-150 hover:text-gray-700">Cookies &amp; Storage</Link>
+                  <Link to="/refunds" className="inline-flex min-h-[44px] items-center transition-colors duration-150 hover:text-gray-700">Refund Policy</Link>
                 </nav>
               </div>
             </footer>

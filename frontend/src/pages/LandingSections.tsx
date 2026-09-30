@@ -22,7 +22,6 @@ import {
 import { api } from '../lib/api';
 import { useBranding } from '../lib/BrandingContext';
 import { Button, TextInput } from '../components/ui';
-
 // Apple-style restrained reveal: sections below the fold rise-and-fade in
 // once, via IntersectionObserver (no scroll handlers, no replay). Elements
 // mount visible unless JS opts them in, so content is never lost if this
@@ -51,6 +50,35 @@ export function useLandingReveal(): void {
     }
     return () => io.disconnect();
   }, []);
+}
+
+// ------------------------------------------------------- usePublicUnits ---
+// One fetch, two consumers: the hero's live badge/stat row and the Available
+// Units listings both render the operator's real roster from the public
+// endpoint (types, rent ranges, vacancy). null = still loading; failed=true
+// lets callers degrade to honest static copy.
+interface UnitPriceRow {
+  unitType: string;
+  minRent: number;
+  maxRent: number;
+  total: number;
+  vacant: number;
+}
+
+export function usePublicUnits(): { rows: UnitPriceRow[] | null; failed: boolean; currency: string } {
+  const [rows, setRows] = useState<UnitPriceRow[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .get<{ currency: string; data: UnitPriceRow[] }>('/api/public/units')
+      .then((res) => { if (alive) { setRows(res.data); setFailed(false); } })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, []);
+
+  return { rows, failed, currency: 'KSh' };
 }
 
 // ---------------------------------------------------------- TrustMarquee ---
@@ -166,41 +194,52 @@ export function HowItWorks() {
 }
 
 // ---------------------------------------------------------------- Pricing ---
-interface UnitPriceRow {
-  unitType: string;
-  minRent: number;
-  maxRent: number;
-  total: number;
-  vacant: number;
-}
+// The Available Units showcase — the page's conversion heart. Listing-style
+// cards: photo, unit type, bold KSh price, live availability line, amenity
+// chips, and a paired action row (book a viewing + WhatsApp), rendered from
+// the operator's real rent ledger.
+
+// One real photo per listing. The building shots carry the bedroom types
+// (they ARE the building); interior/unit photos carry the smaller types.
+const LISTING_PHOTOS: Record<string, { src: string; alt: string }> = {
+  'Room': { src: '/photos/keys-move-in.jpg', alt: 'A tenant receiving keys at move-in' },
+  'Bedsitter': { src: '/photos/unit-viewing.jpg', alt: 'A bright, empty studio unit during a viewing' },
+  '1 Bedroom': { src: '/building/building-1-800.webp', alt: 'The building facade where the one-bedroom units are' },
+  '2 Bedroom': { src: '/building/building-1-1600.webp', alt: 'The building facade where the two-bedroom units are' },
+};
 
 export function Pricing({ currency = 'KSh' }: { currency?: string }) {
-  const [rows, setRows] = useState<UnitPriceRow[] | null>(null); // null = loading
-  const [failed, setFailed] = useState(false);
+  const { rows, failed } = usePublicUnits();
+  const { identity } = useBranding();
+  const waDigits = identity?.contactPhone
+    ? identity.contactPhone.replace(/[^0-9]/g, '').replace(/^0/, '254')
+    : '';
+  const waHref = waDigits.length >= 9 ? `https://wa.me/${waDigits}` : null;
 
-  useEffect(() => {
-    let alive = true;
-    api
-      .get<{ data: UnitPriceRow[] }>('/api/public/units')
-      .then((res) => { if (alive) setRows(res.data); })
-      .catch(() => { if (alive) setFailed(true); });
-    return () => { alive = false; };
-  }, []);
+  const totalUnits = rows?.reduce((n, r) => n + r.total, 0) ?? 0;
+  const totalVacant = rows?.reduce((n, r) => n + r.vacant, 0) ?? 0;
 
   return (
     <section id="pricing" className="scroll-mt-20 border-t border-gray-100 bg-gray-50">
       <div className="mx-auto max-w-6xl px-5 py-16 lg:py-20">
-        <div className="mx-auto max-w-2xl text-center">
-          <h2 className="type-heading text-gray-900">Straight rent, published openly</h2>
-          <p className="mt-3 text-base text-graphite">
-            These are the real rates from our rent ledger — what tenants pay, per month, with
-            availability straight from the units page. No "contact us for pricing".
-          </p>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="max-w-2xl">
+            <h2 className="type-heading text-gray-900">Available units</h2>
+            <p className="mt-3 text-base text-graphite">
+              Real rates from our rent ledger — what tenants pay, per month, with
+              live availability. Book a viewing or message us on WhatsApp.
+            </p>
+          </div>
+          {rows && rows.length > 0 && (
+            <p className="text-sm font-medium text-gray-900" aria-live="polite">
+              {totalVacant} of {totalUnits} vacant now
+            </p>
+          )}
         </div>
 
         {failed ? (
           <p className="mt-10 text-center text-sm text-gray-500">
-            Prices are unavailable right now — please check back soon.
+            Prices are unavailable right now — please check back soon, or reach us below.
           </p>
         ) : rows === null ? (
           <div className="mt-10 flex justify-center" role="status" aria-label="Loading prices">
@@ -211,37 +250,85 @@ export function Pricing({ currency = 'KSh' }: { currency?: string }) {
             Our unit list is being prepared — contact us for current rates.
           </p>
         ) : (
-          <div data-reveal className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {rows.map((r) => (
-              <article
-                key={r.unitType}
-                className="relative flex flex-col rounded-xl border border-ash bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
-              >
-                {r.vacant > 0 && (
-                  <span className="absolute -top-2.5 right-4 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
-                    Available
-                  </span>
-                )}
-                <h3 className="text-lg font-semibold text-gray-900">{r.unitType}</h3>
-                <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums text-gray-900">
-                  {currency}
-                  {r.minRent.toLocaleString()}
-                  {r.maxRent > r.minRent && (
-                    <span className="text-base font-medium text-gray-500"> – {currency}{r.maxRent.toLocaleString()}</span>
-                  )}
-                  <span className="ml-1 text-sm font-normal text-gray-500">/month</span>
-                </p>
-                <p className="mt-1 flex-1 text-sm text-gray-500">
-                  {r.total} unit{r.total === 1 ? '' : 's'} · {r.vacant} available now
-                </p>
-                <a
-                  href="#demo"
-                  className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg border border-ash bg-white px-4 py-2 text-sm font-semibold text-gray-900 transition-[background-color,color,transform] hover:bg-fog active:scale-[0.98] active:bg-fog"
+          <div data-reveal className="mt-10 grid gap-6 md:grid-cols-2">
+            {rows.map((r) => {
+              const photo = LISTING_PHOTOS[r.unitType];
+              return (
+                <article
+                  key={r.unitType}
+                  className="flex flex-col overflow-hidden rounded-2xl border border-ash bg-white shadow-sm transition-shadow duration-200 hover:shadow-md"
                 >
-                  <CalendarClock size={15} aria-hidden /> Request a viewing
-                </a>
-              </article>
-            ))}
+                  {/* Photo header with the live availability badge — the
+                      reference's photo-led listing treatment. */}
+                  <div className="relative h-44 w-full overflow-hidden bg-fog">
+                    {photo ? (
+                      <img
+                        src={photo.src}
+                        alt={photo.alt}
+                        className="gray-reveal h-full w-full object-cover"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center" aria-hidden>
+                        <UserRound size={40} className="text-gray-300" />
+                      </div>
+                    )}
+                    {r.vacant > 0 && (
+                      <span className="absolute right-3 top-3 rounded-full bg-white/95 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700 shadow-sm">
+                        {r.vacant} available
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-1 flex-col p-6">
+                    {/* flex-wrap: at 320px the price wraps below the name
+                        instead of clipping (nowrap overflowed the card). */}
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <h3 className="text-lg font-semibold text-gray-900">{r.unitType}</h3>
+                      <p className="text-xl font-bold tracking-tight tabular-nums text-gray-900">
+                        {currency} {r.minRent.toLocaleString()}
+                        {r.maxRent > r.minRent && (
+                          <span className="text-sm font-semibold text-gray-500"> – {currency}{r.maxRent.toLocaleString()}</span>
+                        )}
+                      </p>
+                    </div>
+                    <p className="mt-1 text-sm text-gray-500">{r.total} unit{r.total === 1 ? '' : 's'} · rent per month · M-Pesa accepted</p>
+
+                    {/* Amenity chips — only claims the system itself backs. */}
+                    <ul className="mt-3 flex flex-wrap gap-1.5">
+                      {['Metered water', 'Numbered receipts', 'Self-service portal'].map((chip) => (
+                        <li key={chip} className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-medium text-graphite">
+                          {chip}
+                        </li>
+                      ))}
+                    </ul>
+
+                    {/* Paired actions: outline booking + WhatsApp, the
+                        reference's conversion pair. WhatsApp omits itself
+                        when the business identity has no usable number. */}
+                    <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                      <a
+                        href="#demo"
+                        className="press inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl border border-ash bg-white px-4 py-2.5 text-sm font-semibold text-gray-900 transition-[background-color,color,transform] hover:bg-fog"
+                      >
+                        <CalendarClock size={15} aria-hidden /> Book viewing
+                      </a>
+                      {waHref && (
+                        <a
+                          href={waHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="press inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-[background-color,color,transform] hover:bg-emerald-700"
+                        >
+                          <MessageCircle size={15} aria-hidden /> WhatsApp
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </div>

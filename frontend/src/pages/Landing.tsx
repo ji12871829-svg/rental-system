@@ -25,11 +25,11 @@ import { Link, Navigate, useLocation } from 'react-router-dom';
 import {
   ArrowRight,
   Building2,
+  CalendarClock,
   Check,
   ClipboardList,
   Droplets,
   FileSpreadsheet,
-  KeyRound,
   Menu,
   MessageCircle,
   ReceiptText,
@@ -46,7 +46,7 @@ import { branding } from '../lib/branding';
 import { useLandingSeo } from '../lib/seo';
 import { useAuth } from '../lib/auth';
 import { usePortalAuth } from '../lib/portalAuth';
-import { DemoRequest, FaqSection, HowItWorks, Pricing, TrustMarquee, useLandingReveal } from './LandingSections';
+import { DemoRequest, FaqSection, HowItWorks, Pricing, TrustMarquee, useLandingReveal, usePublicUnits } from './LandingSections';
 
 // Header navigation — every section one click from the top of the page.
 const NAV_LINKS = [
@@ -150,6 +150,13 @@ export default function Landing() {
   // Twitter cards, canonical, JSON-LD LocalBusiness); restored on unmount.
   useLandingSeo(identity);
 
+  // The hero photo badge and stat row render the operator's real roster
+  // (live vacancy counts from the public units endpoint). Hook sits above
+  // the signed-in redirects below — hooks never follow a conditional.
+  const { rows: unitRows } = usePublicUnits();
+  const totalUnits = unitRows?.reduce((n, r) => n + r.total, 0) ?? null;
+  const totalVacant = unitRows?.reduce((n, r) => n + r.vacant, 0) ?? null;
+
   // Mobile nav menu (hamburger). Escape closes it like a sheet.
   const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => {
@@ -195,7 +202,7 @@ export default function Landing() {
               contents reads as one unit with the brand. Below xl the inline
               list hides (the hamburger menu owns it). */}
           <div className="flex min-w-0 items-center gap-6">
-            <Link to="/landing" className="flex min-w-0 items-center gap-2.5">
+            <Link to="/landing" className="flex min-h-[44px] min-w-0 items-center gap-2.5">
               <BrandLogo
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500 text-white shadow-sm sm:h-10 sm:w-10"
                 iconSize={18}
@@ -236,20 +243,6 @@ export default function Landing() {
               {menuOpen ? <X size={18} aria-hidden /> : <Menu size={18} aria-hidden />}
             </button>
             <Link
-              to="/login"
-              aria-label="Staff sign in"
-              className="hidden min-h-[44px] items-center whitespace-nowrap rounded-xl border border-ash px-4 py-2 text-sm font-medium text-graphite transition-[background-color,color] hover:bg-fog sm:flex"
-            >
-              Sign in
-            </Link>
-            <Link
-              to="/login"
-              aria-label="Staff sign in"
-              className="press flex min-h-[44px] w-11 items-center justify-center rounded-xl border border-ash text-graphite transition-[background-color,color] hover:bg-fog sm:hidden"
-            >
-              <KeyRound size={17} aria-hidden />
-            </Link>
-            <Link
               to="/register"
               className="press flex min-h-[44px] items-center whitespace-nowrap rounded-xl bg-brand-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-[background-color,color] hover:bg-brand-600 sm:px-4"
             >
@@ -281,6 +274,18 @@ export default function Landing() {
                     </a>
                   </li>
                 ))}
+                {/* Sign-in lives in the sheet on phones: the header bar only
+                    keeps theme + the Start CTA so the wordmark never
+                    truncates, and the unified login serves staff and tenants
+                    from one door anyway. */}
+                <li className="mt-1 border-t border-gray-100 pt-1">
+                  <Link
+                    to="/login"
+                    className="flex min-h-[44px] items-center rounded-lg px-3 text-sm font-semibold text-gray-900 transition-[background-color,color] hover:bg-fog"
+                  >
+                    Sign in
+                  </Link>
+                </li>
               </ul>
             </nav>
           </div>
@@ -306,7 +311,7 @@ export default function Landing() {
           />
         </picture>
 
-        <div className="relative mx-auto max-w-6xl px-5 pb-16 pt-14 lg:pb-24 lg:pt-20">
+        <div className="relative mx-auto max-w-6xl px-5 pb-16 pt-14 text-center lg:pb-24 lg:pt-20">
           {/* Eyebrow — the design's inline label, not a pill. */}
           <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-graphite">
             <Building2 size={14} strokeWidth={1.75} className="text-brand-500" aria-hidden />
@@ -314,17 +319,61 @@ export default function Landing() {
           </p>
 
           {/* Display headline: Inter 700, tight tracking, ONE amber highlight
-              per the design's inline-highlight rule. */}
-          <h1 className="type-display mt-5 max-w-3xl text-gray-900">
+              per the design's inline-highlight rule. Centered like the photo-led
+              hero: message first, the building itself as the visual anchor. */}
+          <h1 className="type-display mx-auto mt-5 max-w-3xl text-gray-900">
             Run the whole property from <span className="bg-sun px-1">one ledger.</span>
           </h1>
-          <p className="mt-5 max-w-xl text-lg leading-relaxed text-graphite">
+          <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-graphite">
             RPMS puts rent, water, receipts and messages in one place — so landlords and
             managers stop chasing payments and tenants stop calling for answers.
           </p>
 
+          {/* The building photo card — the property this software runs, with a
+              live vacancies badge straight from the rent ledger. Renders bare
+              until the endpoint answers: the photo is the focal point, not the
+              chrome around it. */}
+          <div className="relative mx-auto mt-10 w-full max-w-3xl">
+            <figure className="overflow-hidden rounded-2xl shadow-md ring-1 ring-black/5">
+              <picture>
+                <source
+                  type="image/webp"
+                  srcSet="/building/building-1-480.webp 480w, /building/building-1-800.webp 800w, /building/building-1-1600.webp 1600w"
+                  sizes="(min-width: 768px) 768px, 100vw"
+                />
+                <img
+                  src="/building/building-1-800.webp"
+                  alt="The building this property management system runs"
+                  className="gray-reveal h-60 w-full object-cover sm:h-80"
+                  loading="eager"
+                  decoding="async"
+                />
+              </picture>
+            </figure>
+            {totalVacant != null && (
+              <span className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-900 shadow-sm">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+                {totalVacant > 0 ? `${totalVacant} units available now` : 'Fully occupied'}
+              </span>
+            )}
+          </div>
+
+          {/* Two-stat row — the reference's post-photo strip, live numbers. */}
+          {totalUnits != null && (
+            <dl className="mx-auto mt-8 grid max-w-lg grid-cols-2 gap-4">
+              <div className="rounded-xl border border-ash bg-white px-4 py-3">
+                <dt className="text-[11px] font-medium uppercase tracking-wide text-silver">Units on the ledger</dt>
+                <dd className="mt-0.5 text-2xl font-bold tracking-tight tabular-nums text-gray-900">{totalUnits}</dd>
+              </div>
+              <div className="rounded-xl border border-ash bg-white px-4 py-3">
+                <dt className="text-[11px] font-medium uppercase tracking-wide text-silver">Vacant now</dt>
+                <dd className="mt-0.5 text-2xl font-bold tracking-tight tabular-nums text-gray-900">{totalVacant}</dd>
+              </div>
+            </dl>
+          )}
+
           {/* Paired choice: sky CTA + ghost secondary, the design's binary. */}
-          <div className="mt-8 flex flex-wrap items-center gap-3">
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link
               to="/register"
               className="press inline-flex items-center gap-2 rounded-xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-[background-color,color] hover:bg-brand-600"
@@ -340,40 +389,13 @@ export default function Landing() {
           </div>
 
           {/* Trust chips */}
-          <ul className="mt-7 flex flex-wrap gap-x-5 gap-y-2">
+          <ul className="mt-7 flex flex-wrap justify-center gap-x-5 gap-y-2">
             {HERO_CHIPS.map((t) => (
               <li key={t} className="flex items-center gap-1.5 text-xs font-medium text-graphite">
                 <Check size={13} className="text-brand-500" aria-hidden /> {t}
               </li>
             ))}
           </ul>
-
-          {/* Product-frame preview: the design's Product Preview Card — white,
-              top-rounded, shadow-as-border, holding a real slice of the app.
-              The receipt mock renders the actual receipt shape tenants get. */}
-          <div className="mx-auto mt-14 w-full max-w-md lg:mx-0">
-            <div className="gray-reveal rounded-t-2xl bg-white p-6 shadow-md ring-1 ring-black/5">
-              <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-                <span className="text-xs font-semibold uppercase tracking-wide text-silver">Unit B4 · April rent</span>
-                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">PAID</span>
-              </div>
-              <p className="mt-4 text-4xl font-bold tracking-tight tabular-nums text-gray-900">KSh 9,000</p>
-              <p className="mt-1 text-xs text-silver">Receipt RCP-0142 · M-Pesa · posted instantly</p>
-              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                {[
-                  { k: 'Rent', v: 'KSh 8,000' },
-                  { k: 'Water', v: 'KSh 1,000' },
-                  { k: 'Balance', v: 'KSh 0' },
-                ].map((c) => (
-                  <div key={c.k} className="rounded-lg bg-fog px-2 py-2">
-                    <p className="text-[10px] font-medium uppercase tracking-wide text-silver">{c.k}</p>
-                    <p className="text-xs font-bold tabular-nums text-gray-900">{c.v}</p>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-4 text-[11px] text-silver">Receipt emailed + SMSed · ledger updated · tenant portal notified</p>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -621,7 +643,11 @@ export default function Landing() {
                 <span className="text-sm font-semibold text-white">{branding.appName}</span>
               </div>
               <p className="mt-3 text-xs leading-relaxed text-silver">
-                {identity?.legalName ?? 'Property management'}
+                {/* The legal name repeats the wordmark more often than not —
+                    only render it when it actually adds information. */}
+                {identity?.legalName && identity.legalName !== branding.appName && (
+                  <span className="block">{identity.legalName}</span>
+                )}
                 {identity?.address && <span className="block">{identity.address}</span>}
               </p>
             </div>
@@ -653,6 +679,36 @@ export default function Landing() {
           </div>
         </div>
       </footer>
+
+      {/* Spacer so the sticky bar never covers the footer's last line — it
+          also lifts by the storage banner's height when that notice is
+          showing, so the two bottom-docked surfaces never overlap. */}
+      <div aria-hidden className="h-[calc(76px+var(--rpms-banner-h,0px))] lg:hidden" />
+
+      {/* Sticky mobile action bar — the reference's thumb-first conversion
+          pair, pinned while browsing the listings. Desktop hides it: the
+          header CTAs are already in reach. */}
+      <div
+        className="fixed inset-x-0 z-30 flex gap-2 border-t border-gray-200 bg-white/95 p-3 backdrop-blur lg:hidden"
+        style={{ bottom: 'var(--rpms-banner-h, 0px)' }}
+      >
+        <a
+          href="#demo"
+          className="press flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl border border-ash bg-white px-4 text-sm font-semibold text-gray-900 transition-[background-color,color,transform] hover:bg-fog"
+        >
+          <CalendarClock size={16} aria-hidden /> Book viewing
+        </a>
+        {waHref && (
+          <a
+            href={waHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="press flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm transition-[background-color,color,transform] hover:bg-emerald-700"
+          >
+            <MessageCircle size={16} aria-hidden /> WhatsApp
+          </a>
+        )}
+      </div>
     </div>
   );
 }

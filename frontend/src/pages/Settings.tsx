@@ -414,7 +414,9 @@ export default function Settings() {
               ) : (
                 <CircleDashed size={15} strokeWidth={1.75} className="mt-0.5 shrink-0 self-center text-gray-400" aria-hidden />
               )}
-              <span className="w-52 shrink-0 text-gray-600" title={label}>{label}</span>
+              {/* w-52 on wide screens, fluid on phones — the fixed 13rem label
+                  plus the badge overflowed the 320px card. */}
+              <span className="w-20 shrink-0 text-gray-600 sm:w-52" title={label}>{label}</span>
               {filled ? (
                 <span className="min-w-0 truncate font-medium text-gray-900" title={value}>{value}</span>
               ) : (

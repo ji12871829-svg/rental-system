@@ -22,14 +22,14 @@ export default function NotFound() {
       <div className="mt-6 flex flex-wrap justify-center gap-2">
         <Link
           to="/"
-          className="press inline-flex min-h-[40px] items-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-[background-color,transform] duration-150 hover:bg-brand-600 active:scale-[0.96]"
+          className="press inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-[background-color,transform] duration-150 hover:bg-brand-600 active:scale-[0.96]"
         >
           <Home size={16} strokeWidth={1.75} aria-hidden />
           {token ? 'Back to Dashboard' : 'Back to Sign in'}
         </Link>
         <button
           onClick={() => history.back()}
-          className="inline-flex min-h-[40px] items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-[background-color,transform] duration-150 hover:bg-gray-50 active:scale-[0.96]"
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-[background-color,transform] duration-150 hover:bg-gray-50 active:scale-[0.96]"
         >
           <ArrowLeft size={16} strokeWidth={1.75} aria-hidden />
           Go back

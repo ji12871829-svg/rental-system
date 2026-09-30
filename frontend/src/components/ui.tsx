@@ -175,7 +175,7 @@ export function Button({
     : <SpinnerIcon aria-hidden className="h-4 w-4 animate-spin" />;
   return (
     <button
-      className={`inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-medium press transition-[background-color,box-shadow,color,transform] duration-150 hover:shadow active:scale-[0.96] disabled:pointer-events-none disabled:opacity-50 ${variants[variant]} ${className}`}
+      className={`inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-medium press transition-[background-color,box-shadow,color,transform] duration-150 hover:shadow active:scale-[0.96] disabled:pointer-events-none disabled:opacity-50 md:min-h-[40px] ${variants[variant]} ${className}`}
       {...props}
       disabled={loading || success || props.disabled}
     >
@@ -206,7 +206,7 @@ export function Field({ label, children, hint, error }: { label: string; childre
 
 const inputClass =
   // text-base (<16px) on touch devices prevents iOS Safari's focus auto-zoom.
-  'w-full rounded-lg border border-ash bg-white px-3 py-2 text-base text-gray-900 transition-[border-color,box-shadow] duration-150 placeholder:text-silver focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 disabled:cursor-not-allowed disabled:bg-fog disabled:text-silver md:text-sm';
+  'min-h-[44px] w-full rounded-lg border border-ash bg-white px-3 py-2 text-base text-gray-900 transition-[border-color,box-shadow] duration-150 placeholder:text-silver focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 disabled:cursor-not-allowed disabled:bg-fog disabled:text-silver';
 
 export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`${inputClass} ${props.className ?? ''}`} />;
@@ -238,6 +238,9 @@ export function Modal({ open, title, onClose, children, wide, shakeSignal = 0 }:
   }, [open, onClose]);
 
   if (!open) return null;
+  // The scrim click is a mouse-only convenience; keyboard users close the
+  // dialog via the Escape listener above or the visible Close button.
+  /* eslint-disable jsx-a11y/click-events-have-key-events */
   return (
     <div className="fixed inset-0 z-50 flex flex-col overflow-y-auto bg-gray-900/50 p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label={title}>
       <div
@@ -260,6 +263,7 @@ export function Modal({ open, title, onClose, children, wide, shakeSignal = 0 }:
       </div>
     </div>
   );
+  /* eslint-enable jsx-a11y/click-events-have-key-events */
 }
 
 // ---------------------------------------------------------------- EmptyState

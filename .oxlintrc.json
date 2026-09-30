@@ -1,62 +1,179 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
+
+  // Correctness errors fail the build. "suspicious" and "restriction" are
+  // deliberately NOT enabled as categories: they flood the codebase with
+  // style rules the repo does not follow (no-optional-chaining,
+  // jsx-no-literals, no-relative-parent-imports, ...). The valuable rules
+  // from those categories are pinned explicitly below.
   "categories": {
     "correctness": "error",
     "perf": "warn",
     "pedantic": "off"
   },
-  "plugins": ["typescript", "oxc", "unicorn"],
+
+  "plugins": [
+    "typescript",
+    "react",
+    "jsx-a11y",
+    "import",
+    "unicorn",
+    "oxc"
+  ],
+
   "env": {
     "browser": true,
     "node": true,
     "es2024": true
   },
+
   "globals": {
     "process": "readonly",
     "Buffer": "readonly",
     "URL": "readonly",
     "URLSearchParams": "readonly"
   },
+
   "settings": {
-    "jsx-a11y": { "polymeric-semantics": false }
+    "jsx-a11y": {
+      "polymeric-semantics": false
+    }
   },
+
+  "rules": {
+    "no-console": "off",
+    "no-debugger": "error",
+
+    "eqeqeq": ["error", "smart"],
+    "no-eval": "error",
+    "no-implied-eval": "error",
+    "no-new-func": "error",
+    "no-throw-literal": "error",
+    "no-unreachable": "error",
+    "prefer-const": "error",
+    "no-var": "error",
+
+    "typescript/no-explicit-any": "warn",
+    "typescript/no-non-null-assertion": "warn",
+    "typescript/no-empty-object-type": "warn",
+
+    "unicorn/no-null": "off",
+    "unicorn/prefer-node-protocol": "off",
+    "unicorn/prefer-top-level-await": "off",
+
+    // Real architectural signal (8 cycles across backend services) — visible
+    // but non-blocking until the services are decoupled.
+    "import/no-cycle": "warn",
+    // express-rate-limit exports both default and named rateLimit; rule
+    // misfires on the legitimate import.
+    "import/no-named-as-default": "off",
+
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "warn",
+    // Vite uses the automatic JSX runtime (tsconfig jsx: react-jsx) — React
+    // never needs to be in scope.
+    "react/react-in-jsx-scope": "off",
+    // React-compiler-era rules: useful signal, some false positives on the
+    // established fetch-on-mount pattern — visible as warnings for now.
+    "react/set-state-in-effect": "warn",
+    "react/preserve-manual-memoization": "warn",
+    "react/immutability": "warn",
+    "react/exhaustive-effect-dependencies": "warn",
+    "react/todo": "off",
+
+    "jsx-a11y/alt-text": "error",
+    // role="status" live regions are correct usage; the rule wants <output>.
+    "jsx-a11y/prefer-tag-over-role": "off",
+    // Over-strict for this codebase's dashboards; a11y issues that matter
+    // (alt-text, interactive semantics) stay on above.
+    "jsx-a11y/label-has-associated-control": "warn",
+    "jsx-a11y/control-has-associated-label": "off",
+    "jsx-a11y/no-static-element-interactions": "warn",
+    "jsx-a11y/no-noninteractive-element-interactions": "warn",
+    "jsx-a11y/no-noninteractive-tabindex": "warn",
+    "jsx-a11y/aria-unsupported-elements": "warn",
+
+    // Visible backlog: mutation-style sort on state arrays is a real bug
+    // class; sweep to toSorted() later.
+    "unicorn/no-array-sort": "warn",
+    // Nested helpers are intentional for readability in many places.
+    "unicorn/consistent-function-scoping": "warn",
+    "unicorn/prefer-add-event-listener": "warn",
+    "unicorn/require-post-message-target-origin": "warn",
+    "eslint/no-shadow": "warn",
+    "eslint/preserve-caught-error": "warn",
+    "import/no-unassigned-import": "warn"
+  },
+
   "overrides": [
     {
-      "files": ["backend/**/*.ts", "scripts/**/*.mjs", "frontend/**/*.ts", "frontend/**/*.tsx"],
+      "files": [
+        "frontend/src/**/*.ts",
+        "frontend/src/**/*.tsx"
+      ],
+      "plugins": [
+        "typescript",
+        "react",
+        "jsx-a11y",
+        "import",
+        "unicorn",
+        "oxc"
+      ],
       "rules": {
         "no-console": "off",
-        "unicorn/prefer-top-level-await": "off",
-        "unicorn/no-null": "off",
-        "unicorn/prefer-node-protocol": "off",
-        "typescript/no-non-null-assertion": "off"
+
+        "react/rules-of-hooks": "error",
+        "react/exhaustive-deps": "warn",
+
+        "typescript/no-explicit-any": "warn",
+        "typescript/no-non-null-assertion": "warn"
       }
     },
+
     {
-      "files": ["backend/tests/**/*.ts", "backend/tests/**/*.tsx"],
-      "rules": {
-        "typescript/no-unsafe-function-type": "off",
-        "@typescript-eslint/no-explicit-any": "off"
-      }
-    },
-    {
-      "files": ["frontend/src/**/*.tsx", "frontend/src/**/*.ts"],
+      "files": [
+        "backend/**/*.ts"
+      ],
       "rules": {
         "no-console": "off",
-        "react-hooks/exhaustive-deps": "warn"
+        "no-await-in-loop": "warn",
+
+        "typescript/no-explicit-any": "warn",
+        "typescript/no-non-null-assertion": "warn"
       }
     },
+
     {
-      "files": ["backend/tests/**/*"],
+      "files": [
+        "backend/tests/**/*.ts",
+        "backend/tests/**/*.tsx",
+        "frontend/**/*.test.ts",
+        "frontend/**/*.test.tsx",
+        "frontend/**/*.spec.ts",
+        "frontend/**/*.spec.tsx"
+      ],
       "rules": {
+        "no-console": "off",
+        "no-await-in-loop": "off",
+
+        "typescript/no-explicit-any": "off",
+        "typescript/no-non-null-assertion": "off",
+        "typescript/no-unsafe-function-type": "off"
+      }
+    },
+
+    {
+      "files": [
+        "scripts/**/*",
+        "frontend/scripts/**/*",
+        "frontend/public/sw.js"
+      ],
+      "rules": {
+        "no-console": "off",
         "no-await-in-loop": "off"
       }
     },
-    {
-      "files": ["scripts/**/*", "frontend/scripts/**/*", "frontend/public/sw.js"],
-      "rules": {
-        "no-await-in-loop": "off"
-      }
-    },
+
     {
       "files": [
         "backend/src/db/migrations.ts",

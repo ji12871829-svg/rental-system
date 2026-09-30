@@ -36,5 +36,11 @@ videos/
 # Generated knowledge graph (graphify) — local tooling state, rebuilt on demand
 graphify-out/
 
+# Raw photo drops at the repo root (e.g. "olbano plaza.jpeg") — working
+# material for the optimized set in frontend/public/, never source. Anchor
+# to root so real images inside subdirectories stay trackable.
+/*.jpeg
+/*.jpg
+
 # canvas-design renderer scratch — vendored deps for the art scripts (fonts + sources stay tracked-eligible)
 design/work/node_modules/

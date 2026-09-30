@@ -248,7 +248,7 @@ function CopyRow({ label, value, onCopy, copied }: {
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-ash bg-white px-3 py-2">
       <span><span className="text-gray-500">{label}:</span> <b className="text-gray-900">{value}</b></span>
-      <button type="button" onClick={() => onCopy(label, value)} className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700" aria-label={`Copy ${label}`}>
+      <button type="button" onClick={() => onCopy(label, value)} className="-my-2 inline-flex min-h-[44px] items-center gap-1 px-2 text-xs font-medium text-brand-600 hover:text-brand-700" aria-label={`Copy ${label}`}>
         {copied === label ? <Check size={14} /> : <Copy size={14} />}
         {copied === label ? 'Copied' : 'Copy'}
       </button>

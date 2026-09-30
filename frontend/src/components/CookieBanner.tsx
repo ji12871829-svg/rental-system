@@ -1,9 +1,17 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ShieldCheck } from 'lucide-react';
 import { branding } from '../lib/branding';
 
 const STORAGE_KEY = 'rpms.storage-notice-ack';
+
+// The banner publishes its live height as a CSS custom property on <html> so
+// other bottom-docked surfaces (the landing page's sticky mobile action bar)
+// can lift themselves above this notice instead of being painted over by it.
+// ResizeObserver keeps the value exact when the text wraps differently per
+// viewport width; the property is removed on acknowledge/unmount so the bar
+// settles back to the true bottom edge.
+const BANNER_H_VAR = '--rpms-banner-h';
 
 /**
  * Storage-notice banner. The app uses no tracking cookies — only a required
@@ -12,6 +20,28 @@ const STORAGE_KEY = 'rpms.storage-notice-ack';
  */
 export default function CookieBanner() {
   const [acknowledged, setAcknowledged] = useState(() => localStorage.getItem(STORAGE_KEY) === '1');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (acknowledged) {
+      document.documentElement.style.removeProperty(BANNER_H_VAR);
+      return;
+    }
+    const el = ref.current;
+    if (!el) return;
+    const publish = () => document.documentElement.style.setProperty(BANNER_H_VAR, `${el.offsetHeight}px`);
+    publish();
+    // Text rewraps on viewport width changes (and once after fonts load),
+    // so republish on resize plus a short settle tick — deterministic and
+    // cheap, and the value is only consumed by bottom-docked surfaces.
+    window.addEventListener('resize', publish, { passive: true });
+    const settle = window.setTimeout(publish, 350);
+    return () => {
+      window.removeEventListener('resize', publish);
+      window.clearTimeout(settle);
+      document.documentElement.style.removeProperty(BANNER_H_VAR);
+    };
+  }, [acknowledged]);
 
   if (acknowledged) return null;
 
@@ -22,6 +52,7 @@ export default function CookieBanner() {
 
   return (
     <div
+      ref={ref}
       role="region"
       aria-label="Storage notice"
       className="fixed inset-x-0 bottom-0 z-[70] border-t border-gray-200 bg-white/95 p-3 shadow-[0_-4px_16px_rgb(0_0_0/0.06)] backdrop-blur animate-in slide-in-from-bottom-2 duration-200"

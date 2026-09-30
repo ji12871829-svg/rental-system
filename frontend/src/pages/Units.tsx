@@ -84,9 +84,9 @@ export default function Units() {
                   <td>
                     <div className="flex gap-1">
                       {canManage && (
-                        <Button variant="ghost" className="!px-2 !py-1 text-xs" onClick={() => { setEdit(u); setShowForm(true); }}>Edit</Button>
+                        <Button variant="ghost" className="!px-3 !py-1 text-xs" onClick={() => { setEdit(u); setShowForm(true); }}>Edit</Button>
                       )}
-                      <Button variant="ghost" className="!px-2 !py-1 text-xs" onClick={async () => {
+                      <Button variant="ghost" className="!px-3 !py-1 text-xs" onClick={async () => {
                         const h = await api.get<{ data: unknown }>(`/api/units/${u.id}/history`);
                         setHistory([{ ...(h.data as object), unitNumber: u.unit_number }]);
                       }}>History</Button>

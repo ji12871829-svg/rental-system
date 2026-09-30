@@ -85,7 +85,7 @@ export default function Register() {
       {/* Form panel */}
       <div className="flex w-full flex-1 flex-col overflow-y-auto bg-white px-6 py-8 sm:px-10">
         <div className="mb-6 flex items-center justify-between lg:mb-8">
-          <Link to="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-800">
+          <Link to="/" className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-800">
             <ArrowLeft size={16} aria-hidden /> Back
           </Link>
           <div className="flex items-center gap-2 lg:hidden">
@@ -115,7 +115,7 @@ export default function Register() {
                 role="tab"
                 aria-selected={flow === key}
                 onClick={() => setFlow(key)}
-                className={`flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                   flow === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
                 }`}
               >

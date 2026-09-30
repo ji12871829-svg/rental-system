@@ -14,7 +14,7 @@
  * generations are kept briefly so open tabs survive the update) and acts as
  * the build-time marker the app compares to detect "a newer deploy exists".
  */
-const VERSION = 'v4';
+const VERSION = 'v5';
 const SHELL_CACHE = `rpms-shell-${VERSION}`;
 const ASSET_CACHE = `rpms-assets-${VERSION}`;
 const API_CACHE = `rpms-api-${VERSION}`;
@@ -35,7 +35,9 @@ const SHELL_ASSETS = [
   '/pwa-maskable-512.png',
   '/apple-touch-icon.png',
   // building-1 (login facade) stays precached for offline logins; the old
-  // building-2 photo left the app with the dashboard photo strip.
+  // building-2 photo left the app with the dashboard photo strip. v5: the
+  // facade photo was replaced with the real Olbano Plaza building shot —
+  // same filenames, new content, hence the version bump.
   '/building/building-1-800.webp',
 ];
 

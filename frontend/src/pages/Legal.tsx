@@ -29,7 +29,7 @@ function LegalShell({ title, children }: { title: string; children: ReactNode })
       <div className="mx-auto w-full max-w-3xl px-4">
         <Link
           to="/landing"
-          className="inline-flex min-h-[40px] items-center gap-2 text-sm font-medium text-brand-600 transition-colors duration-150 hover:text-brand-700"
+          className="inline-flex min-h-[44px] items-center gap-2 text-sm font-medium text-brand-600 transition-colors duration-150 hover:text-brand-700"
         >
           <ArrowLeft size={16} strokeWidth={1.75} aria-hidden />
           Back to {branding.appName}

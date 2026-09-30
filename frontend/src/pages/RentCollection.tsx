@@ -252,9 +252,11 @@ export default function RentCollection() {
 
         {/* Recent payments */}
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-base font-semibold text-gray-900">Recent Rent Payments</h2>
-            <div className="flex gap-2">
+            {/* flex-wrap: the two filter selects drop to their own row on
+                narrow phones instead of overflowing the card edge. */}
+            <div className="flex flex-wrap gap-2">
               <Select value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)} className="!w-32">
                 <option value="">All months</option>
                 {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m.slice(0, 3)}</option>)}

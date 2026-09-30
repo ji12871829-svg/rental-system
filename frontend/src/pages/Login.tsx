@@ -46,6 +46,11 @@ export default function Login() {
   // Clerk card in use, or the visitor asked for the password form back after
   // a bridge failure (unmapped/inactive Clerk account).
   const [clerkFallback, setClerkFallback] = useState(false);
+  // Must stay above the early returns below: React requires the same hooks in
+  // the same order on every render — a guard return before a hook breaks the
+  // render when the guard condition flips after mount (e.g. the portal session
+  // resolving async while a signed-in tenant sits on this page).
+  const [shakeRef, fireShake] = useShake<HTMLFormElement>();
 
   const isTenant = tab === 'tenant';
 
@@ -55,8 +60,6 @@ export default function Login() {
   // form by choosing that tab (the two sessions are independent cookies).
   if (token) return <Navigate to="/" replace />;
   if (isTenant && tenant) return <Navigate to="/portal" replace />;
-
-  const [shakeRef, fireShake] = useShake<HTMLFormElement>();
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -224,7 +227,7 @@ export default function Login() {
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-gray-400 transition-colors duration-150 hover:text-gray-600 active:scale-95"
+                    className="absolute right-0.5 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-gray-400 transition-colors duration-150 hover:text-gray-600 active:scale-95"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                     aria-pressed={showPassword}
                     tabIndex={0}

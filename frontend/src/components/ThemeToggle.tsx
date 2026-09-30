@@ -2,17 +2,21 @@ import { Moon, Sun } from 'lucide-react';
 import { useTheme } from '../lib/theme';
 
 // Compact icon button for headers. Swaps sun/moon by current theme and
-// inherits color like every other header control, so both the staff header
-// and the portal top bar style it the same. The button itself stays a compact
-// 40px control (correct for dense app headers); the LANDING page — a public,
-// phone-first marketing surface — wraps it in a hit-area patch to reach the
-// 44px touch minimum without inflating the button everywhere.
+// inherits color like every other header control, so the staff header, the
+// portal top bar, and the landing header all style it the same.
+//
+// Touch sizing: 44px on phones (the comfortable minimum for a thumb target),
+// back to the compact 40px on md+ screens where a pointer is precise. The
+// size must live on the button itself — an absolutely-positioned overlay
+// span "hit-area patch" was tried before and actively BROKE phones: the
+// empty span painted on top with pointer-events:auto, so every tap hit the
+// span (which has no handler) and the button underneath never fired.
 export function ThemeToggle() {
   const { theme, toggle } = useTheme();
   return (
     <button
       onClick={toggle}
-      className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 active:scale-95"
+      className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 active:scale-95 md:h-10 md:w-10"
       title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
       aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
     >
@@ -21,19 +25,8 @@ export function ThemeToggle() {
   );
 }
 
-// Landing-only touch patch: stretches the compact 40px ThemeToggle to a 44px
-// tap target without restyling the shared button (which app headers rely on).
-// The pseudo-element sits at the button's center and grows the clickable area
-// by 2px on each edge; layout is untouched.
+// Landing header slot. Same component as everywhere else — the touch sizing
+// is built in (44px below md, 40px from md up), so no wrapper is needed.
 export function LandingThemeToggle() {
-  return (
-    <span className="relative inline-flex">
-      <ThemeToggle />
-      <span
-        aria-hidden
-        className="absolute left-1/2 top-1/2 h-11 w-11 -translate-x-1/2 -translate-y-1/2"
-        style={{ pointerEvents: 'auto' }}
-      />
-    </span>
-  );
+  return <ThemeToggle />;
 }
