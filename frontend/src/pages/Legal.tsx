@@ -154,7 +154,7 @@ export function Privacy() {
         demo, sign in as staff, or use the tenant portal (together, the &ldquo;services&rdquo;). It explains, in the
         clearest way we can, what information we collect, how we use it, and what rights you have in relation to it.
         <strong> Please read it carefully</strong> — if there is anything here you do not agree with, please stop
-        using the services. These terms work alongside the <Link to="/terms">Terms &amp; Conditions</Link>.
+        using the services. This notice works alongside the <Link to="/terms">Terms &amp; Conditions</Link>.
       </p>
       <nav aria-label="Table of contents" className="rounded-xl border border-gray-200 bg-gray-50 p-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Contents</p>
@@ -322,8 +322,8 @@ export function Privacy() {
       <Section heading="13. Reviewing, updating or deleting your data" id="privacy-review">
         <p>
           You may request a copy of the personal data we hold about you, ask us to correct it, or ask us to delete
-          what we are not legally required to keep, by writing to <Email email={privacyEmail} />. A copy of your
-          data is provided as a machine-readable (JSON) file. As a tenant, you can also see — and correct the
+          what we are not legally required to keep, by writing to us using the contacts in section 12. A copy of
+          your data is provided as a machine-readable (JSON) file. As a tenant, you can also see — and correct the
           essentials of — your own information any time in the portal: your balance, payment history, water
           readings, receipts and statements.
         </p>
@@ -376,7 +376,7 @@ export function Terms() {
   const law = identity?.jurisdiction ?? 'Kenya';
   return (
     <LegalShell title="Terms & Conditions">
-      <nav aria-label="Table of contents" className="rounded-xl border border-gray-200 bg-gray-50 p-4 not-prose">
+      <nav aria-label="Table of contents" className="rounded-xl border border-gray-200 bg-gray-50 p-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Contents</p>
         <ol className="mt-2 list-decimal space-y-0.5 pl-5 text-sm sm:columns-2 sm:gap-6">
           {TERMS_TOC.map(({ id, title }) => (
@@ -601,7 +601,7 @@ export function Terms() {
           inaccuracies or omissions, and we may correct any of them, and change or update information, at any time
           without prior notice. A recorded error — a mistyped reading, a duplicated payment, a wrong amount — is
           fixed on the ledger, with the correction visible in the records. Report anything that looks wrong
-          through the contacts below.
+          through the contacts in section 21.
         </p>
       </Section>
       <Section heading="15. Disclaimer" id="terms-disclaimers">
