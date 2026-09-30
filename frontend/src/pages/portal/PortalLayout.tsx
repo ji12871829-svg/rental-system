@@ -3,7 +3,7 @@
 // routes leak in: this renders only inside /portal routes.
 
 import { useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet } from 'react-router-dom';
 import { CreditCard, Droplets, FileText, Home, LogOut, Menu, X } from 'lucide-react';
 import { usePortalAuth } from '../../lib/portalAuth';
 import { branding } from '../../lib/branding';
@@ -19,7 +19,6 @@ const navItems = [
 
 export default function PortalLayout() {
   const { tenant, logout } = usePortalAuth();
-  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const nav = (
@@ -44,8 +43,15 @@ export default function PortalLayout() {
       ))}
       <button
         onClick={async () => {
+          // Full-page redirect, not navigate(): the auth guards are keyed on
+          // the auth state that logout() just cleared, so during the lazy
+          // /landing load React can re-run RequirePortalAuth/RequireAuth and
+          // yank the signed-out user back to a login form. A hard redirect
+          // sidesteps the SPA transition entirely — same idiom the http
+          // client uses for session loss. Landing is public, so it always
+          // renders the signed-out marketing shell.
           await logout();
-          navigate('/portal/login', { replace: true });
+          window.location.href = '/landing';
         }}
         className="mt-auto flex min-h-[40px] items-center gap-3 rounded-lg px-3 text-sm font-medium text-gray-400 transition-[background-color,color,transform] duration-150 [transition-timing-function:cubic-bezier(0.16,1,0.3,1)] hover:bg-white/5 hover:text-white active:scale-[0.98]"
       >

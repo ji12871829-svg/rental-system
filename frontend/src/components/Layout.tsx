@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { BrandLogo } from './BrandLogo';
 import { Suspense } from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet } from 'react-router-dom';
 import {
   AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, BookUser, Building2, CalendarDays, ChevronDown, Droplets, FileText, LayoutDashboard, Loader2, LogOut, Mail, Menu, ReceiptText, Settings,
   Smartphone, Ticket, Users as UsersIcon, Wallet, X, ClipboardCheck, Zap,
@@ -140,7 +140,6 @@ const NAV_SECTIONS: NavSection[] = [
 export default function Layout() {
   const { legalNameDisplay, lastUpdatedDisplay } = useBranding();
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   // Every titled section (Property, Billing, … Management, Help) is a
   // collapsible tab: closed by default, toggled only by clicking its header.
@@ -157,9 +156,13 @@ export default function Layout() {
     })
   ).filter((section) => section.items.length > 0);
 
-  function handleLogout() {
-    logout();
-    navigate('/login');
+  async function handleLogout() {
+    // Full-page redirect, not navigate(): same guard race as the portal
+    // sign-out (see PortalLayout) — during the lazy /landing load the cleared
+    // auth state re-runs RequireAuth and can yank the user back to /login.
+    // Landing is public; the hard redirect always lands there cleanly.
+    await logout();
+    window.location.href = '/landing';
   }
 
   const nav = (

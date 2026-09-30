@@ -17,7 +17,9 @@ interface AuthState {
   token: boolean;
   ready: boolean;
   login: (email: string, password: string) => Promise<User>;
-  logout: () => void;
+  /** Resolves once the server session is gone (await before navigating away,
+   *  or an unload can cancel the POST and leave the cookie alive). */
+  logout: () => Promise<void>;
   isAdmin: boolean;
   isManager: boolean;
   canManage: boolean; // ADMIN or PROPERTY_MANAGER
@@ -48,7 +50,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    void api.post('/api/auth/logout').catch(() => undefined);
     setTokenState(false);
     setReady(true);
     setUser(null);
@@ -56,6 +57,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // keepalive's next 401 hard-reloads the login form out from under the
     // user.
     uninstallStaffKeepalive();
+    // Returned, not fire-and-forget: a caller that navigates/redirects right
+    // after logout would otherwise cancel the request mid-flight at unload.
+    return api.post('/api/auth/logout').then(() => undefined).catch(() => undefined);
   }, []);
 
   const value = useMemo<AuthState>(() => ({
