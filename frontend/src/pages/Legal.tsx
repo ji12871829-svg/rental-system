@@ -114,6 +114,26 @@ function Contact({ kind, value }: { kind: 'email' | 'phone'; value: string | nul
 const Email = ({ email }: { email: string | null }) => <Contact kind="email" value={email} />;
 const Phone = ({ phone }: { phone: string | null }) => <Contact kind="phone" value={phone} />;
 
+// One contact-block shape for every legal page — bold legal name, postal
+// address, phone and email as they exist in the branding record, or a
+// fallback to the landing page's contact links when nothing is filled.
+// Shared so the four pages cannot drift into different contact shapes.
+function OperatorContact({ privacyEmail }: { privacyEmail?: string | null }) {
+  const { identity } = useBranding();
+  const email = privacyEmail ?? identity?.contactEmail ?? null;
+  return (
+    <ul className="list-disc space-y-1 pl-5">
+      {identity?.legalName && <li><strong>{identity.legalName}</strong></li>}
+      {identity?.address && <li>{identity.address}</li>}
+      {identity?.contactPhone && (<li>Phone: <Phone phone={identity.contactPhone} /></li>)}
+      {email && (<li>Email: <Email email={email} /></li>)}
+      {!identity?.contactPhone && !email && (
+        <li>Through the contact links on the <Link to="/landing#demo">landing page</Link>.</li>
+      )}
+    </ul>
+  );
+}
+
 // -------------------------------------------------------------------- Privacy
 // Structured like a standard privacy notice — what we collect, why, sharing,
 // cookies, retention, security, minors, rights, updates, contact, review —
@@ -308,15 +328,7 @@ export function Privacy() {
           If you have questions or comments about this notice or our handling of your personal information, contact
           the operator:
         </p>
-        <ul className="list-disc space-y-1 pl-5">
-          {identity?.legalName && <li><strong>{identity.legalName}</strong></li>}
-          {identity?.address && <li>{identity.address}</li>}
-          {identity?.contactPhone && (<li>Phone: <Phone phone={identity.contactPhone} /></li>)}
-          {privacyEmail && (<li>Email: <Email email={privacyEmail} /></li>)}
-          {!identity?.contactPhone && !privacyEmail && (
-            <li>Through the contact links on the <Link to="/landing#demo">landing page</Link>.</li>
-          )}
-        </ul>
+        <OperatorContact privacyEmail={privacyEmail} />
         <p>We usually reply the same day.</p>
       </Section>
       <Section heading="13. Reviewing, updating or deleting your data" id="privacy-review">
@@ -401,8 +413,8 @@ export function Terms() {
         <p>
           By visiting the site, signing in as staff, or using the tenant portal, you confirm that you have read,
           understood and accepted these terms. <strong>If you do not agree with all of them, you are not allowed
-          to use the system and must stop immediately.</strong> The <Link to="/privacy">Privacy Policy</Link>,
-          <Link to="/cookies"> Cookie &amp; Storage Policy</Link> and <Link to="/refunds">Refund Policy</Link> are
+          to use the system and must stop immediately.</strong> The <Link to="/privacy">Privacy Policy</Link>,{' '}
+          <Link to="/cookies">Cookie &amp; Storage Policy</Link> and <Link to="/refunds">Refund Policy</Link> are
           posted on the site and form part of these terms. Any additional rules posted from time to time also apply.
           Where a tenancy agreement governs rent, deposits or refunds for your unit, that agreement governs the
           money side.
@@ -668,15 +680,7 @@ export function Terms() {
           To resolve a complaint about the system, or to receive further information about these terms, contact the
           operator:
         </p>
-        <ul className="list-disc space-y-1 pl-5">
-          {identity?.legalName && <li><strong>{identity.legalName}</strong></li>}
-          {identity?.address && <li>{identity.address}</li>}
-          {identity?.contactPhone && (<li>Phone: <Phone phone={identity.contactPhone} /></li>)}
-          {identity?.contactEmail && (<li>Email: <Email email={identity.contactEmail} /></li>)}
-          {!identity?.contactPhone && !identity?.contactEmail && (
-            <li>Through the contact links on the <Link to="/landing#demo">landing page</Link>.</li>
-          )}
-        </ul>
+        <OperatorContact />
         <p>We usually reply the same day.</p>
       </Section>
     </LegalShell>
@@ -701,7 +705,6 @@ const COOKIES_TOC: { id: string; title: string }[] = [
 ];
 
 export function Cookies() {
-  const { identity } = useBranding();
   return (
     <LegalShell title="Cookie & Storage Policy">
       <p>
@@ -820,13 +823,7 @@ export function Cookies() {
           the top of this page shows the latest revision. Questions about anything stored on your device can go to
           the operator:
         </p>
-        <ul className="list-disc space-y-1 pl-5">
-          {identity?.contactPhone && (<li>Phone: <Phone phone={identity.contactPhone} /></li>)}
-          {identity?.contactEmail && (<li>Email: <Email email={identity.contactEmail} /></li>)}
-          {!identity?.contactPhone && !identity?.contactEmail && (
-            <li>Through the contact links on the <Link to="/landing#demo">landing page</Link>.</li>
-          )}
-        </ul>
+        <OperatorContact />
         <p>We usually reply the same day.</p>
       </Section>
     </LegalShell>
@@ -954,13 +951,7 @@ export function Refund() {
       </Section>
       <Section heading="10. Questions and contact" id="refund-contact">
         <p>To raise a refund, correct a record, or ask about this policy, reach the operator:</p>
-        <ul className="list-disc space-y-1 pl-5">
-          {identity?.contactPhone && (<li>Phone: <Phone phone={identity.contactPhone} /></li>)}
-          {identity?.contactEmail && (<li>Email: <Email email={identity.contactEmail} /></li>)}
-          {!identity?.contactPhone && !identity?.contactEmail && (
-            <li>Through the contact links on the <Link to="/landing#demo">landing page</Link>.</li>
-          )}
-        </ul>
+        <OperatorContact />
         <p>We usually reply the same day.</p>
       </Section>
     </LegalShell>
