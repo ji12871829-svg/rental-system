@@ -83,10 +83,10 @@ function LegalShell({ title, children }: { title: string; children: ReactNode })
   );
 }
 
-function Section({ heading, children }: { heading: string; children: ReactNode }) {
+function Section({ heading, id, children }: { heading: string; id?: string; children: ReactNode }) {
   return (
     <section>
-      <h2 className="text-base font-semibold text-gray-900">{heading}</h2>
+      <h2 id={id} className="text-base font-semibold text-gray-900 scroll-mt-6">{heading}</h2>
       <div className="mt-2 space-y-2">{children}</div>
     </section>
   );
@@ -196,94 +196,178 @@ export function Privacy() {
 }
 
 // --------------------------------------------------------------------- Terms
-// Numbered, comprehensive terms in the usual order of a terms-of-use page
-// (agreement → accounts → IP → acceptable use → records → payments →
-// availability → termination → liability → law → contact). Written for what
-// this system actually is — an internal property-management tool with a
-// self-service tenant portal — with the operator's live identity woven in.
+// Full terms-of-use structure — the same arc a standard terms page follows
+// (agreement, eligibility, IP, prohibited activities, contributions and
+// licences, site management, privacy, termination, availability, law and
+// dispute resolution, corrections, disclaimers, liability, indemnity, user
+// data, electronic communications, miscellaneous, contact) — written for
+// what this system actually is: an internal property-management ledger with
+// a self-service tenant portal and M-Pesa payments. Operator identity comes
+// from the live business_branding record; sibling policies are linked, not
+// duplicated.
+const TERMS_TOC: { id: string; title: string }[] = [
+  { id: 'terms-agreement', title: 'Agreement to these terms' },
+  { id: 'terms-accounts', title: 'Accounts and eligibility' },
+  { id: 'terms-ip', title: 'Intellectual property' },
+  { id: 'terms-prohibited', title: 'Prohibited activities' },
+  { id: 'terms-records', title: 'Records and content you enter' },
+  { id: 'terms-licence', title: 'Licence to your records and feedback' },
+  { id: 'terms-management', title: 'How we manage the system' },
+  { id: 'terms-payments', title: 'Payments' },
+  { id: 'terms-privacy', title: 'Privacy and data protection' },
+  { id: 'terms-termination', title: 'Term and termination' },
+  { id: 'terms-availability', title: 'Modifications and interruptions' },
+  { id: 'terms-law', title: 'Governing law' },
+  { id: 'terms-disputes', title: 'Resolving disputes' },
+  { id: 'terms-corrections', title: 'Corrections' },
+  { id: 'terms-disclaimers', title: 'Disclaimer' },
+  { id: 'terms-liability', title: 'Limitations of liability' },
+  { id: 'terms-indemnity', title: 'Indemnification' },
+  { id: 'terms-backups', title: 'Backups and your data' },
+  { id: 'terms-electronic', title: 'Electronic communications and signatures' },
+  { id: 'terms-misc', title: 'Miscellaneous' },
+  { id: 'terms-contact', title: 'Contact us' },
+];
+
 export function Terms() {
   const { identity } = useBranding();
   const law = identity?.jurisdiction ?? 'Kenya';
   return (
     <LegalShell title="Terms & Conditions">
-      <Section heading="1. Agreement to these terms">
+      <nav aria-label="Table of contents" className="rounded-xl border border-gray-200 bg-gray-50 p-4 not-prose">
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Contents</p>
+        <ol className="mt-2 list-decimal space-y-0.5 pl-5 text-sm sm:columns-2 sm:gap-6">
+          {TERMS_TOC.map(({ id, title }) => (
+            <li key={id}>
+              <a href={`#${id}`} className="text-brand-600 transition-colors duration-150 hover:text-brand-700 hover:underline">
+                {title}
+              </a>
+            </li>
+          ))}
+        </ol>
+      </nav>
+      <Section heading="1. Agreement to these terms" id="terms-agreement">
         <p>
-          These Terms &amp; Conditions form a binding agreement between you and <strong>{identity?.legalName ?? branding.appNameLong}</strong>
+          These Terms &amp; Conditions form a legally binding agreement between you — whether personally or for a
+          business — and <strong>{identity?.legalName ?? branding.appNameLong}</strong>
           {identity?.registrationNumber && (<> (registration no. <strong>{identity.registrationNumber}</strong>)</>) }
           {identity?.address && (<> , of <strong>{identity.address}</strong></>) }
-          , the operator of {branding.appName} ({branding.appNameFull}).
+          , the operator of {branding.appName} ({branding.appNameFull}): this website, the staff management app and
+          the tenant portal, together with any related pages or communications (collectively, the
+          &ldquo;system&rdquo;).
         </p>
         <p>
           By visiting the site, signing in as staff, or using the tenant portal, you confirm that you have read,
-          understood and accepted these terms. If you do not accept them, stop using the system immediately. The
-          <Link to="/privacy"> Privacy Policy</Link>, <Link to="/cookies">Cookie &amp; Storage Policy</Link> and
-          <Link to="/refunds"> Refund Policy</Link> work alongside these terms; where a tenancy agreement governs
-          rent, deposits or refunds for your unit, that agreement governs the money side.
+          understood and accepted these terms. <strong>If you do not agree with all of them, you are not allowed
+          to use the system and must stop immediately.</strong> The <Link to="/privacy">Privacy Policy</Link>,
+          <Link to="/cookies"> Cookie &amp; Storage Policy</Link> and <Link to="/refunds">Refund Policy</Link> are
+          posted on the site and form part of these terms. Any additional rules posted from time to time also apply.
+          Where a tenancy agreement governs rent, deposits or refunds for your unit, that agreement governs the
+          money side.
         </p>
         <p>
-          We may update these terms at any time by posting a revised version with a new &ldquo;last updated&rdquo;
-          date — you will not receive a separate notice of each change. Continuing to use the system after a change
-          means you accept the revised terms. The system is intended for people aged 18 or over, and for use in
-          connection with the property it manages.
+          We may change these terms at any time, for any reason, by posting a revised version with a new
+          &ldquo;last updated&rdquo; date — you will not receive a separate notice of each change, and you agree
+          that checking the terms whenever you use the system is on you. Continuing to use the system after revised
+          terms are posted means you have accepted them. The system is not offered where doing so would break local
+          law, and it is not tailored to regulated industries&rsquo; compliance regimes — it is a property-ledger
+          tool, not financial, legal or tax advice.
         </p>
+        <p>The system is intended for people aged 18 or over. Persons under 18 may not use or register for it.</p>
       </Section>
-      <Section heading="2. Accounts and eligibility">
+      <Section heading="2. Accounts and eligibility" id="terms-accounts">
+        <p>
+          By using the system you confirm that: you are at least 18 and legally able to agree to these terms; the
+          information you give is true, accurate, current and complete; you will not sign in through automated or
+          non-human means such as bots or scripts; and your use will not break any applicable law or regulation.
+        </p>
         <p>
           Staff accounts are requested publicly but created and activated by an administrator; tenant portal access
-          is issued from the tenancy recorded on file, using the email the operator holds. By using the system you
-          confirm that: you are at least 18 and legally able to agree to these terms; the information you give is
-          true, current and complete; you will not sign in through automated means such as bots or scripts; and you
-          will use the system only for lawful purposes, in line with these terms.
+          is issued from the tenancy recorded on file, using the email the operator holds. You are responsible for
+          your credentials and for everything done through your account. Keep your password confidential, never use
+          another person&rsquo;s account, and tell us promptly if you suspect unauthorised use.
         </p>
         <p>
-          You are responsible for your credentials and for everything done through your account. Keep your password
-          confidential, never use another person&rsquo;s account, and tell us promptly if you suspect unauthorised
-          use. If information you provided turns out to be untrue or incomplete, we may suspend or end your access
-          and refuse future use.
+          If information you provide turns out to be untrue, inaccurate, not current or incomplete, we may suspend
+          or terminate your account and refuse any current or future use of the system.
         </p>
       </Section>
-      <Section heading="3. Intellectual property">
+      <Section heading="3. Intellectual property" id="terms-ip">
         <p>
-          The system — including its source code, design, features, text, graphics and the {branding.appName} name
-          and marks — is owned by the operator or licensed to it, and is protected by copyright and other
-          intellectual property laws. You are granted a limited, revocable licence to use the system for its
-          intended purpose: managing the property as staff, or viewing and paying your own account as a tenant.
+          Unless stated otherwise, the system is the operator&rsquo;s proprietary property: all source code,
+          databases, functionality, software, designs, text, graphics and the {branding.appName} name and marks are
+          owned or controlled by the operator or licensed to it, and are protected by copyright, trademark and other
+          intellectual property laws.
         </p>
         <p>
-          Except as that licence or applicable law allows, you may not copy, modify, distribute, sell, publicly
-          display, decompile or reverse engineer any part of the system, or use its content or data for any
-          commercial purpose without written permission.
+          Provided you are eligible, you are granted a limited, revocable, non-exclusive licence to access and use
+          the system for its intended purpose: managing the property as staff, or viewing and paying your own
+          account as a tenant. Except as that licence or applicable law allows, no part of the system may be
+          copied, reproduced, aggregated, republished, uploaded, posted, publicly displayed, encoded, translated,
+          transmitted, distributed, sold, licensed or otherwise exploited for any commercial purpose without our
+          express prior written permission. We reserve all rights not expressly granted to you.
         </p>
       </Section>
-      <Section heading="4. Acceptable use">
-        <p>You agree not to:</p>
+      <Section heading="4. Prohibited activities" id="terms-prohibited">
+        <p>You may not use the system for any purpose other than the one we provide it for. In particular, you agree not to:</p>
         <ul className="list-disc space-y-1 pl-5">
+          <li>systematically retrieve data or content to build a collection, compilation, database or directory without written permission;</li>
+          <li>trick, defraud or mislead us or other users, especially to learn sensitive account information such as passwords;</li>
+          <li>circumvent, disable or interfere with security-related features, or try to bypass any measure designed to prevent or restrict access;</li>
           <li>use, or let anyone else use, an account that is not yours, or sign in under a false identity;</li>
-          <li>access records that are not yours — another tenant&rsquo;s data, other users&rsquo; details, or staff-only information;</li>
-          <li>enter or alter data you are not authorised to store;</li>
-          <li>interfere with payment flows — manipulating, faking or replaying M-Pesa confirmations, or attempting to post payments outside the recorded channels;</li>
-          <li>probe, scan or test the security of the system, or try to bypass its access controls, without written permission;</li>
-          <li>harvest data at scale, scrape the system, or build a directory or database from its contents;</li>
-          <li>upload malware, or anything that disrupts, overloads or impairs the system;</li>
-          <li>harass, threaten or abuse other users, tenants or our staff;</li>
-          <li>use the system for any unlawful purpose, or in any way that violates the Kenya Data Protection Act, 2019 or any other applicable law.</li>
+          <li>access records that are not yours — another tenant&rsquo;s data, other users&rsquo; details, or staff-only information — or enter or alter data you are not authorised to store;</li>
+          <li>interfere with payment flows: manipulating, faking or replaying M-Pesa confirmations, or posting payments outside the recorded channels;</li>
+          <li>disparage or harm the operator, its staff, or other users of the system;</li>
+          <li>harass, abuse or harm any person using information obtained from the system;</li>
+          <li>upload or transmit viruses, Trojan horses or similar harmful material, or anything that disrupts, overloads or impairs the system or the services connected to it;</li>
+          <li>engage in automated use — scripts, data mining, robots, scrapers or similar extraction tools — beyond ordinary browser use;</li>
+          <li>copy or adapt the system&rsquo;s software, or except as permitted by law, decipher, decompile, disassemble or reverse engineer any of it;</li>
+          <li>delete or obscure any proprietary rights notice from the content;</li>
+          <li>make unauthorised use of the system, including collecting other users&rsquo; emails or contact details for unsolicited messages;</li>
+          <li>use the system to compete with the operator, or as part of any revenue-generating enterprise without written approval; or</li>
+          <li>use the system in any manner that violates the Kenya Data Protection Act, 2019 or any other applicable law or regulation.</li>
         </ul>
-        <p>Breaking these rules may mean your access is suspended or ended, and we may take any further action the law allows.</p>
+        <p>Breaking these rules is a breach of these terms and may result in suspension or termination of your access, and any further action the law allows.</p>
       </Section>
-      <Section heading="5. Records and content you enter">
+      <Section heading="5. Records and content you enter" id="terms-records">
         <p>
           The system is a working ledger, not a public forum. You are responsible for the accuracy of the rent
           payments, meter readings, expenses, tenant details and any other records you enter or confirm. Every
           change to a financial record is written to an audit trail, and deleting a rent payment deliberately
           preserves the original receipt for history.
         </p>
+        <p>When you enter records, submit details or make anything available through the system, you confirm that:</p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>the records do not infringe any third party&rsquo;s rights, including copyright, trademark or privacy;</li>
+          <li>you have any consent, licence or permission needed to submit them;</li>
+          <li>they are not false, inaccurate or misleading;</li>
+          <li>they are not unlawful, harassing, defamatory or otherwise objectionable; and</li>
+          <li>they do not violate these terms or any applicable law.</li>
+        </ul>
+      </Section>
+      <Section heading="6. Licence to your records and feedback" id="terms-licence">
         <p>
-          You keep ownership of the records and documents you enter; you give the operator permission to store,
-          process and use them to run the property. If you send suggestions or feedback about the system, we may use
-          and share them freely, without compensation or obligation.
+          You keep ownership of the records and documents you enter. You grant the operator permission to access,
+          store, process and use them — and any personal data they contain, under the Privacy Policy — as needed
+          to run the property and operate the system. You remain solely responsible for what you enter, and agree
+          to hold the operator harmless from claims about records you provided.
+        </p>
+        <p>
+          If you send questions, comments, suggestions or feedback about the system, that feedback is
+          non-confidential: we may use and share it for any purpose, without acknowledgment or compensation to you.
         </p>
       </Section>
-      <Section heading="6. Payments">
+      <Section heading="7. How we manage the system" id="terms-management">
+        <p>We reserve the right, but not the obligation, to:</p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>monitor the system for breaches of these terms;</li>
+          <li>take appropriate action against anyone who breaks the law or these terms, including reporting to law enforcement;</li>
+          <li>suspend, restrict or end any account or access that misuses the system;</li>
+          <li>correct, remove or disable records or content that is erroneous, unauthorised or burdensome to the system; and</li>
+          <li>otherwise manage the system to protect our rights and property and keep it working properly.</li>
+        </ul>
+      </Section>
+      <Section heading="8. Payments" id="terms-payments">
         <p>
           Paying rent from the tenant portal sends an M-Pesa request to the operator&rsquo;s own account. A payment
           is only considered made once M-Pesa confirms it and it is posted to the ledger, at which point a numbered
@@ -295,38 +379,90 @@ export function Terms() {
           payment does not appear on your ledger after M-Pesa confirmed it, contact us with the confirmation code.
         </p>
       </Section>
-      <Section heading="7. Availability and changes">
+      <Section heading="9. Privacy and data protection" id="terms-privacy">
         <p>
-          We aim to keep the system available, but we cannot guarantee uninterrupted access. Maintenance,
-          third-party services (hosting, M-Pesa, SMS and email providers) and events beyond our control can
-          interrupt it. We may add, change, suspend or remove features at any time.
+          We care about data privacy and security. Personal data is handled under the{' '}
+          <Link to="/privacy">Privacy Policy</Link>, which is incorporated into these terms: it sets out what we
+          collect, why, how long we keep it, and how to ask for a copy, a correction or deletion. The system sends
+          no data to advertising or tracking services; messages go through the operator&rsquo;s own SMS and email
+          providers, and M-Pesa payments are processed by Safaricom to the operator&rsquo;s account. The site is
+          prepared with the Kenya Data Protection Act, 2019 in mind; where another data protection law applies to
+          you, equivalent rights are honoured.
+        </p>
+      </Section>
+      <Section heading="10. Term and termination" id="terms-termination">
+        <p>
+          These terms remain in force while you use the system. <strong>We reserve the right, in our sole
+          discretion and without notice or liability, to deny access to the system — including blocking certain IP
+          addresses — to any person for any reason or no reason, including breach of these terms or of any
+          applicable law.</strong> An administrator may suspend or deactivate any account at any time: for breach,
+          misuse, or housekeeping such as closing a portal account when a tenancy ends.
+        </p>
+        <p>
+          If your access is terminated or suspended, you may not register or create a new account under the same or
+          another identity without our permission, and we reserve the right to take appropriate legal action. The
+          sections covering intellectual property, prohibited activities, liability and governing law survive the
+          end of your access.
+        </p>
+      </Section>
+      <Section heading="11. Modifications and interruptions" id="terms-availability">
+        <p>
+          We may change, modify, remove, suspend or discontinue any part of the system — or its features or
+          pricing — at any time, for any reason, without notice, and we have no obligation to update any
+          information in it. We will not be liable to you or any third party for any modification, suspension or
+          discontinuance.
+        </p>
+        <p>
+          We cannot guarantee the system will be available at all times: maintenance, hardware or software
+          problems, and third-party services (hosting, M-Pesa, SMS and email providers) can cause interruptions,
+          delays or errors. You agree that we have no liability for any loss, damage or inconvenience caused by
+          your inability to access or use the system during downtime. Nothing in these terms obliges us to maintain
+          and support the system or to supply corrections, updates or releases.
         </p>
         <p>
           Figures, summaries and reports produced by the system are management aids, not audited accounts. Verify
           anything you rely on against source receipts and statements before using it formally.
         </p>
       </Section>
-      <Section heading="8. Suspension and termination">
+      <Section heading="12. Governing law" id="terms-law">
         <p>
-          These terms apply while you use the system. An administrator may suspend or deactivate any account at any
-          time — for breach of these terms, misuse, or housekeeping such as closing a portal account when a tenancy
-          ends. We may also block access from addresses or devices that abuse the system.
-        </p>
-        <p>
-          If your access is ended for breach, you may not re-register under the same or another identity without our
-          permission. The sections covering intellectual property, acceptable use, liability and governing law
-          survive the end of your access.
+          These terms are governed by and defined following the laws of <strong>{law}</strong>. The operator and
+          you irrevocably consent that the courts of <strong>{law}</strong> have exclusive jurisdiction to resolve
+          any dispute which may arise in connection with these terms, subject to section 13.
         </p>
       </Section>
-      <Section heading="9. Corrections">
+      <Section heading="13. Resolving disputes" id="terms-disputes">
         <p>
-          Figures, readings, tariffs and other information in the system may contain errors, and we may correct
-          them at any time. A recorded error — a mistyped reading, a duplicated payment, a wrong amount — is fixed
-          on the ledger, with the correction visible in the records. Report anything that looks wrong through the
-          contacts below.
+          <strong>Talk to us first.</strong> If a dispute arises out of these terms, tell us through the contacts
+          in section 21 — most problems are solved by looking at the ledger together, and we will try to resolve
+          any disagreement informally and in good faith.
+        </p>
+        <p>
+          <strong>Arbitration.</strong> Where informal resolution does not work, any dispute arising out of or in
+          connection with these terms — including any question regarding their existence, validity or termination —
+          may be referred to and finally resolved by arbitration in <strong>{law}</strong>, seated in Nairobi,
+          conducted in English, under the applicable arbitration rules and the Arbitration Act of Kenya. Each party
+          bears its own costs unless the arbitrator decides otherwise.
+        </p>
+        <p>
+          <strong>Limitations.</strong> Any dispute is limited to the dispute between you and the operator
+          individually: to the fullest extent the law allows, disputes may not be joined with any other proceeding,
+          brought on a class basis, or brought in a representative capacity on behalf of the public. Nothing here
+          stops either party from seeking urgent injunctive relief from a court, and where a provision of this
+          section is found unenforceable, that part falls away and the rest — including the courts&rsquo;
+          jurisdiction under section 12 — applies.
         </p>
       </Section>
-      <Section heading="10. Disclaimers">
+      <Section heading="14. Corrections" id="terms-corrections">
+        <p>
+          Figures, readings, tariffs and other information in the system may contain typographical errors,
+          inaccuracies or omissions, and we may correct any of them, and change or update information, at any time
+          without prior notice. A recorded error — a mistyped reading, a duplicated payment, a wrong amount — is
+          fixed on the ledger, with the correction visible in the records. Report anything that looks wrong
+          through the contacts below.
+        </p>
+      </Section>
+      <Section heading="15. Disclaimer" id="terms-disclaimers">
         <p>
           THE SYSTEM IS PROVIDED &ldquo;AS IS&rdquo; AND &ldquo;AS AVAILABLE&rdquo;. TO THE FULLEST EXTENT THE LAW
           ALLOWS, THE OPERATOR DISCLAIMS ALL WARRANTIES, EXPRESS OR IMPLIED — INCLUDING MERCHANTABILITY, FITNESS
@@ -334,30 +470,40 @@ export function Terms() {
           UNINTERRUPTED, ERROR-FREE OR COMPLETELY SECURE.
         </p>
       </Section>
-      <Section heading="11. Limitation of liability">
+      <Section heading="16. Limitations of liability" id="terms-liability">
         <p>
-          TO THE FULLEST EXTENT THE LAW ALLOWS, THE OPERATOR IS NOT LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL OR
-          CONSEQUENTIAL DAMAGES — LOST PROFITS, LOST DATA OR LOST RENT, FOR EXAMPLE — ARISING FROM YOUR USE OF THE
-          SYSTEM. Our total liability for any claim is limited to the amounts you paid us for use of the system in
-          the three months before the claim arose, or KSh 10,000 if you paid nothing. Nothing in these terms limits
-          liability that cannot lawfully be limited.
+          IN NO EVENT WILL WE OR OUR OWNERS, DIRECTORS, EMPLOYEES OR AGENTS BE LIABLE TO YOU OR ANY THIRD PARTY FOR
+          ANY DIRECT, INDIRECT, CONSEQUENTIAL, EXEMPLARY, INCIDENTAL, SPECIAL OR PUNITIVE DAMAGES — INCLUDING LOST
+          PROFIT, LOST REVENUE, LOST RENT OR LOSS OF DATA — ARISING FROM YOUR USE OF THE SYSTEM, EVEN IF WE HAVE
+          BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+        </p>
+        <p>
+          NOTWITHSTANDING ANYTHING TO THE CONTRARY, OUR TOTAL LIABILITY TO YOU FOR ANY CAUSE WHATSOEVER, AND
+          REGARDLESS OF THE FORM OF THE ACTION, WILL AT ALL TIMES BE LIMITED TO THE AMOUNTS YOU PAID US FOR USE OF
+          THE SYSTEM DURING THE THREE (3) MONTHS BEFORE THE CAUSE OF ACTION AROSE — OR, IF YOU PAID NOTHING FOR THE
+          SYSTEM ITSELF, KSH 10,000. NOTHING IN THESE TERMS LIMITS LIABILITY THAT CANNOT LAWFULLY BE LIMITED.
         </p>
       </Section>
-      <Section heading="12. Indemnification">
+      <Section heading="17. Indemnification" id="terms-indemnity">
         <p>
           You agree to compensate the operator, its owners and staff for any loss, claim or expense (including
           reasonable legal fees) they suffer because of your use of the system, your breach of these terms, or your
           breach of another person&rsquo;s rights.
         </p>
       </Section>
-      <Section heading="13. Governing law and disputes">
+      <Section heading="18. Backups and your data" id="terms-backups">
         <p>
-          These terms are governed by the laws of <strong>{law}</strong>. If a dispute arises, tell us first — most
-          problems are solved by looking at the ledger together. Where that does not resolve it, the courts of{' '}
-          <strong>{law}</strong> have exclusive jurisdiction.
+          We maintain the records you transmit to the system for the purpose of running the property, along with
+          data relating to your use of it. The database is backed up routinely, but you remain responsible for any
+          data you enter or activities you carry out through the system — keep your own copies of anything you
+          cannot afford to lose (for example, payment confirmations you receive outside the system).
+        </p>
+        <p>
+          We are not liable to you for loss or corruption of data you transmit, and you waive any claim against us
+          arising from such loss or corruption, except where the law does not allow that limitation.
         </p>
       </Section>
-      <Section heading="14. Electronic communications">
+      <Section heading="19. Electronic communications and signatures" id="terms-electronic">
         <p>
           Visiting the site, signing in, and the emails, SMS and portal notices the system sends are electronic
           communications, and you accept them as satisfying any legal requirement to be in writing. Electronic
@@ -365,14 +511,7 @@ export function Terms() {
           as valid as paper originals.
         </p>
       </Section>
-      <Section heading="15. Data protection">
-        <p>
-          Personal data is handled under the <Link to="/privacy">Privacy Policy</Link>, which forms part of these
-          terms. It sets out what we collect, why, how long we keep it, and how to ask for a copy, a correction or
-          deletion.
-        </p>
-      </Section>
-      <Section heading="16. Miscellaneous">
+      <Section heading="20. Miscellaneous" id="terms-misc">
         <p>
           These terms, the Privacy Policy and the tenancy agreements and policies they reference make up the whole
           agreement between you and the operator about the system. If a court finds any provision unenforceable, the
@@ -382,9 +521,14 @@ export function Terms() {
           caused by events beyond its reasonable control.
         </p>
       </Section>
-      <Section heading="17. Contact us">
-        <p>For a complaint, a correction, or anything else about these terms, reach the operator:</p>
+      <Section heading="21. Contact us" id="terms-contact">
+        <p>
+          To resolve a complaint about the system, or to receive further information about these terms, contact the
+          operator:
+        </p>
         <ul className="list-disc space-y-1 pl-5">
+          {identity?.legalName && <li><strong>{identity.legalName}</strong></li>}
+          {identity?.address && <li>{identity.address}</li>}
           {identity?.contactPhone && (<li>Phone: <Phone phone={identity.contactPhone} /></li>)}
           {identity?.contactEmail && (<li>Email: <Email email={identity.contactEmail} /></li>)}
           {!identity?.contactPhone && !identity?.contactEmail && (
