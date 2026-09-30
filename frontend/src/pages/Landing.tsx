@@ -30,6 +30,7 @@ import {
   ClipboardList,
   Droplets,
   FileSpreadsheet,
+  KeyRound,
   Menu,
   MessageCircle,
   ReceiptText,
@@ -232,6 +233,25 @@ export default function Landing() {
               visitor; the sky CTA is the page's single filled action. */}
           <nav className="flex shrink-0 items-center gap-2">
             <LandingThemeToggle />
+            {/* Sign in is ALWAYS visible: a ghost text link on sm+ (full
+                label) and an icon button on the smallest phones, where four
+                full-size controls would truncate the wordmark. The menu
+                sheet keeps a Sign in row too — it costs one line and covers
+                the open-menu browsing flow. */}
+            <Link
+              to="/login"
+              aria-label="Sign in"
+              className="press hidden min-h-[44px] items-center whitespace-nowrap rounded-xl border border-ash px-4 py-2 text-sm font-semibold text-graphite transition-[background-color,color] hover:bg-fog sm:flex"
+            >
+              Sign in
+            </Link>
+            <Link
+              to="/login"
+              aria-label="Sign in"
+              className="press flex min-h-[44px] w-11 items-center justify-center rounded-xl border border-ash text-graphite transition-[background-color,color] hover:bg-fog sm:hidden"
+            >
+              <KeyRound size={17} aria-hidden />
+            </Link>
             <button
               type="button"
               onClick={() => setMenuOpen((v) => !v)}
