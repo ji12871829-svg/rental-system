@@ -141,6 +141,12 @@ function OperatorContact({ privacyEmail }: { privacyEmail?: string | null }) {
 // social logins, and M-Pesa payments the operator never sees card data for.
 // Operator identity, retention periods and response times come from the live
 // business_branding record.
+
+// Build-time truth: when the deployment enables Clerk staff sign-in
+// (VITE_CLERK_PUBLISHABLE_KEY — see docs/RUNBOOK-clerk-setup.md), sign-in
+// data flows through a third party and this notice must say so. Dormant
+// builds omit the clause entirely.
+const CLERK_SIGNIN_ENABLED = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined);
 const PRIVACY_TOC: { id: string; title: string }[] = [
   { id: 'privacy-collect', title: 'What information we collect' },
   { id: 'privacy-use', title: 'How we use your information' },
@@ -230,6 +236,9 @@ export function Privacy() {
         </p>
         <ul className="list-disc space-y-1 pl-5">
           <li><strong>Service providers we rely on:</strong> SMS delivery through <strong>{branding.smsProviderName}</strong> when SMS is configured, the operator&rsquo;s chosen email delivery service, and our hosting provider — each processing data only on the operator&rsquo;s behalf, to run the services.</li>
+          {CLERK_SIGNIN_ENABLED && (
+            <li><strong>Staff sign-in:</strong> with the hosted sign-in card enabled, authentication is handled by Clerk (clerk.com), which processes sign-in emails and session identifiers to verify identity. Roles and permissions live only in this system, and the password door keeps working.</li>
+          )}
           <li><strong>Payments:</strong> M-Pesa payments are processed by Safaricom to the operator&rsquo;s own account; the payment result is recorded in the ledger.</li>
           <li><strong>Legal obligations:</strong> where disclosure is required by law, a court order, or a lawful request from an authority (including under the Kenya Data Protection Act, 2019).</li>
           <li><strong>Protection of rights:</strong> to investigate or prevent fraud, misuse, or threats to any person&rsquo;s safety.</li>
