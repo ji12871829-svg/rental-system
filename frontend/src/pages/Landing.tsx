@@ -17,7 +17,7 @@
 //  11. final CTA — ink band, single sky action + ghost secondary
 //  12. footer — dark, link columns, legal, identity
 //
-// All copy stays honest to what RPMS actually ships — no invented customers,
+// All copy stays honest to what the system actually ships — no invented customers,
 // no fake numbers; the stat band and pricing render real data. Branding
 // flows from BrandingContext so the page rebrands exactly like Login/portal.
 import { useEffect, useState } from 'react';
@@ -325,7 +325,7 @@ export default function Landing() {
           <img
             src="/building/building-1-800.webp"
             alt=""
-            className="absolute inset-0 h-full w-full object-cover opacity-[0.08]"
+            className="absolute inset-0 h-full w-full object-cover opacity-[0.12]"
             loading="eager"
             decoding="async"
           />
@@ -335,18 +335,21 @@ export default function Landing() {
           {/* Eyebrow — the design's inline label, not a pill. */}
           <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-graphite">
             <Building2 size={14} strokeWidth={1.75} className="text-brand-500" aria-hidden />
-            Property management for {branding.appName}
+            Property management for{' '}
+            <strong className="font-extrabold text-gray-900">{branding.appName}</strong>
           </p>
 
           {/* Display headline: Inter 700, tight tracking, ONE amber highlight
               per the design's inline-highlight rule. Centered like the photo-led
               hero: message first, the building itself as the visual anchor. */}
           <h1 className="type-display mx-auto mt-5 max-w-3xl text-gray-900">
-            Run the whole property from <span className="bg-sun px-1">one ledger.</span>
+            Run <span className="bg-sun px-1">{branding.appName}</span> from one ledger.
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-graphite">
-            RPMS puts rent, water, receipts and messages in one place — so landlords and
-            managers stop chasing payments and tenants stop calling for answers.
+            Rent, water, receipts and messages for every unit at{' '}
+            <strong className="font-semibold text-gray-900">{branding.appName}</strong> — in one place.
+            M-Pesa payments post themselves to the ledger, and tenants check their balance,
+            bills and statements without calling the office.
           </p>
 
           {/* The building photo card — the property this software runs, with a
@@ -364,7 +367,7 @@ export default function Landing() {
                 <img
                   src="/building/building-1-800.webp"
                   alt="The building this property management system runs"
-                  className="gray-reveal h-60 w-full object-cover sm:h-80"
+                  className="h-60 w-full object-cover sm:h-80"
                   loading="eager"
                   decoding="async"
                 />
