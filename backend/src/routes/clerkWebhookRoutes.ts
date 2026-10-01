@@ -23,6 +23,7 @@ import { verifyWebhook } from '@clerk/backend/webhooks';
 import type { UserWebhookEvent } from '@clerk/backend';
 import { env } from '../config/env';
 import { query, queryOne } from '../config/db';
+import { logAudit } from '../services/auditService';
 import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
@@ -130,7 +131,23 @@ router.post(
 
     if (!local) {
       // Not an error: the runbook's dashboard provisioning remains the path
-      // for users without a verified-email match (or non-staff roles).
+      // for users without a verified-email match (or non-staff roles). The
+      // refusal IS recorded in the audit trail — a claimed-but-unverified
+      // email or an unknown one is exactly what an admin reviewing access
+      // needs to see. userId stays null so the trail shows "system" (no
+      // local user is implicated). Only the decision's fields are logged —
+      // never Clerk's full user object.
+      await logAudit({
+        action: 'CLERK_LINK_REFUSED',
+        entity: 'users',
+        newValue: {
+          provider: 'clerk',
+          external_id: clerkUserId,
+          email,
+          event: event.type,
+          reason: email ? 'no matching active staff user' : 'no verified email',
+        },
+      });
       res.status(200).json({ data: { mapped: null, reason: email ? 'no matching active staff user' : 'no verified email' } });
       return;
     }
@@ -140,6 +157,17 @@ router.post(
        VALUES ($1, 'clerk', $2) ON CONFLICT DO NOTHING`,
       [local.id, clerkUserId],
     );
+    // The auto-mapping replaces a manual dashboard/SQL step — it belongs in
+    // the same trail an admin already checks for LOGIN/USER_ changes. Replay
+    // acknowledgments (alreadyMapped) and ignored event types are NOT logged:
+    // Clerk retries and profile edits would otherwise flood the trail.
+    await logAudit({
+      userId: local.id,
+      action: 'CLERK_LINKED',
+      entity: 'users',
+      entityId: local.id,
+      newValue: { provider: 'clerk', external_id: clerkUserId, email, event: event.type },
+    });
     res.status(201).json({ data: { mapped: local.id } });
   }),
 );

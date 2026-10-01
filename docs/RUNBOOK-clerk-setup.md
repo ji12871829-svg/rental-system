@@ -76,6 +76,11 @@ Replays are idempotent, so Clerk retries are harmless.
 Without the signing secret the endpoint 401s every call (fails closed) and
 mapping stays manual — exactly the behavior before this option existed.
 
+Every mapping decision lands in the **Audit trail** (`CLERK_LINKED` rows
+attributed to the linked staff user; `CLERK_LINK_REFUSED` rows shown as
+system, with the reason — e.g. an email that matches no ACTIVE staff user).
+Replays and ignored events are not logged, so Clerk retries stay invisible.
+
 ### B. Manual: pre-provision from the Clerk dashboard (fallback)
 
 In Clerk → **Users**, create or open each staff member's user, copy their

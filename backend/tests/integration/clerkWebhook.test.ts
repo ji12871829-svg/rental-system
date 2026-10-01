@@ -192,6 +192,18 @@ describe('POST /api/webhooks/clerk', () => {
       "SELECT user_id FROM user_external_ids WHERE provider = 'clerk' AND external_id = 'user_test_wh_admin'",
     );
     expect(row!.user_id).toBe(admin!.id);
+
+    // The auto-mapping replaces a manual provisioning step, so it shows in
+    // the Audit trail attributed to the linked local user.
+    const audit = await queryOne<{ new_value: { external_id: string; event: string } }>(
+      `SELECT new_value FROM audit_logs
+        WHERE action = 'CLERK_LINKED' AND entity = 'users' AND entity_id = $1
+          AND new_value->>'external_id' = 'user_test_wh_admin'
+        ORDER BY id DESC LIMIT 1`,
+      [admin!.id],
+    );
+    expect(audit).toBeTruthy();
+    expect(audit!.new_value).toMatchObject({ external_id: 'user_test_wh_admin', event: 'user.created' });
   });
 
   it('is idempotent — a replayed user.created does not duplicate or fail', async () => {
@@ -210,6 +222,45 @@ describe('POST /api/webhooks/clerk', () => {
     const res2 = await request(app).post('/api/webhooks/clerk').set(second.headers).send(second.body);
     expect(res2.status).toBe(200);
     expect(res2.body.data.alreadyMapped).toBe(true);
+  });
+
+  it('logs exactly one CLERK_LINKED row across the original event and its replay', async () => {
+    const { queryOne } = await import('../../src/config/db');
+    const count = await queryOne<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM audit_logs
+        WHERE action = 'CLERK_LINKED' AND new_value->>'external_id' = 'user_test_wh_replay'`,
+    );
+    // The suite's mapping + replay above must have produced ONE trail row,
+    // not one per delivery — Clerk retries must not flood the trail.
+    expect(count).toMatchObject({ n: '1' });
+  });
+
+  it('records a refusal in the audit trail when nothing matches', async () => {
+    const { body, headers } = signed({
+      type: ClerkUserCreated,
+      data: {
+        id: 'user_test_wh_audit_refused',
+        primary_email_address_id: 'email_1',
+        email_addresses: [{ id: 'email_1', email_address: 'audit.refused@nowhere.test', verification: { status: 'verified' } }],
+      },
+    });
+    const res = await request(app).post('/api/webhooks/clerk').set(headers).send(body);
+    expect(res.status).toBe(200);
+
+    const { queryOne } = await import('../../src/config/db');
+    const audit = await queryOne<{ user_id: number | null; new_value: { reason: string; email: string } }>(
+      `SELECT user_id, new_value FROM audit_logs
+        WHERE action = 'CLERK_LINK_REFUSED' AND new_value->>'external_id' = 'user_test_wh_audit_refused'
+        ORDER BY id DESC LIMIT 1`,
+    );
+    expect(audit).toBeTruthy();
+    // Attributed to no local user ("system" in the trail) — the email did
+    // not match one, and the row must not implicate an arbitrary user.
+    expect(audit!.user_id).toBeNull();
+    expect(audit!.new_value).toMatchObject({
+      email: 'audit.refused@nowhere.test',
+      reason: 'no matching active staff user',
+    });
   });
 
   it('maps an INACTIVE local user only after an account update re-activates them', async () => {
