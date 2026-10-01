@@ -48,7 +48,14 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
       - run: npx tsc --noEmit
-      - run: npm test
+      # Teed so a failure's jest output lands in the job summary — visible on
+      # the run page without auth, no log download needed to triage a red
+      # build. PIPESTATUS preserves npm test's own exit code.
+      - run: npm test 2>&1 | tee /tmp/jest.log; exit ${PIPESTATUS[0]}
+      - name: Surface failing test output
+        if: failure()
+        run: |
+          tail -n 120 /tmp/jest.log >> "${GITHUB_STEP_SUMMARY}" || true
 
   frontend:
     if: github.event_name != 'schedule'
