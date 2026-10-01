@@ -41,6 +41,12 @@ only door. These steps switch it on (and back off, instantly).
 - Optional, for automatic staff mapping (§3 option A): add
   `CLERK_WEBHOOK_SIGNING_SECRET=whsec_…` next to `CLERK_SECRET_KEY` — the
   value comes from the webhook you register in step §3.A.2.
+- **Set `CLERK_PUBLISHABLE_KEY=pk_…` on the same service that serves the
+  API whenever `CLERK_SECRET_KEY` is set there.** The backend mounts
+  `clerkMiddleware()` the moment it sees a secret key, and that middleware
+  hard-fails every request (500) without a publishable key to parse against
+  — on a single-service deploy (API + frontend in one), that takes the
+  whole app down until the publishable key is added.
 
 ## 3. Map staff users to Clerk accounts
 
@@ -72,6 +78,21 @@ Replays are idempotent, so Clerk retries are harmless.
    `CLERK_WEBHOOK_SIGNING_SECRET` on the backend (§2), then redeploy.
 3. Use **Send test** in the Clerk dashboard; the endpoint replies 200/201 and
    the mapping row appears in `user_external_ids`.
+4. Or smoke-test from a terminal without the dashboard:
+
+   ```bash
+   # Safe gate check on any deployment (no secret, changes nothing):
+   npm run smoke:clerk-webhook --prefix backend -- --url https://<host>
+
+   # Full probe — signs real events, auto-maps a real admin, cleans up:
+   npm run smoke:clerk-webhook --prefix backend -- \
+     --url https://<host> --secret whsec_... --yes \
+     --database-url "$DATABASE_URL"
+   ```
+
+   Exit 0 = the endpoint rejects unsigned bodies, maps nothing for
+   unverified/unknown emails, auto-maps a verified staff email, and leaves
+   no mapping row behind.
 
 Without the signing secret the endpoint 401s every call (fails closed) and
 mapping stays manual — exactly the behavior before this option existed.

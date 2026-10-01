@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node scripts/predeploy-check.mjs && node dist/index.js",
     "predeploy:check": "node scripts/predeploy-check.mjs",
+    "smoke:clerk-webhook": "node scripts/clerkWebhookSmoke.mjs",
     "typecheck": "tsc --noEmit",
     "db:setup": "tsx src/db/setup.ts",
     "db:reset": "tsx src/db/reset.ts",
