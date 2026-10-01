@@ -52,11 +52,14 @@ router.post(
         audience: STAFF_JWT_AUDIENCE,
       }
     );
+    // ip rides in new_value: the session-anomaly detector (auditService)
+    // needs it to flag same-account logins from distinct addresses.
     await logAudit({
       userId: user.id,
       action: 'LOGIN',
       entity: 'users',
       entityId: user.id,
+      newValue: { ip: (req.ip ?? '').slice(0, 64) || null },
     });
     setAuthCookies(res, token);
     res.json({
@@ -248,7 +251,7 @@ router.post(
           audience: STAFF_JWT_AUDIENCE,
         }
       );
-      await logAudit({ userId: inserted[0].id, action: 'LOGIN', entity: 'users', entityId: inserted[0].id });
+      await logAudit({ userId: inserted[0].id, action: 'LOGIN', entity: 'users', entityId: inserted[0].id, newValue: { ip: (req.ip ?? '').slice(0, 64) || null } });
       setAuthCookies(res, token);
       return res.status(201).json({
         data: {

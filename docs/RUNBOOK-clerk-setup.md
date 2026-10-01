@@ -157,6 +157,11 @@ use the password form — nobody is locked out by a half-migration.
   sign-in instead" fallback.
 - Tenant tab → unchanged password flow, lands on `/portal`.
 - `curl -s https://<host>/api/health` → `"status":"ok"`.
+- Session anomalies (admin-only): the dashboard shows a red **Session
+  anomalies** card when the last 7 days hold a same-account `LOGIN` **and**
+  `LOGIN_CLERK` minutes apart (two live credential paths) or logins from two
+  distinct IPs within ten minutes — `GET /api/audit/anomalies`, click-through
+  to the audit trail. A quiet week renders nothing.
 
 ## 5. Roll back (instant, no deploy)
 

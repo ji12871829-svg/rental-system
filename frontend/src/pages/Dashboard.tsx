@@ -10,6 +10,7 @@ import { KpiBand } from '../components/dashboard/KpiBand';
 import { ChartGrid } from '../components/dashboard/ChartGrid';
 import { HealthCards } from '../components/dashboard/HealthCards';
 import { ClerkSignupsStats } from '../components/dashboard/ClerkSignupsStats';
+import { SecurityAnomaliesStats } from '../components/dashboard/SecurityAnomaliesStats';
 import type { DashboardData } from '@rpms/shared';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
@@ -95,10 +96,15 @@ export default function Dashboard() {
         <HealthCards data={data} />
       </div>
       {/* Admin-only, and self-gating: renders nothing unless refused Clerk
-          sign-ups are actually pending. */}
+          sign-ups / session anomalies are actually pending. */}
       {isAdmin && (
         <div className="rise-in" style={{ animationDelay: '135ms' }}>
           <ClerkSignupsStats />
+        </div>
+      )}
+      {isAdmin && (
+        <div className="rise-in" style={{ animationDelay: '135ms' }}>
+          <SecurityAnomaliesStats />
         </div>
       )}
       <div className="rise-in" style={{ animationDelay: '180ms' }}>

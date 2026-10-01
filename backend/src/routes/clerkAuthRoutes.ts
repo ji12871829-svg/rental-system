@@ -67,7 +67,15 @@ router.post(
     // separate Clerk-minted sessions from password ones (e.g. when auditing
     // which identities go through the external IdP). Same entity/shape as
     // every login row, so list filters and exports treat it as a login.
-    await logAudit({ userId: mapped.id, action: 'LOGIN_CLERK', entity: 'users', entityId: mapped.id });
+    await logAudit({
+      userId: mapped.id,
+      action: 'LOGIN_CLERK',
+      entity: 'users',
+      entityId: mapped.id,
+      // ip rides in new_value for the session-anomaly detector, matching
+      // the password LOGIN rows.
+      newValue: { ip: (req.ip ?? '').slice(0, 64) || null },
+    });
     setAuthCookies(res, token);
     res.json({
       data: {
