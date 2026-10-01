@@ -15,6 +15,17 @@ interface AuditRow {
   user_email: string | null;
 }
 
+// One line each, in the order the actions occur in the mapping lifecycle.
+// Kept in sync with the writers: clerkWebhookRoutes.ts (LINKED, LINK_REFUSED,
+// UNLINKED via user.deleted), userService.ts (UNLINKED via account deletion),
+// clerkAuthRoutes.ts (LOGIN_CLERK).
+const CLERK_LEGEND: { action: string; text: string }[] = [
+  { action: 'CLERK_LINKED', text: 'a Clerk identity was mapped to this staff user — automatically by the webhook (verified email match) or by an admin from the Clerk Sign-ups page.' },
+  { action: 'CLERK_LINK_REFUSED', text: 'the webhook did not map this sign-up: no verified email, or none matching an ACTIVE staff user. The claimed email and reason are in the row\'s New value.' },
+  { action: 'CLERK_UNLINKED', text: 'the mapping was removed — the Clerk account was deleted (user.deleted) or the staff user was deleted (cascade).' },
+  { action: 'LOGIN_CLERK', text: 'sign-in through Clerk\'s hosted sign-in; plain LOGIN rows are password sign-ins.' },
+];
+
 function JsonBlock({ label, value }: { label: string; value: unknown }) {
   if (value === null || value === undefined) return null;
   return (
@@ -46,6 +57,10 @@ export default function AuditLogs() {
 
   const entities = Array.from(new Set((allForOptions?.data ?? []).map((r) => r.entity))).sort();
   const actions = Array.from(new Set((allForOptions?.data ?? []).map((r) => r.action))).sort();
+  // The legend only earns its place when the log actually contains Clerk
+  // lifecycle rows — same derivation the action dropdown uses (latest 100).
+  const hasClerkActions = (allForOptions?.data ?? []).some((r) => r.action.startsWith('CLERK_'));
+  const [showLegend, setShowLegend] = useState(false);
 
   const filtered = q
     ? (data?.data ?? []).filter((r) =>
@@ -72,6 +87,26 @@ export default function AuditLogs() {
           {actions.map((a) => <option key={a} value={a}>{a}</option>)}
         </Select>
       </div>
+
+      {hasClerkActions && (
+        <div className="mb-4">
+          <Button variant="ghost" className="!px-0 !py-0 text-xs" onClick={() => setShowLegend((v) => !v)}>
+            {showLegend ? 'Hide Clerk action legend' : 'What do CLERK_* actions mean?'}
+          </Button>
+          {showLegend && (
+            <dl className="mt-2 max-w-3xl space-y-1.5 rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
+              {CLERK_LEGEND.map((l) => (
+                <div key={l.action}>
+                  <dt className="inline font-semibold text-gray-800">
+                    <code className="rounded bg-gray-200/70 px-1 py-0.5">{l.action}</code>{' — '}
+                  </dt>
+                  <dd className="inline">{l.text}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
+      )}
 
       {loading && <SkeletonTable cols={6} />}
       {error && <div className="text-sm text-red-600">{error}</div>}
