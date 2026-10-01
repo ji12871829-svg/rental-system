@@ -311,7 +311,7 @@ export function Pricing() {
                       <p className="text-xl font-bold tracking-tight tabular-nums text-gray-900">
                         {currency} {r.minRent.toLocaleString()}
                         {r.maxRent > r.minRent && (
-                          <span className="text-sm font-semibold text-gray-500"> – {currency}{r.maxRent.toLocaleString()}</span>
+                          <span className="text-sm font-semibold text-gray-500"> – {currency} {r.maxRent.toLocaleString()}</span>
                         )}
                       </p>
                     </div>
