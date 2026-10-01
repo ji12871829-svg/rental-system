@@ -69,17 +69,21 @@ interface UnitPriceRow {
 export function usePublicUnits(): { rows: UnitPriceRow[] | null; failed: boolean; currency: string } {
   const [rows, setRows] = useState<UnitPriceRow[] | null>(null);
   const [failed, setFailed] = useState(false);
+  // Operator's display currency from the same response ('KSh' until it
+  // arrives, kept on failure) — the pricing table must show what the
+  // operator actually charges in, not a hardcoded default.
+  const [currency, setCurrency] = useState('KSh');
 
   useEffect(() => {
     let alive = true;
     api
       .get<{ currency: string; data: UnitPriceRow[] }>('/api/public/units')
-      .then((res) => { if (alive) { setRows(res.data); setFailed(false); } })
+      .then((res) => { if (alive) { setRows(res.data); setCurrency(res.currency || 'KSh'); setFailed(false); } })
       .catch(() => { if (alive) setFailed(true); });
     return () => { alive = false; };
   }, []);
 
-  return { rows, failed, currency: 'KSh' };
+  return { rows, failed, currency };
 }
 
 // ---------------------------------------------------------- TrustMarquee ---
@@ -211,7 +215,7 @@ export function HowItWorks() {
 
 // ---------------------------------------------------------------- Pricing ---
 // The Available Units showcase — the page's conversion heart. Listing-style
-// cards: photo, unit type, bold KSh price, live availability line, amenity
+// cards: photo, unit type, bold price, live availability line, amenity
 // chips, and a paired action row (book a viewing + WhatsApp), rendered from
 // the operator's real rent ledger.
 
@@ -224,8 +228,10 @@ const LISTING_PHOTOS: Record<string, { src: string; alt: string }> = {
   '2 Bedroom': { src: '/building/building-1-1600.webp', alt: 'The building facade where the two-bedroom units are' },
 };
 
-export function Pricing({ currency = 'KSh' }: { currency?: string }) {
-  const { rows, failed } = usePublicUnits();
+export function Pricing() {
+  // Currency rides along on the same response — no separate call, no
+  // hardcoded symbol (GET /api/settings needs a session; this hook does not).
+  const { rows, failed, currency } = usePublicUnits();
   const { identity } = useBranding();
   const waDigits = identity?.contactPhone
     ? identity.contactPhone.replace(/[^0-9]/g, '').replace(/^0/, '254')
