@@ -3,7 +3,12 @@
 #    exports, types), so a finding is caught at commit time instead of the
 #    first push. Skipped when nothing staged can change knip's result
 #    (code files, manifests, or the knip config itself).
-# Either gate failing blocks the commit; use `git commit --no-verify` to
+# 3) gitleaks staged-secret scan — the same engine CI's secrets-scan runs,
+#    over the index (staged content), so a secret is caught on THIS machine
+#    before it is ever committed, not after it's pushed. Binary lives in
+#    .tools/ (gitignored); with it absent the gate skips rather than
+#    brick every commit on a fresh clone.
+# Any gate failing blocks the commit; use `git commit --no-verify` to
 # bypass deliberately.
 npx lint-staged || exit 1
 
@@ -17,4 +22,24 @@ if printf '%s\n' "$STAGED" | grep -qE '\.(js|mjs|cjs|ts|tsx)$|(^|/)package(-lock
     echo "  Deliberate bypass: git commit --no-verify"
     exit 1
   }
+fi
+
+# --- 3) gitleaks: staged-secret scan (fail-closed on any finding) ---------
+# CI's secrets-scan covers full history; this gate catches secrets on THIS
+# machine before they are ever committed. `protect --staged` scans exactly
+# the index content, honors .gitleaksignore, and redacts by default.
+GITLEAKS=".tools/gitleaks.exe"
+if [ -x "$GITLEAKS" ]; then
+  if ! ./.tools/gitleaks.exe protect --staged --no-banner --redact; then
+    echo ""
+    echo "✖ gitleaks: staged secret scan FAILED."
+    echo "  Remove the secret, rotate it if it ever left this machine, or"
+    echo "  record a false positive in .gitleaksignore. Re-run locally with:"
+    echo "    ./.tools/gitleaks.exe protect --staged --redact"
+    echo "  Deliberate bypass: git commit --no-verify"
+    exit 1
+  fi
+  echo "gitleaks: no secrets in staged files ✓"
+else
+  echo "gitleaks: binary not found in .tools/ — skipping local scan (CI secrets-scan still applies)."
 fi
