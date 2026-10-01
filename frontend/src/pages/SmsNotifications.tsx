@@ -84,13 +84,13 @@ export default function SmsNotifications() {
   // actual config. (Reading the body directly was a latent bug: every
   // config.* field was undefined, which only became visible when autoSend
   // — the first truthy-by-default field — was added.)
-  const { data: configResponse } = useFetch<{ data: SmsConfigInfo }>(() => api.get('/api/sms/config'), [refreshKey]);
+  const { data: configResponse } = useFetch(() => api.get<{ data: SmsConfigInfo }>('/api/sms/config'), [refreshKey]);
   const config = configResponse?.data;
   const liveMode = config?.live === true;
 
   // Provider wallet balance — drives the low-credit warning banner. Only
   // meaningful in live Africa's Talking mode; every other state renders nothing.
-  const { data: balanceResponse } = useFetch<{ data: BalanceStatus }>(() => api.get('/api/sms/balance'), [refreshKey]);
+  const { data: balanceResponse } = useFetch(() => api.get<{ data: BalanceStatus }>('/api/sms/balance'), [refreshKey]);
   const balanceStatus = balanceResponse?.data;
   const lowBalance = balanceStatus && (balanceStatus.state === 'low' || balanceStatus.state === 'empty')
     ? balanceStatus

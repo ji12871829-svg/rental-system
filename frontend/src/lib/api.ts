@@ -41,7 +41,11 @@ export interface Paged<T> {
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>(path),
+  // request() resolves with the parsed body as-is: plain GETs arrive as the
+  // { data: ... } envelope. Requiring `data` on T makes a bare T[] (or any
+  // non-envelope type) a compile error, so a consumer can never type the
+  // response one unwrap level off (the bug that crashed the signups feed).
+  get: <T extends { data: unknown }>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) }),
   put: <T>(path: string, body?: unknown) =>

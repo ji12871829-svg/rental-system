@@ -29,7 +29,9 @@ const { request } = createHttpClient({
 });
 
 export const portalApi = {
-  get: <T>(path: string) => request<T>(path),
+  // Same envelope rule as lib/api.ts: GETs resolve with the parsed body
+  // { data: ... } — requiring `data` on T keeps consumers unwrap-proof.
+  get: <T extends { data: unknown }>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) }),
 };

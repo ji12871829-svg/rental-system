@@ -29,8 +29,9 @@ interface TenantRow { id: number; full_name: string; unit_number: string | null;
 
 export default function MpesaReview() {
   const { toast } = useToast();
-  const { data, loading, refresh } = useFetch<{ data: ReviewRow[] }>(() => api.get('/api/mpesa/review'), []);
-  const { data: tenantsData } = useFetch<{ data: TenantRow[] }>(() => api.get('/api/tenants?limit=100'), []);
+  // Envelope type pinned at the api.get call site; useFetch infers from it.
+  const { data, loading, refresh } = useFetch(() => api.get<{ data: ReviewRow[] }>('/api/mpesa/review'), []);
+  const { data: tenantsData } = useFetch(() => api.get<{ data: TenantRow[] }>('/api/tenants?limit=100'), []);
   const [busy, setBusy] = useState<number | null>(null);
   const [selection, setSelection] = useState<Record<number, { tenantId: string; kind: 'RENT' | 'WATER'; allocate: boolean }>>({});
   const [shakeRef, fireShake] = useShake();
