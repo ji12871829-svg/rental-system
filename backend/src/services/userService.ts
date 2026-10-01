@@ -77,8 +77,32 @@ export async function updateUser(
 
 export async function deleteUser(id: number, userId: number): Promise<void> {
   if (id === userId) throw unprocessable('You cannot delete your own account.');
-  const existing = await queryOne<{ id: number }>('SELECT id FROM users WHERE id = $1', [id]);
+  const existing = await queryOne<{ id: number; email: string }>('SELECT id, email FROM users WHERE id = $1', [id]);
   if (!existing) throw notFound('User not found.');
+  // The FK cascade silently removes the user's external-identity mappings —
+  // record them BEFORE the delete so unlink events stay traceable. Attributed
+  // to the acting admin (rows owned by the deleted user are anonymised by
+  // audit_logs' ON DELETE SET NULL the moment the delete lands), with the
+  // affected account carried in the payload. The action name says CLERK —
+  // the only external provider today; revisit if another one lands.
+  const mappings = await query<{ provider: string; external_id: string }>(
+    'SELECT provider, external_id FROM user_external_ids WHERE user_id = $1',
+    [id],
+  );
+  for (const m of mappings) {
+    await logAudit({
+      userId,
+      action: 'CLERK_UNLINKED',
+      entity: 'users',
+      entityId: id,
+      newValue: {
+        provider: m.provider,
+        external_id: m.external_id,
+        event: 'account_deleted',
+        user_email: existing.email,
+      },
+    });
+  }
   await query('DELETE FROM users WHERE id = $1', [id]);
   invalidateUserCache(id);
   await logAudit({ userId, action: 'USER_DELETED', entity: 'users', entityId: id });

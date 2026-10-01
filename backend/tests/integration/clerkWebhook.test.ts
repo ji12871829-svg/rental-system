@@ -483,5 +483,62 @@ describe('POST /api/webhooks/clerk', () => {
         .send({ userId: 999999999 });
       expect(missing.status).toBe(404);
     });
+
+    it('traces the cascade: deleting a staff user unlinks their Clerk mapping with an audit row', async () => {
+      const { query, queryOne } = await import('../../src/config/db');
+      const bcrypt = (await import('bcryptjs')).default;
+
+      // A throwaway mapped staff user, so the fixture users stay untouched.
+      const inserted = await query<{ id: number }>(
+        `INSERT INTO users (name, email, phone, password_hash, role, status)
+         VALUES ('Cascade Probe', 'clerk.webhook.cascade@example.test', NULL, $1, 'STAFF', 'ACTIVE')
+         RETURNING id`,
+        [await bcrypt.hash('Irrelevant#2026', 4)],
+      );
+      const victimId = inserted[0].id;
+      await query(
+        `INSERT INTO user_external_ids (user_id, provider, external_id)
+         VALUES ($1, 'clerk', 'user_test_wh_cascade')`,
+        [victimId],
+      );
+
+      const admin = await staffSession('admin@rpms.local', 'Admin@2026!');
+      const res = await request(app)
+        .delete(`/api/users/${victimId}`)
+        .set('Cookie', admin.cookie)
+        .set('x-csrf-token', admin.csrf);
+      expect(res.status).toBe(204);
+
+      // The cascade really removed the mapping.
+      const mapping = await queryOne(
+        "SELECT user_id FROM user_external_ids WHERE provider = 'clerk' AND external_id = 'user_test_wh_cascade'",
+      );
+      expect(mapping).toBeNull();
+
+      // The unlink is traceable: attributed to the ACTING admin (rows owned
+      // by the deleted user are anonymised by audit_logs' ON DELETE SET NULL
+      // the moment the delete lands), with the affected account in the
+      // payload.
+      const audit = await queryOne<{ user_id: number; new_value: { external_id: string; event: string; user_email: string } }>(
+        `SELECT user_id, new_value FROM audit_logs
+          WHERE action = 'CLERK_UNLINKED' AND entity_id = $1
+            AND new_value->>'external_id' = 'user_test_wh_cascade'`,
+        [victimId],
+      );
+      expect(audit).toBeTruthy();
+      expect(audit!.user_id).toBeTruthy(); // acting admin, not NULL
+      expect(audit!.new_value).toMatchObject({
+        external_id: 'user_test_wh_cascade',
+        event: 'account_deleted',
+        user_email: 'clerk.webhook.cascade@example.test',
+      });
+
+      // And the USER_DELETED row sits right next to it.
+      const deleted = await queryOne<{ id: number }>(
+        `SELECT id FROM audit_logs WHERE action = 'USER_DELETED' AND entity_id = $1`,
+        [victimId],
+      );
+      expect(deleted).toBeTruthy();
+    });
   });
 });

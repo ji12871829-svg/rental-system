@@ -104,6 +104,10 @@ Every mapping decision lands in the **Audit trail** (`CLERK_LINKED` rows
 attributed to the linked staff user; `CLERK_LINK_REFUSED` rows shown as
 system, with the reason — e.g. an email that matches no ACTIVE staff user).
 Replays and ignored events are not logged, so Clerk retries stay invisible.
+Unlinks are traceable too: deleting the Clerk account writes `CLERK_UNLINKED`
+attributed to the affected user, and deleting the **staff** user writes
+`CLERK_UNLINKED` (`event: account_deleted`) attributed to the acting admin,
+since the cascade would otherwise remove the mapping silently.
 
 Refused sign-ups also surface on the **Clerk Sign-ups** admin page
 (`/clerk-signups`): one row per refused Clerk identity with the claimed
