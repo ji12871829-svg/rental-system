@@ -18,11 +18,15 @@ interface ClerkSignupRow {
   linked_user_id: number | null;
 }
 
+interface SignupsResponse {
+  data: { signups: ClerkSignupRow[]; recentLogins: { total: number; clerk: number } };
+}
+
 export function ClerkSignupsStats() {
-  const { data, error } = useFetch(() => api.get<ClerkSignupRow[]>('/api/webhooks/clerk/signups'), []);
+  const { data, error } = useFetch(() => api.get<SignupsResponse>('/api/webhooks/clerk/signups'), []);
 
   if (error || !data) return null;
-  const pending = data.filter((r) => r.linked_user_id === null);
+  const pending = data.data.signups.filter((r) => r.linked_user_id === null);
   if (pending.length === 0) return null;
 
   // The endpoint orders by Clerk identity, not recency — sort for the

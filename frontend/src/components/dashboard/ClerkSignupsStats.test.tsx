@@ -28,6 +28,13 @@ function row(overrides: Record<string, unknown> = {}) {
   };
 }
 
+// The route wraps the payload in the standard { data } envelope — the same
+// shape the real HTTP client hands the component (mocking the client, not
+// the wire, must still respect that contract).
+function envelope(rows: Record<string, unknown>[]) {
+  return { data: { signups: rows, recentLogins: { total: 4, clerk: 1 } } };
+}
+
 function renderStrip() {
   return render(
     <MemoryRouter>
@@ -46,24 +53,23 @@ afterEach(() => {
 
 describe('ClerkSignupsStats (dashboard strip)', () => {
   it('renders nothing while the fetch fails (feature off or non-admin)', async () => {
-    mockedGet.mockRejectedValueOnce(new Error('You do not have permission to perform this action.'));
-    const { container } = renderStrip();
+    mockedGet.mockRejectedValueOnce(new Error('You do not have permission to perform this action.'));    const { container } = renderStrip();
     await waitFor(() => expect(mockedGet).toHaveBeenCalled());
     expect(container).toBeEmptyDOMElement();
   });
 
   it('renders nothing when every refused sign-up has since been linked', async () => {
-    mockedGet.mockResolvedValueOnce([row({ linked_user_id: 7 })]);
+    mockedGet.mockResolvedValueOnce(envelope([row({ linked_user_id: 7 })]));
     const { container } = renderStrip();
     await waitFor(() => expect(mockedGet).toHaveBeenCalled());
     expect(container).toBeEmptyDOMElement();
   });
 
   it('renders a deep-linking card when pending refusals exist', async () => {
-    mockedGet.mockResolvedValueOnce([
+    mockedGet.mockResolvedValueOnce(envelope([
       row({ external_id: 'user_test_a', email: 'a@rpms.local', refused_at: new Date(Date.now() - 3 * 60 * 1000).toISOString(), refusals: 2 }),
       row({ external_id: 'user_test_b', email: 'b@rpms.local', refused_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), refusals: 1 }),
-    ]);
+    ]));
     renderStrip();
     await waitFor(() => expect(screen.getByText('Clerk sign-ups')).toBeInTheDocument());
     // 2 pending identities, 3 total failed attempts (the attempts figure is
@@ -79,14 +85,14 @@ describe('ClerkSignupsStats (dashboard strip)', () => {
   });
 
   it('goes silent again once the pending list clears (fresh mount = fresh data)', async () => {
-    mockedGet.mockResolvedValueOnce([row()]);
+    mockedGet.mockResolvedValueOnce(envelope([row()]));
     const first = renderStrip();
     await waitFor(() => expect(screen.getByText(/not mapped/)).toBeInTheDocument());
     first.unmount();
 
     // Everything has since been linked → the next mount renders nothing
     // rather than a vanity card showing zeros.
-    mockedGet.mockResolvedValue([row({ linked_user_id: 7 })]);
+    mockedGet.mockResolvedValue(envelope([row({ linked_user_id: 7 })]));
     const { container } = renderStrip();
     await waitFor(() => expect(mockedGet).toHaveBeenCalledTimes(2));
     expect(container).toBeEmptyDOMElement();

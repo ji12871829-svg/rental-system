@@ -382,12 +382,12 @@ describe('POST /api/webhooks/clerk', () => {
       expect(res.status).toBe(403);
     });
 
-    it('lists deduplicated refusals with reason and live linked status', async () => {
+    it('lists deduplicated refusals with reason, live linked status, and the adoption split', async () => {
       const admin = await staffSession('admin@rpms.local', 'Admin@2026!');
       // The earlier refusal tests produced rows for these two identities.
       const res = await request(app).get('/api/webhooks/clerk/signups').set('Cookie', admin.cookie);
       expect(res.status).toBe(200);
-      const rows = res.body.data as {
+      const rows = res.body.data.signups as {
         external_id: string; email: string | null; reason: string; refusals: number; linked_user_id: number | null;
       }[];
       const nobody = rows.find((r) => r.external_id === 'user_test_wh_nobody');
@@ -399,6 +399,21 @@ describe('POST /api/webhooks/clerk', () => {
       expect(nobody!.refusals).toBeGreaterThanOrEqual(1);
       const unverified = rows.find((r) => r.external_id === 'user_test_wh_unverified');
       expect(unverified).toMatchObject({ reason: 'no verified email' });
+
+      // recentLogins: LOGIN vs LOGIN_CLERK over 30 days. Compare against the
+      // same query the route runs so the API response mirrors the database
+      // (this suite's password logins are LOGIN rows; earlier suites in the
+      // shared test DB may contribute LOGIN_CLERK rows — parity, not values).
+      const { queryOne } = await import('../../src/config/db');
+      const expected = await queryOne<{ total: number; clerk: number }>(
+        `SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE action = 'LOGIN_CLERK')::int AS clerk
+           FROM audit_logs
+          WHERE action IN ('LOGIN', 'LOGIN_CLERK')
+            AND entity = 'users'
+            AND created_at >= NOW() - INTERVAL '30 days'`,
+      );
+      expect(res.body.data.recentLogins).toEqual({ total: expected!.total, clerk: expected!.clerk });
     });
 
     it('links a refused identity to a staff user from the review view', async () => {
@@ -436,7 +451,7 @@ describe('POST /api/webhooks/clerk', () => {
       );
       expect(row!.user_id).toBe(manager!.id);
       const list = await request(app).get('/api/webhooks/clerk/signups').set('Cookie', admin.cookie);
-      const linked = (list.body.data as { external_id: string; linked_user_id: number | null }[])
+      const linked = (list.body.data.signups as { external_id: string; linked_user_id: number | null }[])
         .find((r) => r.external_id === 'user_test_wh_link_e2e');
       expect(linked!.linked_user_id).toBe(manager!.id);
 

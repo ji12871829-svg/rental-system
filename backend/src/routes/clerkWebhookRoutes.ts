@@ -226,6 +226,9 @@ router.post(
 // Linked rows are returned too — they answer "did anything ever come of that
 // sign-up?" — the UI splits the two groups. system-attributed refusals only:
 // by definition, a refused sign-up has no local user to attribute to.
+//
+// recentLogins rides along: the LOGIN vs LOGIN_CLERK split over the last 30
+// days is the Clerk-adoption signal an admin reads next to the refusal list.
 router.get('/signups', ...adminGuard, asyncHandler(async (_req, res) => {
   const rows = await query<{
     external_id: string;
@@ -257,7 +260,15 @@ router.get('/signups', ...adminGuard, asyncHandler(async (_req, res) => {
      WHERE a.action = 'CLERK_LINK_REFUSED' AND a.user_id IS NULL
      ORDER BY a.new_value->>'external_id', a.created_at DESC`,
   );
-  res.json({ data: rows });
+  const logins = await queryOne<{ total: number; clerk: number }>(
+    `SELECT COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE action = 'LOGIN_CLERK')::int AS clerk
+       FROM audit_logs
+      WHERE action IN ('LOGIN', 'LOGIN_CLERK')
+        AND entity = 'users'
+        AND created_at >= NOW() - INTERVAL '30 days'`,
+  );
+  res.json({ data: { signups: rows, recentLogins: logins } });
 }));
 
 // The fix-it action: create the mapping the webhook could not. The admin

@@ -5,6 +5,7 @@
 // goes through the Clerk card instead of silently falling back to passwords.
 import { useState } from 'react';
 import { Button, EmptyState, Modal, PageHeader, Select, useFetch } from '../components/ui';
+import { Count } from '../components/CountUp';
 import { api } from '../lib/api';
 
 interface ClerkSignupRow {
@@ -17,6 +18,16 @@ interface ClerkSignupRow {
   linked_user_name: string | null;
   linked_user_email: string | null;
   linked_at: string | null;
+}
+
+// LOGIN vs LOGIN_CLERK over the last 30 days — the adoption signal.
+interface RecentLogins {
+  total: number;
+  clerk: number;
+}
+
+interface SignupsResponse {
+  data: { signups: ClerkSignupRow[]; recentLogins: RecentLogins };
 }
 
 interface StaffOption {
@@ -37,14 +48,15 @@ function when(value: string | null): string {
 
 export default function ClerkSignups() {
   const { data, loading, error, refresh } = useFetch(
-    () => api.get<ClerkSignupRow[]>('/api/webhooks/clerk/signups'),
+    () => api.get<SignupsResponse>('/api/webhooks/clerk/signups'),
     [],
   );
 
   const [linking, setLinking] = useState<ClerkSignupRow | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const rows = data ?? [];
+  const rows = data?.data.signups ?? [];
+  const logins = data?.data.recentLogins;
   const pending = rows.filter((r) => r.linked_user_id === null);
   const linked = rows.filter((r) => r.linked_user_id !== null);
 
@@ -56,6 +68,26 @@ export default function ClerkSignups() {
       />
 
       {notice && <div className="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">{notice}</div>}
+
+      {logins && logins.total > 0 && (
+        <div className="mb-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-600">
+            <span className="font-semibold text-gray-900">Last 30 days</span>
+            <span>
+              <span className="font-semibold text-gray-900"><Count value={logins.total} /></span> staff sign-ins
+            </span>
+            <span>
+              <span className="font-semibold text-brand-700"><Count value={logins.clerk} /></span> via Clerk ({Math.round((logins.clerk / logins.total) * 100)}%)
+            </span>
+            <span className="h-2 w-40 overflow-hidden rounded-full bg-gray-100" aria-hidden>
+              <span
+                className="block h-full rounded-full bg-brand-500 transition-all"
+                style={{ width: `${Math.min(100, (logins.clerk / logins.total) * 100)}%` }}
+              />
+            </span>
+          </div>
+        </div>
+      )}
 
       {loading && <div className="p-6 text-sm text-gray-500">Loading…</div>}
       {error && <div className="text-sm text-red-600">{error}</div>}
@@ -159,14 +191,14 @@ function LinkModal({
   onLinked: (msg: string) => Promise<void>;
 }) {
   const { data: staff } = useFetch(
-    () => (row ? api.get<StaffOption[]>('/api/users') : Promise.resolve(undefined)),
+    () => (row ? api.get<{ data: StaffOption[] }>('/api/users') : Promise.resolve(undefined)),
     [row?.external_id],
   );
   const [userId, setUserId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const options = (staff ?? []).filter(
+  const options = (staff?.data ?? []).filter(
     (u) => u.status === 'ACTIVE' && LINKABLE_ROLES.has(u.role),
   );
   const selected = options.find((u) => String(u.id) === userId);
