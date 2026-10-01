@@ -4,7 +4,7 @@
 // client (lib/portalApi.ts) in lib/httpClient.ts — only the configuration
 // differs (distinct CSRF cookie, refresh path, and login redirect per app).
 import { createHttpClient, readCsrfToken } from './httpClient';
-import type { ApiItemResponse } from '@rpms/shared';
+import type { ApiItemResponse, ApiListResponse } from '@rpms/shared';
 
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined) || '';
 
@@ -36,12 +36,13 @@ const { request } = createHttpClient({
   sessionExemptPaths: ['/api/auth/'],
 });
 
-export interface Paged<T> {
-  data: T[];
-  pagination: { page: number; limit: number; total: number; totalPages: number };
-  /** Optional endpoint-specific aggregate metadata (e.g. SMS spend totals). */
-  meta?: Record<string, unknown>;
-}
+/**
+ * Paginated list envelope — the shared ApiListResponse contract (one source
+ * of truth for both halves of the wire; the type alias keeps call sites
+ * readable). request() resolves with the parsed body as-is, so api.list<T>
+ * hands consumers { data, pagination } and they read `.data`.
+ */
+export type Paged<T> = ApiListResponse<T>;
 
 export const api = {
   // request() resolves with the parsed body as-is: every endpoint answers

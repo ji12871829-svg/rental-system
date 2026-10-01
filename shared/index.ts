@@ -27,15 +27,20 @@ export type PaymentMethod = 'CASH' | 'M_PESA' | 'BANK' | 'OTHER';
 // API envelope
 // ---------------------------------------------------------------------------
 
-/** Success envelope: every endpoint answers `{ data: … }` (+ optional pagination). */
+/** Success envelope: every endpoint answers `{ data: … }` (+ optional pagination).
+ *  Backend routes are held to this contract by the envelopeGuard middleware
+ *  (asserted in tests/integration/envelopeContract.test.ts); frontend clients
+ *  pin it at compile time via generic constraints in lib/api.ts. */
 export interface ApiItemResponse<T> {
   data: T;
 }
 
-/** List envelope: paginated endpoints answer `{ data: rows, pagination }`. */
+/** List envelope: paginated endpoints answer `{ data: rows, pagination }`.
+ *  Optional endpoint-specific aggregates ride as `meta` (e.g. SMS spend totals). */
 export interface ApiListResponse<T> {
   data: T[];
   pagination: Pagination;
+  meta?: Record<string, unknown>;
 }
 
 /** Error envelope: every failure answers `{ error, message, details }` (httpError.ts). */

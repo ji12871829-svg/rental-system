@@ -8,6 +8,7 @@ import { pool } from './config/db';
 import { errorHandler } from './middleware/errorHandler';
 import { globalLimiter } from './middleware/rateLimiter';
 import { csrfProtection } from './middleware/csrf';
+import { envelopeGuard } from './middleware/envelopeGuard';
 // Clerk (staff sign-in bridge): both are inert unless CLERK_SECRET_KEY is
 // set — without keys the legacy JWT flow is the only auth, unchanged.
 import { clerkMiddleware } from '@clerk/express';
@@ -141,6 +142,11 @@ export function createApp() {
   app.use('/api/privacy-requests', privacyRequestRoutes);
   app.use('/api/reports', reportRoutes);
   app.use('/api/audit', auditRoutes);
+
+  // Response-envelope guard — asserts every /api JSON response carries the
+  // shared { data } envelope (log-only here; tests/integration/
+  // envelopeContract.test.ts turns violations into CI failures).
+  app.use(envelopeGuard);
 
   // Unknown API routes → 404 in the standard error shape.
   app.use('/api', (_req, res) => {
