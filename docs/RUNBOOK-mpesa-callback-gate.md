@@ -5,7 +5,10 @@
 unauthenticated POSTs — a forged Daraja callback could post a fake rent
 payment into the ledger with a real receipt. The fix adds a shared-secret
 gate, but it only **enforces** once the token is configured; until then
-production logs a startup warning on every boot. These steps switch the gate on.
+production logs a startup warning on every boot, `/api/health` reports
+`mpesaCallbackTokenSet: false`, and the `verify-live` CI job **fails** (its
+wrong-token C2B probe expects the stealth 404 that only an active gate
+sends). These steps switch the gate on — and turn the CI check green.
 
 **Prerequisite:** the security-fix deploy (audience boundary, callback gate,
 logo hardening, ON CONFLICT fix) is live. The gate code ships in that deploy;
@@ -30,7 +33,7 @@ the steps below only supply its configuration.
 
 ---
 
-## Step 1 — Generate the token
+## Step 1 — Generate (or reuse) the token
 
 Anywhere you trust: a terminal is fine.
 
@@ -46,6 +49,9 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 You get 64 hex characters. That value is the `<TOKEN>` in every step below.
 Treat it like a password: it gates who can write into your rent ledger.
+If your local `backend/.env` already carries `MPESA_CALLBACK_TOKEN`, that
+value was generated for exactly this purpose — reuse it so local dev and
+production agree (it is not used by the open dev endpoints either way).
 
 ## Step 2 — Set `MPESA_CALLBACK_TOKEN` on Render
 
@@ -54,10 +60,13 @@ Treat it like a password: it gates who can write into your rent ledger.
    - Key: `MPESA_CALLBACK_TOKEN`
    - Value: `<TOKEN>` from step 1 (just the hex — no `?token=`, no quotes).
 3. **Save changes.** Render redeploys the service automatically.
-4. Sanity-check the boot log: the warning
-   `[config] MPESA_CALLBACK_TOKEN is not set — /api/mpesa/* callbacks accept unauthenticated POSTs…`
-   must be **gone**. If it still appears, the variable didn't reach the
-   service (check spelling and that it saved to this environment).
+4. Sanity-checks after the auto-redeploy:
+   - boot log: the warning
+     `[config] MPESA_CALLBACK_TOKEN is not set — /api/mpesa/* callbacks accept unauthenticated POSTs…`
+     must be **gone**. If it still appears, the variable didn't reach the
+     service (check spelling and that it saved to this environment).
+   - health: `curl -s https://rpms-gakt.onrender.com/api/health` must now
+     show `"mpesaCallbackTokenSet": true`.
 
 ## Step 3 — Point Daraja at tokenized callback URLs
 
@@ -100,6 +109,21 @@ If the current value doesn't end in `?token=…`, every STK Push issued
 *before* that change will still call back without a token and be rejected
 with 404 — see "Operational notes" below for the transition behavior.
 
+### Step 3c — Turn the verify-live CI check green (optional, one minute)
+
+The CI probe exercises the signed path only when it knows the token. To
+light it up (and prove the full signed pipeline end-to-end on every push):
+
+1. GitHub → the repo → **Settings → Secrets and variables → Actions** →
+   **New repository secret**:
+   - Name: `RPMS_PROBE_CALLBACK_TOKEN`
+   - Secret: the **same** `<TOKEN>` as step 2.
+2. That's it — the next `verify-live` run signs its probe with the token and
+   asserts the callback is accepted for manual review.
+
+Leaving the secret unset is also fine: the probe then just skips the signed
+check, and the wrong-token 404 assertion alone turns the job green.
+
 ## Step 4 — Verify the gate is enforcing (safe probes)
 
 No real transactions involved; these are read-only HTTP status checks.
@@ -119,6 +143,13 @@ curl -s -o /dev/null -w "wrong token:     %{http_code} (want 404)\n" \
 # 3. Correct token → must be 200 with ResultCode 0
 curl -s -w "\nright token:     HTTP %{http_code} (want 200)\n" \
   -X POST "$B/api/mpesa/c2b/validate?token=$T" -H 'Content-Type: application/json' -d '{}'
+
+# 4. Correct token on the CONFIRM endpoint (the one verify-live probes):
+#    200, ResultCode 0, parked UNMATCHED for review (BillRefNumber matches
+#    no unit — clear it from M-Pesa Review afterwards).
+curl -s -w "\nright token (confirm): HTTP %{http_code} (want 200)\n" \
+  -X POST "$B/api/mpesa/c2b/confirm?token=$T" -H 'Content-Type: application/json' \
+  -d '{"TransactionType":"Pay Bill","TransID":"RPMS-RUNBOOK-PROBE","TransTime":"20261001120000","TransAmount":"1","BillRefNumber":"RPMS-PROBE","OrgAccountBalance":"0","MSISDN":"0000000000","FirstName":"RPMS","MiddleName":"VERIFY","LastName":"PROBE"}'
 ```
 
 Then confirm a **real** end-to-end path with money you control: send a small

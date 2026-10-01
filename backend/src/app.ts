@@ -97,6 +97,10 @@ export function createApp() {
         corsOriginSet: Boolean(process.env.CORS_ORIGIN),
         businessNameSet: Boolean(env.businessName),
         frontendDistPresent: isProd ? fs.existsSync(FRONTEND_DIST) : null,
+        // Callback-gate state, name only (never the token value): the
+        // verify-live probe catches a misconfigured gate on the confirm
+        // endpoint, but this makes it visible in every health check too.
+        mpesaCallbackTokenSet: Boolean(env.mpesaCallbackToken),
       },
     });
     // Don't block the health response on the DB round-trip; report it after.
