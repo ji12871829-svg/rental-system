@@ -16,12 +16,9 @@
 //     Supertest captures the error, making the offending route + body
 //     directly visible in the failure output.
 //
-// Exemptions (protocol endpoints whose shape is fixed by the other party or
-// by a deliberate contract exception — see each route's header comment):
+// Exemptions (protocol endpoints whose shape is fixed by the other party —
+// see each route's header comment):
 //   /api/health               — ops liveness probe, flat diagnostic shape
-//   /api/public/units         — flat { currency, data }: the landing page
-//                               needs the operator's currency without a
-//                               session, and GET /api/settings needs one
 //   /api/mpesa/c2b/*          — Safaricom Daraja C2B acknowledgment protocol
 //                               ({ ResultCode, ResultDesc }), not our clients
 //   /api/mpesa/stk/callback   — Daraja STK push result protocol
@@ -31,7 +28,6 @@ import { HttpError } from '../utils/httpError';
 
 const EXEMPT_PREFIXES = [
   '/api/health',
-  '/api/public/units',
   '/api/mpesa/c2b/',
   '/api/mpesa/stk/callback',
 ];

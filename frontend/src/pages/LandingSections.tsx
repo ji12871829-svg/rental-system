@@ -76,9 +76,11 @@ export function usePublicUnits(): { rows: UnitPriceRow[] | null; failed: boolean
 
   useEffect(() => {
     let alive = true;
+    // Standard { data } envelope (ApiItemResponse) — currency and the roster
+    // both ride inside data.
     api
-      .get<{ currency: string; data: UnitPriceRow[] }>('/api/public/units')
-      .then((res) => { if (alive) { setRows(res.data); setCurrency(res.currency || 'KSh'); setFailed(false); } })
+      .get<{ data: { currency: string; units: UnitPriceRow[] } }>('/api/public/units')
+      .then((res) => { if (alive) { setRows(res.data.units); setCurrency(res.data.currency || 'KSh'); setFailed(false); } })
       .catch(() => { if (alive) setFailed(true); });
     return () => { alive = false; };
   }, []);

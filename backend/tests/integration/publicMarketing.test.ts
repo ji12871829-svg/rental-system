@@ -24,11 +24,11 @@ describe('GET /api/public/units (public price list)', () => {
   it('serves prices without authentication', async () => {
     const res = await request(app).get('/api/public/units');
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body.data)).toBe(true);
-    // The operator's display currency rides along for the landing table.
-    expect(typeof res.body.currency).toBe('string');
-    if (res.body.data.length > 0) {
-      const row = res.body.data[0];
+    // Standard { data } envelope; currency + roster ride inside it.
+    expect(typeof res.body.data.currency).toBe('string');
+    expect(Array.isArray(res.body.data.units)).toBe(true);
+    if (res.body.data.units.length > 0) {
+      const row = res.body.data.units[0];
       // Marketing-safe shape: type + numbers only.
       expect(row).toHaveProperty('unitType');
       expect(row).toHaveProperty('minRent');
@@ -43,7 +43,8 @@ describe('GET /api/public/units (public price list)', () => {
 
   it('never exposes tenant names, emails or unit ids', async () => {
     const res = await request(app).get('/api/public/units');
-    const body = JSON.stringify(res.body);
+    expect(res.body).toHaveProperty('data');
+    const body = JSON.stringify(res.body.data);
     expect(body).not.toMatch(/tenant_id|full_name|email|phone_number|unit_number/i);
   });
 });

@@ -40,18 +40,21 @@ router.get('/units', asyncHandler(async (_req, res) => {
      GROUP BY u.unit_type
      ORDER BY MIN(u.monthly_rent) ASC`,
   );
-  // The operator's display currency rides along so the landing table needs
-  // no auth and no separate call (GET /api/settings requires a session).
+  // The operator's display currency rides INSIDE the standard { data }
+  // envelope (ApiItemResponse, @rpms/shared) so the landing table needs no
+  // auth and no separate call (GET /api/settings requires a session).
   const { currency } = await getSettings();
   res.json({
-    currency,
-    data: rows.map((r) => ({
-      unitType: r.unit_type,
-      minRent: Number(r.min_rent),
-      maxRent: Number(r.max_rent),
-      total: Number(r.total),
-      vacant: Number(r.vacant),
-    })),
+    data: {
+      currency,
+      units: rows.map((r) => ({
+        unitType: r.unit_type,
+        minRent: Number(r.min_rent),
+        maxRent: Number(r.max_rent),
+        total: Number(r.total),
+        vacant: Number(r.vacant),
+      })),
+    },
   });
 }));
 

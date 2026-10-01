@@ -113,12 +113,7 @@ describe('envelope contract (every /api 2xx JSON answers { data })', () => {
     expect(res.body.message).toContain('oops');
   });
 
-  it('exemptions: /api/public/units stays flat and the Daraja callbacks are not policed', async () => {
-    // Landing currency contract — deliberate flat { currency, data } shape.
-    const units = await request(app).get('/api/public/units');
-    expect(units.status).toBe(200);
-    expect(units.body).toHaveProperty('currency');
-    expect(units.body).toHaveProperty('data');
+  it('exemptions: the Daraja callbacks are not policed (protocol shapes)', async () => {
 
     // Daraja C2B acknowledgment protocol — response SHAPE is Safaricom's
     // business, not ours, so the guard must stay out either way. Status
@@ -128,6 +123,16 @@ describe('envelope contract (every /api 2xx JSON answers { data })', () => {
     expect([200, 400, 404]).toContain(c2b.status);
     expect(errSpy.mock.calls.some((c) => String(c[0]).includes('[envelope]'))).toBe(false);
     errSpy.mockRestore();
+  });
+
+  it('/api/public/units answers the standard envelope (currency inside data)', async () => {
+    // Formerly the one flat { currency, data } exception; standardized so
+    // the guard polices it like every other route — a 200 here IS the guard
+    // pass, since a violation would throw and surface as a 500.
+    const units = await request(app).get('/api/public/units');
+    expect(units.status).toBe(200);
+    expect(typeof units.body.data.currency).toBe('string');
+    expect(Array.isArray(units.body.data.units)).toBe(true);
   });
 
   it('health endpoint remains exempt from the envelope (ops probe shape)', async () => {
