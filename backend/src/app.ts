@@ -13,6 +13,7 @@ import { csrfProtection } from './middleware/csrf';
 import { clerkMiddleware } from '@clerk/express';
 import { clerkAuth } from './middleware/clerkAuth';
 import clerkAuthRoutes from './routes/clerkAuthRoutes';
+import clerkWebhookRoutes from './routes/clerkWebhookRoutes';
 import auditRoutes from './routes/audit';
 import authRoutes from './routes/auth';
 import brandingRoutes from './routes/branding';
@@ -43,7 +44,17 @@ export function createApp() {
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
   }));
-  app.use(express.json({ limit: '1mb' }));
+  // Svix (Clerk webhooks) signs the exact request bytes, but this parser
+  // consumes the stream — so it snapshots the raw body for the webhook path
+  // as it parses. No extra middleware pass, no double read of the stream.
+  app.use(express.json({
+    limit: '1mb',
+    verify: (req, _res, buf) => {
+      if ((req.url || '').split('?')[0] === '/api/webhooks/clerk') {
+        (req as { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+      }
+    },
+  }));
   // Provider callbacks (Africa's Talking delivery reports) POST
   // form-urlencoded bodies — parse them alongside JSON.
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
@@ -100,6 +111,11 @@ export function createApp() {
   // Clerk → staff-session bridge (inert unless CLERK_SECRET_KEY is set —
   // the route itself 401s when Clerk is not configured).
   app.use('/api/auth/clerk', clerkAuthRoutes);
+  // Clerk webhooks (auto-mapping by verified email). The svix signature
+  // covers the exact request bytes, which the shared JSON parser above
+  // snapshots for this path via its `verify` hook. Inert (401) unless
+  // CLERK_WEBHOOK_SIGNING_SECRET and CLERK_SECRET_KEY are set.
+  app.use('/api/webhooks/clerk', clerkWebhookRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/settings', settingsRoutes);
   app.use('/api/units', unitRoutes);

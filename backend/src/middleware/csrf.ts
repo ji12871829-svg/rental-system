@@ -60,6 +60,10 @@ function isPublicCallback(path: string): boolean {
     // HttpOnly session cookies (verified server-side in the route), the same
     // class as login — it mints the first session, so it cannot require one.
     || path === '/api/auth/clerk/session'
+    // Clerk webhooks: server-to-server, authenticated by the svix signature
+    // (verified timing-safe in the route against the signing secret) — a
+    // CSRF token is meaningless for a caller with no browser.
+    || path === '/api/webhooks/clerk'
     || path.startsWith('/api/mpesa/')
     || path === '/api/sms/delivery-reports'
     // Public landing-page demo form: same class as login — session-less

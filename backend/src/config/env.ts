@@ -32,6 +32,12 @@ export const env = {
   // user_external_ids) and the staff tab of /login renders Clerk's hosted
   // sign-in. Empty = the legacy JWT/bcrypt flow only — nothing else changes.
   clerkSecretKey: process.env.CLERK_SECRET_KEY || '',
+  // Clerk webhooks (svix-signed). When set, POST /api/webhooks/clerk verifies
+  // signatures with the standard-webhooks scheme and auto-maps new Clerk
+  // users to ACTIVE staff accounts by verified email — replacing the manual
+  // dashboard provisioning in the Clerk runbook. Empty = the endpoint
+  // refuses every call (fails closed) and mappings stay manual.
+  clerkWebhookSigningSecret: process.env.CLERK_WEBHOOK_SIGNING_SECRET || '',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
   bcryptSaltRounds: Number(process.env.BCRYPT_SALT_ROUNDS) || 12,
   // Comma-separated allowlist. On same-origin deploys (frontend served by
