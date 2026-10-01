@@ -19,3 +19,10 @@
 # public test data in a committed file, unique to the test DB. Allowlisted
 # because gitleaks' generic-api-key rule cannot know that.
 83e64a0fe148277e75b896788bd9de0f16f0626d:backend/tests/setup-env.ts:generic-api-key:8
+
+# 2026-10-01 (Codebuff session): NOT a secret — the Clerk webhook integration
+# test's fabricated publishable key (pk_test_ + base64("webhook-test.clerk.accounts.dev$")).
+# Publishable keys are public identifiers by design and this instance does not
+# exist; the format-valid dummy only lets the real clerkMiddleware parse test
+# requests without calling Clerk. Allowed per the fixture policy above.
+0045d696f9d6c63456f04c8a3681a9216baa6ebc:backend/tests/integration/clerkWebhook.test.ts:generic-api-key:56
