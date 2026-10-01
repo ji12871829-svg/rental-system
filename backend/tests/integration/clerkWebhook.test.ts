@@ -499,6 +499,67 @@ describe('POST /api/webhooks/clerk', () => {
       expect(missing.status).toBe(404);
     });
 
+    it('traces one identity through its full lifecycle in the history feed', async () => {
+      const { query } = await import('../../src/config/db');
+
+      // 1. Refused (no verified email).
+      const unverified = signed({
+        type: ClerkUserCreated,
+        data: {
+          id: 'user_test_wh_hist',
+          primary_email_address_id: 'email_1',
+          email_addresses: [{ id: 'email_1', email_address: 'hist@rpms.local', verification: { status: 'unverified' } }],
+        },
+      });
+      await request(app).post('/api/webhooks/clerk').set(unverified.headers).send(unverified.body);
+
+      // 2. Admin links it (via the link action — the same flow the UI uses)
+      // to a throwaway staff user (the fixtures are all mapped by earlier
+      // tests, and UNIQUE(user_id, provider) would 409 the link).
+      const admin = await staffSession('admin@rpms.local', 'Admin@2026!');
+      const bcrypt = (await import('bcryptjs')).default;
+      const staff = await query<{ id: number }>(
+        `INSERT INTO users (name, email, phone, password_hash, role, status)
+         VALUES ('History Target', 'hist.target@example.test', NULL, $1, 'STAFF', 'ACTIVE') RETURNING id`,
+        [await bcrypt.hash('Irrelevant#2026', 4)],
+      );
+      const targetId = staff[0].id;
+      const link = await request(app)
+        .post('/api/webhooks/clerk/signups/user_test_wh_hist/link')
+        .set('Cookie', admin.cookie)
+        .set('x-csrf-token', admin.csrf)
+        .send({ userId: targetId, refusalReason: 'no verified email' });
+      expect(link.status).toBe(201);
+
+      // 3. Unlinked — Clerk account deleted.
+      const deleted = signed({ type: ClerkUserDeleted, data: { id: 'user_test_wh_hist', deleted: true, object: 'user' } });
+      const del = await request(app).post('/api/webhooks/clerk').set(deleted.headers).send(deleted.body);
+      expect(del.status).toBe(200);
+      expect(del.body.data).toMatchObject({ unlinked: true });
+
+      // The feed: newest first, one row per lifecycle event, with actor.
+      const res = await request(app)
+        .get('/api/webhooks/clerk/signups/user_test_wh_hist/history')
+        .set('Cookie', admin.cookie);
+      expect(res.status).toBe(200);
+      const feed = res.body.data as { action: string; user_id: number | null; new_value: Record<string, unknown> }[];
+      expect(feed.map((f) => f.action)).toEqual(['CLERK_UNLINKED', 'CLERK_LINKED', 'CLERK_LINK_REFUSED']);
+      expect(feed[0].new_value).toMatchObject({ event: 'user.deleted' });
+      // The link row is attributed to the ACTING admin (the link is their
+      // action; the target staff user is entity_id); the refusal is system
+      // (user_id null).
+      const adminRow = await query<{ id: number }>("SELECT id FROM users WHERE email = 'admin@rpms.local'");
+      expect(feed[1].user_id).toBe(adminRow[0].id);
+      expect(feed[2].user_id).toBeNull();
+
+      // Admin-only, like every signups sub-route.
+      expect((await request(app).get('/api/webhooks/clerk/signups/user_test_wh_hist/history')).status).toBe(401);
+
+      // Cleanup: the user row (the mapping is already gone) and its trail rows.
+      await query("DELETE FROM audit_logs WHERE entity_id = $1 AND entity = 'users'", [targetId]);
+      await query('DELETE FROM users WHERE id = $1', [targetId]);
+    });
+
     it('keeps an ADMIN-linked mapping when the verified email later changes — human trust wins', async () => {
       // user_test_wh_link_e2e was linked by an ADMIN to the manager in the
       // earlier test. Changing the Clerk account's verified email must NOT

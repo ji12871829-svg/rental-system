@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { Button, EmptyState, Modal, PageHeader, Select, useFetch } from '../components/ui';
 import { Count } from '../components/CountUp';
+import { ClerkSignupHistory } from '../components/ClerkSignupHistory';
 import { api } from '../lib/api';
 
 interface ClerkSignupRow {
@@ -53,6 +54,7 @@ export default function ClerkSignups() {
   );
 
   const [linking, setLinking] = useState<ClerkSignupRow | null>(null);
+  const [viewing, setViewing] = useState<ClerkSignupRow | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const rows = data?.data.signups ?? [];
@@ -123,9 +125,12 @@ export default function ClerkSignups() {
                           {r.refusals > 1 && <span className="ml-2 text-xs text-gray-400">×{r.refusals} attempts</span>}
                         </td>
                         <td className="whitespace-nowrap text-xs text-gray-500">{when(r.refused_at)}</td>
-                        <td>
+                        <td className="space-x-1 whitespace-nowrap">
                           <Button variant="ghost" className="!px-2 !py-1 text-xs" onClick={() => setLinking(r)}>
                             Link to staff user…
+                          </Button>
+                          <Button variant="ghost" className="!px-2 !py-1 text-xs" onClick={() => setViewing(r)}>
+                            History
                           </Button>
                         </td>
                       </tr>
@@ -177,6 +182,7 @@ export default function ClerkSignups() {
           refresh();
         }}
       />
+      <ClerkSignupHistory row={viewing} onClose={() => setViewing(null)} />
     </div>
   );
 }

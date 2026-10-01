@@ -328,6 +328,35 @@ const linkSchema = z.object({
   // Optional context for the audit row: the refusal reason being resolved.
   refusalReason: z.string().max(100).optional(),
 });
+// Per-identity activity feed: every lifecycle row the trail holds for one
+// Clerk identity, newest first — refusals, links (webhook or admin), and
+// unlinks (all three flavors), each with its actor and payload. The UI
+// renders this as the timeline behind a row's History button.
+router.get(
+  '/signups/:externalId/history',
+  ...adminGuard,
+  asyncHandler(async (req: Request, res: Response) => {
+    const externalId = z.string().min(1).max(255).parse(req.params.externalId);
+    const rows = await query<{
+      id: number;
+      action: string;
+      user_id: number | null;
+      user_name: string | null;
+      created_at: Date;
+      new_value: Record<string, unknown>;
+    }>(
+      `SELECT a.id, a.action, a.user_id, u.name AS user_name, a.created_at, a.new_value
+         FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id
+        WHERE a.action IN ('CLERK_LINKED', 'CLERK_LINK_REFUSED', 'CLERK_UNLINKED')
+          AND a.new_value->>'external_id' = $1
+        ORDER BY a.created_at DESC, a.id DESC
+        LIMIT 50`,
+      [externalId],
+    );
+    res.json({ data: rows });
+  }),
+);
+
 router.post(
   '/signups/:externalId/link',
   ...adminGuard,
