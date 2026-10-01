@@ -110,6 +110,35 @@ router.post(
       return;
     }
 
+    // A deleted Clerk account must not leave a dangling mapping row: the row
+    // is the only thing clerkAuth and the bridge consult, so removing it
+    // instantly revokes that identity's sign-in path. The local user keeps
+    // their password flow untouched, and a future re-invite (new external
+    // id) re-maps via user.created. RETURNING user_id attributes the trail
+    // row to the affected user in the same round-trip; a replay (row already
+    // gone) acknowledges without logging, like every other no-op delivery.
+    if (event.type === 'user.deleted') {
+      const removed = await query<{ user_id: number }>(
+        `DELETE FROM user_external_ids
+          WHERE provider = 'clerk' AND external_id = $1
+          RETURNING user_id`,
+        [event.data.id],
+      );
+      if (removed[0]) {
+        await logAudit({
+          userId: removed[0].user_id,
+          action: 'CLERK_UNLINKED',
+          entity: 'users',
+          entityId: removed[0].user_id,
+          newValue: { provider: 'clerk', external_id: event.data.id, event: 'user.deleted' },
+        });
+        res.status(200).json({ data: { unlinked: true, mapped: removed[0].user_id } });
+      } else {
+        res.status(200).json({ data: { unlinked: false } });
+      }
+      return;
+    }
+
     // Only user lifecycle events carry the email/identity data this
     // integration needs. Everything else is acknowledged and ignored —
     // returning 200 for unhandled types prevents Clerk retry storms.

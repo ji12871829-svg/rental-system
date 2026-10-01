@@ -73,7 +73,10 @@ Replays are idempotent, so Clerk retries are harmless.
 
 1. In Clerk → **Webhooks** → **Add endpoint**, set the URL to
    `https://<backend-host>/api/webhooks/clerk` and subscribe to
-   **user.created** and **user.updated**.
+   **user.created**, **user.updated** and **user.deleted** (a deleted Clerk
+   account's mapping is removed automatically, with a `CLERK_UNLINKED` audit
+   row — the local user keeps their password sign-in, and the unlink shows
+   in their audit history).
 2. Copy the endpoint's **Signing secret** (`whsec_…`) and set it as
    `CLERK_WEBHOOK_SIGNING_SECRET` on the backend (§2), then redeploy.
 3. Use **Send test** in the Clerk dashboard; the endpoint replies 200/201 and

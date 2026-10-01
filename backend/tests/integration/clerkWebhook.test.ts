@@ -18,6 +18,7 @@ const SIGNING_SECRET = `whsec_${SECRET_BYTES.toString('base64')}`;
 
 const ClerkUserCreated = 'user.created';
 const ClerkUserUpdated = 'user.updated';
+const ClerkUserDeleted = 'user.deleted';
 
 // Sign exactly like Clerk does: HMAC-SHA256 over "<id>.<timestamp>.<payload>"
 // keyed with the decoded secret bytes, base64-encoded, prefixed "v1,".
@@ -314,6 +315,47 @@ describe('POST /api/webhooks/clerk', () => {
        WHERE x.provider = 'clerk' AND x.external_id = 'user_test_wh_admin'`,
     );
     expect(row).toMatchObject({ status: 'ACTIVE' });
+  });
+
+  it('unlinks a deleted Clerk account, audited to the affected user', async () => {
+    const { queryOne } = await import('../../src/config/db');
+    const before = await queryOne<{ user_id: number }>(
+      "SELECT user_id FROM user_external_ids WHERE provider = 'clerk' AND external_id = 'user_test_wh_admin'",
+    );
+    expect(before).toBeTruthy();
+
+    const deleted = signed({ type: ClerkUserDeleted, data: { id: 'user_test_wh_admin', deleted: true, object: 'user' } });
+    const res = await request(app).post('/api/webhooks/clerk').set(deleted.headers).send(deleted.body);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({ unlinked: true, mapped: before!.user_id });
+
+    // The mapping row is gone — the bridge and clerkAuth can no longer
+    // resolve this Clerk identity.
+    const row = await queryOne(
+      "SELECT user_id FROM user_external_ids WHERE provider = 'clerk' AND external_id = 'user_test_wh_admin'",
+    );
+    expect(row).toBeNull();
+
+    // Trail row attributed to the affected local user, not "system" —
+    // it belongs in that user's own audit history.
+    const audit = await queryOne<{ user_id: number }>(
+      `SELECT user_id FROM audit_logs
+        WHERE action = 'CLERK_UNLINKED' AND new_value->>'external_id' = 'user_test_wh_admin'
+          AND new_value->>'event' = 'user.deleted'`,
+    );
+    expect(audit).toBeTruthy();
+    expect(audit!.user_id).toBe(before!.user_id);
+
+    // Replay (row already gone): acknowledged, no second trail row.
+    const replay = signed({ type: ClerkUserDeleted, data: { id: 'user_test_wh_admin', deleted: true, object: 'user' } });
+    const res2 = await request(app).post('/api/webhooks/clerk').set(replay.headers).send(replay.body);
+    expect(res2.status).toBe(200);
+    expect(res2.body.data).toMatchObject({ unlinked: false });
+    const count = await queryOne<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM audit_logs
+        WHERE action = 'CLERK_UNLINKED' AND new_value->>'external_id' = 'user_test_wh_admin'`,
+    );
+    expect(count).toMatchObject({ n: '1' });
   });
 
   // --- Admin review of refused sign-ups (GET + link action) ----------------
