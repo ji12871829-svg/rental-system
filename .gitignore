@@ -1,5 +1,9 @@
 node_modules/
 .env
+# Every env-file variant (.env.production, backend/.env.staging, …) — only
+# the placeholder template stays trackable.
+.env.*
+!.env.example
 *.log
 .DS_Store
 coverage/
