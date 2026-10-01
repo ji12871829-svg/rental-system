@@ -62,6 +62,14 @@ export function createApp() {
   app.use(csrfProtection);
   app.use(globalLimiter);
 
+  // Response-envelope guard — wraps res.json for EVERY /api request. Mounted
+  // BEFORE the routers: an app.use after them would never run for handled
+  // responses (the router's res.json ends the traversal). Asserts the shared
+  // { data } envelope (ApiItemResponse, @rpms/shared): log-only in prod/dev,
+  // fail-fast under NODE_ENV=test so the integration suite that produced a
+  // violating response fails on the spot (see envelopeContract.test.ts).
+  app.use(envelopeGuard);
+
   // Clerk session parsing + local-user mapping. Mounted after CSRF (Clerk
   // sessions are HttpOnly-cookie based, not CSRF-token based) and before the
   // routers so clerkAuth can stamp req.user ahead of the guards. Both are
@@ -142,11 +150,6 @@ export function createApp() {
   app.use('/api/privacy-requests', privacyRequestRoutes);
   app.use('/api/reports', reportRoutes);
   app.use('/api/audit', auditRoutes);
-
-  // Response-envelope guard — asserts every /api JSON response carries the
-  // shared { data } envelope (log-only here; tests/integration/
-  // envelopeContract.test.ts turns violations into CI failures).
-  app.use(envelopeGuard);
 
   // Unknown API routes → 404 in the standard error shape.
   app.use('/api', (_req, res) => {

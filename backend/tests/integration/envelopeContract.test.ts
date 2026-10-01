@@ -8,8 +8,11 @@
 // the three documented protocol/contract exceptions so a future refactor
 // cannot silently widen or drop them.
 import request from 'supertest';
+import express from 'express';
 import { createApp } from '../../src/app';
 import { pool } from '../../src/config/db';
+import { envelopeGuard } from '../../src/middleware/envelopeGuard';
+import { errorHandler } from '../../src/middleware/errorHandler';
 
 const app = createApp();
 
@@ -65,12 +68,11 @@ describe('envelope contract (every /api 2xx JSON answers { data })', () => {
     errSpy.mockRestore();
   });
 
-  it('drift is caught: simulating a non-envelope route triggers the guard log', async () => {
+  it('drift fails fast: a non-envelope 2xx response throws ENVELOPE_VIOLATION in test env', async () => {
+    // Drive the real middleware from the live app stack with a fake
+    // response — the exact failure a future route refactor would produce.
+    // Under NODE_ENV=test the guard THROWS (fail-fast), it does not log.
     const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-
-    // Prove the detector itself works by driving the real middleware with a
-    // fake response — the exact failure a future route refactor would
-    // produce, caught before it can ship.
     const stack = (
       app as unknown as { _router: { stack: { name: string; handle: unknown }[] } }
     )._router.stack;
@@ -84,14 +86,31 @@ describe('envelope contract (every /api 2xx JSON answers { data })', () => {
     const spyJson = jest.fn((b: unknown) => b);
     const fakeRes = { statusCode: 200, json: spyJson };
     guard({ path: '/api/some/future-route', method: 'GET' }, fakeRes, () => {});
-    (fakeRes.json as (b: unknown) => unknown)({ broken: true });
-    expect(spyJson).toHaveBeenCalledWith({ broken: true });
-
-    const logged = errSpy.mock.calls.filter((c) => String(c[0]).includes('[envelope]'));
-    expect(logged.length).toBe(1);
-    expect(logged[0][0]).toContain('/api/some/future-route');
-    expect(logged[0][0]).toContain('broken');
+    expect(() => (fakeRes.json as (b: unknown) => unknown)({ broken: true })).toThrow(
+      /without the \{ data \} envelope/
+    );
+    expect(errSpy).not.toHaveBeenCalled();
     errSpy.mockRestore();
+  });
+
+  it('drift is unmissable end-to-end: violating route → 500 ENVELOPE_VIOLATION body', async () => {
+    // The full chain a drifting route would produce under supertest: the
+    // guard throws inside res.json, Express routes it to errorHandler, and
+    // the suite that caused the drift fails on a loud 500 — with the route,
+    // status and offending keys in the message.
+    const probe = express();
+    probe.use(express.json());
+    probe.use(envelopeGuard);
+    probe.get('/api/broken', (_req, res) => {
+      res.json({ oops: true });
+    });
+    probe.use(errorHandler);
+
+    const res = await request(probe).get('/api/broken');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('ENVELOPE_VIOLATION');
+    expect(res.body.message).toContain('/api/broken');
+    expect(res.body.message).toContain('oops');
   });
 
   it('exemptions: /api/public/units stays flat and the Daraja callbacks are not policed', async () => {
