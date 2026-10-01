@@ -14,6 +14,10 @@ shared/dist/
 .env.local
 env.txt
 
+# Credential recovery codes at the repo root — secret material, never commit.
+# Anchored to root so identically-named files inside source dirs stay trackable.
+/recovery-codes.txt
+
 # Stray duplicate clone of this repo (had its own .git); never commit it
 rental-system/
 
