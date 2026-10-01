@@ -26,3 +26,9 @@
 # exist; the format-valid dummy only lets the real clerkMiddleware parse test
 # requests without calling Clerk. Allowed per the fixture policy above.
 0045d696f9d6c63456f04c8a3681a9216baa6ebc:backend/tests/integration/clerkWebhook.test.ts:generic-api-key:56
+
+# 2026-10-01 (Codebuff session): NOT a secret — the audience-boundary suite's
+# fabricated Clerk secret key ("test-sk-..." placeholder). The Clerk instance
+# does not exist; the value only lets app.ts mount clerkMiddleware/clerkAuth
+# in tests (getAuth is mocked at that boundary). Same fixture policy as above.
+bc4a53464bf2a743e79dc4bdbe66ee25dbe45330:backend/tests/integration/clerkAudienceBoundary.test.ts:generic-api-key:16
