@@ -4,6 +4,7 @@
 // client (lib/portalApi.ts) in lib/httpClient.ts — only the configuration
 // differs (distinct CSRF cookie, refresh path, and login redirect per app).
 import { createHttpClient, readCsrfToken } from './httpClient';
+import type { ApiItemResponse } from '@rpms/shared';
 
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined) || '';
 
@@ -17,7 +18,9 @@ export function apiUrl(path: string): string {
 
 // The error envelope is the shared contract from @rpms/shared — the same
 // shape backend/src/utils/httpError.ts throws and errorHandler.ts serializes;
-// the shared engine parses it into Error & { code, status }.
+// the shared engine parses it into Error & { code, status }. The success
+// envelope (ApiItemResponse) is from the same package: one contract for both
+// halves of the wire.
 const { request } = createHttpClient({
   baseUrl: API_URL,
   csrfCookieName: 'rpms_csrf',
@@ -41,16 +44,20 @@ export interface Paged<T> {
 }
 
 export const api = {
-  // request() resolves with the parsed body as-is: plain GETs arrive as the
-  // { data: ... } envelope. Requiring `data` on T makes a bare T[] (or any
-  // non-envelope type) a compile error, so a consumer can never type the
-  // response one unwrap level off (the bug that crashed the signups feed).
-  get: <T extends { data: unknown }>(path: string) => request<T>(path),
-  post: <T>(path: string, body?: unknown) =>
+  // request() resolves with the parsed body as-is: every endpoint answers
+  // the shared { data: ... } envelope (ApiItemResponse from @rpms/shared).
+  // Requiring `data` on T makes a bare T[] (or any non-envelope type) a
+  // compile error, so a consumer can never type the response one unwrap
+  // level off (the bug that crashed the signups feed). Consumers that
+  // ignore the body (fire-and-forget writes, 204 deletions) omit T and get
+  // the { data: unknown } default.
+  get: <T extends ApiItemResponse<unknown>>(path: string) => request<T>(path),
+  post: <T extends ApiItemResponse<unknown>>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) }),
-  put: <T>(path: string, body?: unknown) =>
+  put: <T extends ApiItemResponse<unknown>>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PUT', body: JSON.stringify(body ?? {}) }),
-  del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  del: <T extends ApiItemResponse<unknown>>(path: string) =>
+    request<T>(path, { method: 'DELETE' }),
   list: <T>(path: string) => request<Paged<T>>(path),
 };
 
@@ -62,6 +69,30 @@ export function qs(params: Record<string, string | number | boolean | undefined 
   const s = search.toString();
   return s ? `?${s}` : '';
 }
+
+// Compile-time regression guard for the envelope constraint above: every
+// verb requires T to carry `data`. The negative cases MUST fail to compile
+// (loosening the generic turns these into "unused @ts-expect-error" errors);
+// the positive cases keep the guard honest if the constraint is ever
+// over-tightened. Never called or exported — types only, no runtime effect;
+// the void reference below keeps noUnusedLocals quiet.
+function _envelopeTypeGuard() {
+  type Ok = { data: { id: number } };
+  const a: ReturnType<typeof api.get<Ok>> = api.get<Ok>('/x');
+  const b: ReturnType<typeof api.post<Ok>> = api.post<Ok>('/x');
+  const c: ReturnType<typeof api.put<Ok>> = api.put<Ok>('/x');
+  const d: ReturnType<typeof api.del<Ok>> = api.del<Ok>('/x');
+  const e: ReturnType<typeof api.get> = api.get('/x');
+  const f: ReturnType<typeof api.post> = api.post('/x');
+  void [a, b, c, d, e, f];
+  // @ts-expect-error — bare arrays are the unwrap bug: T must carry `data`.
+  api.get<string[]>('/x');
+  // @ts-expect-error — same for writes: { user } at top level is not an envelope.
+  api.post<{ user: unknown }>('/x', {});
+  // @ts-expect-error — and deletes: no `data` key, not an envelope.
+  api.del<{ ok: boolean }>('/x');
+}
+void _envelopeTypeGuard;
 
 export async function authenticatedFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const method = options.method?.toUpperCase() ?? 'GET';

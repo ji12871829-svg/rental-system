@@ -7,6 +7,7 @@
 // after cookies were rotated or cleared) the same as 401: you no longer have
 // a usable session.
 import { createHttpClient, readCsrfToken } from './httpClient';
+import type { ApiItemResponse } from '@rpms/shared';
 
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined) || '';
 
@@ -29,12 +30,27 @@ const { request } = createHttpClient({
 });
 
 export const portalApi = {
-  // Same envelope rule as lib/api.ts: GETs resolve with the parsed body
-  // { data: ... } — requiring `data` on T keeps consumers unwrap-proof.
-  get: <T extends { data: unknown }>(path: string) => request<T>(path),
-  post: <T>(path: string, body?: unknown) =>
+  // Same envelope rule as lib/api.ts: every endpoint resolves with the
+  // parsed body { data: ... } (ApiItemResponse from @rpms/shared) —
+  // requiring `data` on T keeps consumers unwrap-proof. Fire-and-forget
+  // calls omit T and get the { data: unknown } default.
+  get: <T extends ApiItemResponse<unknown>>(path: string) => request<T>(path),
+  post: <T extends ApiItemResponse<unknown>>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) }),
 };
+
+// Compile-time regression guard for the envelope constraint (see lib/api.ts).
+// The negative case must fail to compile; never called or exported — types
+// only; the void reference keeps noUnusedLocals quiet.
+function _envelopeTypeGuard() {
+  type Ok = { data: { id: number } };
+  const a: ReturnType<typeof portalApi.get<Ok>> = portalApi.get<Ok>('/x');
+  const b: ReturnType<typeof portalApi.post<Ok>> = portalApi.post<Ok>('/x', {});
+  void [a, b];
+  // @ts-expect-error — no `data` key, not an envelope.
+  portalApi.get<{ summary: string }>('/x');
+}
+void _envelopeTypeGuard;
 
 export async function portalStatementDownload(): Promise<void> {
   const csrfToken = readCsrfToken('rpms_portal_csrf');
