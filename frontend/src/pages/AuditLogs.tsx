@@ -22,7 +22,7 @@ interface AuditRow {
 const CLERK_LEGEND: { action: string; text: string }[] = [
   { action: 'CLERK_LINKED', text: 'a Clerk identity was mapped to this staff user — automatically by the webhook (verified email match) or by an admin from the Clerk Sign-ups page.' },
   { action: 'CLERK_LINK_REFUSED', text: 'the webhook did not map this sign-up: no verified email, or none matching an ACTIVE staff user. The claimed email and reason are in the row\'s New value.' },
-  { action: 'CLERK_UNLINKED', text: 'the mapping was removed — the Clerk account was deleted (user.deleted) or the staff user was deleted (cascade).' },
+  { action: 'CLERK_UNLINKED', text: 'the mapping was removed. Three flavors — see the row\'s New value → event: user.deleted (the Clerk account was deleted), account_deleted (the staff user was deleted and the cascade took the mapping; attributed to the acting admin), email_mismatch (a webhook-created link self-revoked because the verified email stopped matching; both addresses are in the row).' },
   { action: 'LOGIN_CLERK', text: 'sign-in through Clerk\'s hosted sign-in; plain LOGIN rows are password sign-ins.' },
 ];
 
