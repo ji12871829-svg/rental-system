@@ -63,7 +63,11 @@ router.post(
         audience: STAFF_JWT_AUDIENCE,
       }
     );
-    await logAudit({ userId: mapped.id, action: 'LOGIN', entity: 'users', entityId: mapped.id });
+    // LOGIN_CLERK, not the password flow's LOGIN: the trail must be able to
+    // separate Clerk-minted sessions from password ones (e.g. when auditing
+    // which identities go through the external IdP). Same entity/shape as
+    // every login row, so list filters and exports treat it as a login.
+    await logAudit({ userId: mapped.id, action: 'LOGIN_CLERK', entity: 'users', entityId: mapped.id });
     setAuthCookies(res, token);
     res.json({
       data: {

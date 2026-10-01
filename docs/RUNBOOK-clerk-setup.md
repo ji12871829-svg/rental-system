@@ -148,7 +148,8 @@ use the password form — nobody is locked out by a half-migration.
 - `/login` → Landlord / Manager tab shows the Clerk card (key set) or the
   password form (no key).
 - Sign in with a mapped user → lands on the dashboard; `Audit trail` shows a
-  normal `LOGIN` row for that user.
+  `LOGIN_CLERK` row for that user (password sign-ins keep the plain `LOGIN`
+  action, so the two paths stay distinguishable in the trail).
 - If §3.A is configured: a brand-new Clerk sign-up whose verified email
   equals an ACTIVE staff user's email maps on first sign-in attempt (the
   webhook beats the sign-in; the `user_external_ids` row already exists).

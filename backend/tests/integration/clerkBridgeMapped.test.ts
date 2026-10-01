@@ -148,15 +148,25 @@ describe('POST /api/auth/clerk/session (with CLERK_SECRET_KEY configured)', () =
     expect(me.status).toBe(200);
     expect(me.body.data).toMatchObject({ userId: adminUserId, role: 'ADMIN' });
 
-    // A LOGIN audit row for the local user — the audit trail treats this
-    // exactly like a password sign-in.
+    // A LOGIN_CLERK audit row for the local user — the audit trail treats
+    // this as a login, but with its own action so Clerk-minted sessions stay
+    // distinguishable from password sign-ins.
     const { queryOne } = await import('../../src/config/db');
     const audit = await queryOne<{ id: number }>(
       `SELECT id FROM audit_logs
-        WHERE action = 'LOGIN' AND entity = 'users' AND entity_id = $1
+        WHERE action = 'LOGIN_CLERK' AND entity = 'users' AND entity_id = $1
         ORDER BY id DESC LIMIT 1`,
       [adminUserId],
     );
     expect(audit).toBeTruthy();
+
+    // And it is the ONLY login-style row: the bridge must not also write a
+    // plain LOGIN, or the two sign-in paths would blur together in the trail.
+    const plainLogin = await queryOne<{ id: number }>(
+      `SELECT id FROM audit_logs
+        WHERE action = 'LOGIN' AND entity = 'users' AND entity_id = $1`,
+      [adminUserId],
+    );
+    expect(plainLogin).toBeNull();
   });
 });
