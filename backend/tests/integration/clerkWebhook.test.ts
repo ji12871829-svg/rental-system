@@ -499,7 +499,104 @@ describe('POST /api/webhooks/clerk', () => {
       expect(missing.status).toBe(404);
     });
 
-    it('traces the cascade: deleting a staff user unlinks their Clerk mapping with an audit row', async () => {
+    it('keeps an ADMIN-linked mapping when the verified email later changes — human trust wins', async () => {
+      // user_test_wh_link_e2e was linked by an ADMIN to the manager in the
+      // earlier test. Changing the Clerk account's verified email must NOT
+      // revoke it: the admin link deliberately supports non-matching emails.
+      const { body, headers } = signed({
+        type: ClerkUserUpdated,
+        data: {
+          id: 'user_test_wh_link_e2e',
+          primary_email_address_id: 'email_1',
+          email_addresses: [{ id: 'email_1', email_address: 'renamed@somewhere.test', verification: { status: 'verified' } }],
+        },
+      });
+      const res = await request(app).post('/api/webhooks/clerk').set(headers).send(body);
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({ alreadyMapped: true });
+
+      const { queryOne } = await import('../../src/config/db');
+      const row = await queryOne(
+        "SELECT user_id FROM user_external_ids WHERE provider = 'clerk' AND external_id = 'user_test_wh_link_e2e'",
+      );
+      expect(row).toBeTruthy();
+    });
+
+  it('unlinks a webhook-created mapping when the verified email stops matching (user.updated)', async () => {
+    const { query, queryOne } = await import('../../src/config/db');
+    const bcrypt = (await import('bcryptjs')).default;
+    const inserted = await query<{ id: number }>(
+      `INSERT INTO users (name, email, phone, password_hash, role, status)
+       VALUES ('Email Continuity', 'continuity@rpms.local', NULL, $1, 'STAFF', 'ACTIVE')
+       RETURNING id`,
+      [await bcrypt.hash('Irrelevant#2026', 4)],
+    );
+    const localId = inserted[0].id;
+    try {
+      // Webhook-created link (the founding event is user.created).
+      const linked = signed({
+        type: ClerkUserCreated,
+        data: {
+          id: 'user_test_wh_continuity',
+          primary_email_address_id: 'email_1',
+          email_addresses: [{ id: 'email_1', email_address: 'continuity@rpms.local', verification: { status: 'verified' } }],
+        },
+      });
+      const res1 = await request(app).post('/api/webhooks/clerk').set(linked.headers).send(linked.body);
+      expect(res1.status).toBe(201);
+
+      // The Clerk account's verified email changes; user.updated arrives.
+      const renamed = signed({
+        type: ClerkUserUpdated,
+        data: {
+          id: 'user_test_wh_continuity',
+          primary_email_address_id: 'email_1',
+          email_addresses: [{ id: 'email_1', email_address: 'moved@elsewhere.test', verification: { status: 'verified' } }],
+        },
+      });
+      const res2 = await request(app).post('/api/webhooks/clerk').set(renamed.headers).send(renamed.body);
+      expect(res2.status).toBe(200);
+      expect(res2.body.data).toMatchObject({ unlinked: true, reason: 'verified email no longer matches' });
+
+      const row = await queryOne(
+        "SELECT user_id FROM user_external_ids WHERE provider = 'clerk' AND external_id = 'user_test_wh_continuity'",
+      );
+      expect(row).toBeNull();
+
+      // Audited to the affected user with both addresses.
+      const audit = await queryOne<{ user_id: number; new_value: { old_email: string; new_email: string } }>(
+        `SELECT user_id, new_value FROM audit_logs
+          WHERE action = 'CLERK_UNLINKED' AND new_value->>'external_id' = 'user_test_wh_continuity'
+            AND new_value->>'event' = 'email_mismatch'`,
+      );
+      expect(audit).toBeTruthy();
+      expect(audit!.user_id).toBe(localId);
+      expect(audit!.new_value).toMatchObject({ old_email: 'continuity@rpms.local', new_email: 'moved@elsewhere.test' });
+    } finally {
+      await query('DELETE FROM user_external_ids WHERE external_id = $1', ['user_test_wh_continuity']);
+      await query('DELETE FROM users WHERE id = $1', [localId]);
+    }
+  });
+
+  it('survives a replay race: an email-mismatch unlink does not crash on a concurrent delete', async () => {
+    // The mismatch path DELETEs and then acknowledges; a replayed delivery
+    // after the row is already gone must be a clean alreadyMapped/200 — the
+    // deleted branch here is covered by the RETURNING guard in the route.
+    const { body, headers } = signed({
+      type: ClerkUserUpdated,
+      data: {
+        id: 'user_test_wh_never_existed',
+        primary_email_address_id: 'email_1',
+        email_addresses: [{ id: 'email_1', email_address: 'ghost@rpms.local', verification: { status: 'verified' } }],
+      },
+    });
+    const res = await request(app).post('/api/webhooks/clerk').set(headers).send(body);
+    // Unmapped identity + verified email + no ACTIVE match → plain refusal.
+    expect(res.status).toBe(200);
+    expect(res.body.data.mapped).toBeNull();
+  });
+
+  it('traces the cascade: deleting a staff user unlinks their Clerk mapping with an audit row', async () => {
       const { query, queryOne } = await import('../../src/config/db');
       const bcrypt = (await import('bcryptjs')).default;
 

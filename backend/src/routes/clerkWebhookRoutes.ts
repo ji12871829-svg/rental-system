@@ -157,11 +157,60 @@ router.post(
       return;
     }
 
-    const existing = await queryOne<{ user_id: number }>(
-      `SELECT user_id FROM user_external_ids WHERE provider = 'clerk' AND external_id = $1`,
+    const existing = await queryOne<{ user_id: number; user_email: string }>(
+      `SELECT x.user_id, u.email AS user_email
+         FROM user_external_ids x JOIN users u ON u.id = x.user_id
+        WHERE x.provider = 'clerk' AND x.external_id = $1`,
       [clerkUserId],
     );
     if (existing) {
+      // Email-continuity enforcement for WEBHOOK-created links: when the
+      // Clerk account's verified email no longer matches the local user's,
+      // the link's founding invariant is gone, so it is revoked (the next
+      // sign-in falls back to passwords until re-provisioned). Provenance
+      // decides: the latest CLERK_LINKED row for this identity says whether
+      // the webhook created it (event user.created/user.updated) or an
+      // admin did (event 'admin_link') — admin links and hand-provisioned
+      // rows (no trail row at all) are explicit human trust decisions that
+      // may deliberately pair non-matching emails, so they survive. A
+      // missing verified email (mid-change) is never treated as a mismatch.
+      if (event.type === 'user.updated' && email && email !== existing.user_email) {
+        const provenance = await queryOne<{ event: string | null }>(
+          `SELECT new_value->>'event' AS event FROM audit_logs
+            WHERE action = 'CLERK_LINKED' AND new_value->>'external_id' = $1
+            ORDER BY id DESC LIMIT 1`,
+          [clerkUserId],
+        );
+        if (provenance && provenance.event !== 'admin_link') {
+          const removed = await query<{ user_id: number }>(
+            `DELETE FROM user_external_ids
+              WHERE provider = 'clerk' AND external_id = $1
+              RETURNING user_id`,
+            [clerkUserId],
+          );
+          if (removed[0]) {
+            await logAudit({
+              userId: existing.user_id,
+              action: 'CLERK_UNLINKED',
+              entity: 'users',
+              entityId: existing.user_id,
+              newValue: {
+                provider: 'clerk',
+                external_id: clerkUserId,
+                event: 'email_mismatch',
+                old_email: existing.user_email,
+                new_email: email,
+              },
+            });
+            res.status(200).json({
+              data: { unlinked: true, mapped: existing.user_id, reason: 'verified email no longer matches' },
+            });
+            return;
+          }
+          // The row vanished between the check and the delete (concurrent
+          // delivery) — nothing to revoke, acknowledge the replay.
+        }
+      }
       // Already mapped — idempotent replay (Clerk retries on flaky networks)
       // must not double-insert or error.
       res.status(200).json({ data: { mapped: existing.user_id, alreadyMapped: true } });

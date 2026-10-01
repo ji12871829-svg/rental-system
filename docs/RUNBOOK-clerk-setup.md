@@ -107,7 +107,11 @@ Replays and ignored events are not logged, so Clerk retries stay invisible.
 Unlinks are traceable too: deleting the Clerk account writes `CLERK_UNLINKED`
 attributed to the affected user, and deleting the **staff** user writes
 `CLERK_UNLINKED` (`event: account_deleted`) attributed to the acting admin,
-since the cascade would otherwise remove the mapping silently.
+since the cascade would otherwise remove the mapping silently. A
+webhook-created link also self-revokes when the Clerk account's **verified
+email stops matching** the local user's (`event: email_mismatch`, both
+addresses in the row) — admin-linked mappings deliberately survive email
+changes, since pairing a renamed address is exactly why that path exists.
 
 Refused sign-ups also surface on the **Clerk Sign-ups** admin page
 (`/clerk-signups`): one row per refused Clerk identity with the claimed
