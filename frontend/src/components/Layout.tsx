@@ -4,7 +4,7 @@ import { Suspense } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import {
   AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, BookUser, Building2, CalendarDays, ChevronDown, Droplets, FileText, LayoutDashboard, Loader2, LogOut, Mail, Menu, ReceiptText, Settings,
-  Smartphone, Ticket, Users as UsersIcon, Wallet, X, ClipboardCheck, Zap,
+  Smartphone, Ticket, UserCog, Users as UsersIcon, Wallet, X, ClipboardCheck, Zap,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { branding } from '../lib/branding';
@@ -44,6 +44,7 @@ const PREFETCH_BY_PATH: Record<string, keyof typeof routeChunks> = {
   '/settings': 'settings',
   '/users': 'users',
   '/audit': 'audit',
+  '/clerk-signups': 'clerkSignups',
   '/privacy-register': 'privacyRegister',
   '/instructions': 'instructions',
 };
@@ -114,6 +115,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/settings', label: 'Settings', icon: Settings },
       { to: '/users', label: 'Users', icon: UsersIcon, adminOnly: true },
       { to: '/audit', label: 'Audit Logs', icon: FileText, adminOnly: true },
+      { to: '/clerk-signups', label: 'Clerk Sign-ups', icon: UserCog, adminOnly: true },
       { to: '/privacy-register', label: 'Privacy Register', icon: FileText, adminOnly: true },
     ],
   },

@@ -21,12 +21,31 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { verifyWebhook } from '@clerk/backend/webhooks';
 import type { UserWebhookEvent } from '@clerk/backend';
+import { z } from 'zod';
 import { env } from '../config/env';
 import { query, queryOne } from '../config/db';
 import { logAudit } from '../services/auditService';
 import { asyncHandler } from '../utils/asyncHandler';
+import { requireAuth, adminOnly } from '../middleware/auth';
+import { validateBody } from '../middleware/validate';
+import { conflict, notFound } from '../utils/httpError';
 
+// Admin-facing review of Clerk sign-ups the webhook could not map. These
+// routes share the webhook router so every piece of the mapping pipeline is
+// in one file, but they sit BEHIND requireAuth+adminOnly — only the POST /
+// webhook itself is deliberately unauthenticated (svix-signature verified).
+// Note: CSRF exempts only the exact path /api/webhooks/clerk, so the admin
+// routes keep full double-submit protection; none of them set cookies.
 const router = Router();
+
+// Admin-facing review of Clerk sign-ups the webhook could not map. These
+// routes share the webhook router so every piece of the mapping pipeline is
+// in one file, but each carries its own requireAuth+adminOnly guard — a
+// router-wide use() would also guard the POST / webhook, whose only
+// authentication IS the svix signature. Note: CSRF exempts only the exact
+// path /api/webhooks/clerk, so the admin routes keep full double-submit
+// protection.
+const adminGuard = [requireAuth, adminOnly] as const;
 
 // Local users matching this role set are linkable. Property managers and
 // admins are staff; STAFF-role accounts are the least-privileged accounts —
@@ -169,6 +188,91 @@ router.post(
       newValue: { provider: 'clerk', external_id: clerkUserId, email, event: event.type },
     });
     res.status(201).json({ data: { mapped: local.id } });
+  }),
+);
+
+// Deduplicated review list: one row per refused Clerk identity, with the
+// latest refusal's email/reason/timestamp and whether it has SINCE been
+// linked (a later event mapped it, or an admin pre-provisioned by hand).
+// Linked rows are returned too — they answer "did anything ever come of that
+// sign-up?" — the UI splits the two groups. system-attributed refusals only:
+// by definition, a refused sign-up has no local user to attribute to.
+router.get('/signups', ...adminGuard, asyncHandler(async (_req, res) => {
+  const rows = await query<{
+    external_id: string;
+    email: string | null;
+    reason: string;
+    refused_at: string;
+    refusals: string;
+    linked_user_id: number | null;
+    linked_user_name: string | null;
+    linked_user_email: string | null;
+    linked_at: string | null;
+  }>(
+    `SELECT DISTINCT ON (a.new_value->>'external_id')
+       a.new_value->>'external_id' AS external_id,
+       a.new_value->>'email'       AS email,
+       a.new_value->>'reason'      AS reason,
+       a.created_at                AS refused_at,
+       (SELECT COUNT(*)::int FROM audit_logs r
+         WHERE r.action = 'CLERK_LINK_REFUSED'
+           AND r.new_value->>'external_id' = a.new_value->>'external_id') AS refusals,
+       x.user_id AS linked_user_id,
+       u.name    AS linked_user_name,
+       u.email   AS linked_user_email,
+       x.created_at AS linked_at
+     FROM audit_logs a
+     LEFT JOIN user_external_ids x
+       ON x.provider = 'clerk' AND x.external_id = a.new_value->>'external_id'
+     LEFT JOIN users u ON u.id = x.user_id
+     WHERE a.action = 'CLERK_LINK_REFUSED' AND a.user_id IS NULL
+     ORDER BY a.new_value->>'external_id', a.created_at DESC`,
+  );
+  res.json({ data: rows });
+}));
+
+// The fix-it action: create the mapping the webhook could not. The admin
+// picks the staff user whose email the sign-up was claimed under — typically
+// a typo'd or renamed address, or a role outside the auto-link set.
+const linkSchema = z.object({
+  userId: z.coerce.number().int().positive(),
+  // Optional context for the audit row: the refusal reason being resolved.
+  refusalReason: z.string().max(100).optional(),
+});
+router.post(
+  '/signups/:externalId/link',
+  ...adminGuard,
+  validateBody(linkSchema),
+  asyncHandler(async (req: Request, res: Response) => {
+    const externalId = z.string().min(1).max(255).parse(req.params.externalId);
+
+    const staff = await queryOne<{ id: number; email: string }>(
+      `SELECT id, email FROM users WHERE id = $1 AND status = 'ACTIVE'
+         AND role = ANY($2::text[])`,
+      [req.body.userId, ['ADMIN', 'PROPERTY_MANAGER', 'STAFF']],
+    );
+    if (!staff) throw notFound('Staff user not found (or not ACTIVE / linkable).');
+
+    const dupe = await queryOne("SELECT 1 FROM user_external_ids WHERE provider = 'clerk' AND external_id = $1", [externalId]);
+    if (dupe) throw conflict('This Clerk identity is already mapped.', 'ALREADY_MAPPED');
+    const dupeUser = await queryOne("SELECT 1 FROM user_external_ids WHERE provider = 'clerk' AND user_id = $1", [staff.id]);
+    if (dupeUser) throw conflict('This staff user already has a Clerk identity mapped.', 'USER_ALREADY_MAPPED');
+
+    await query(
+      `INSERT INTO user_external_ids (user_id, provider, external_id)
+       VALUES ($1, 'clerk', $2)`,
+      [staff.id, externalId],
+    );
+    // Admin-attributed (the refusing webhook rows are system-attributed).
+    await logAudit({
+      userId: req.user!.userId,
+      action: 'CLERK_LINKED',
+      entity: 'users',
+      entityId: staff.id,
+      newValue: { provider: 'clerk', external_id: externalId, event: 'admin_link' },
+      oldValue: { refused_reason: req.body.refusalReason ?? null },
+    });
+    res.status(201).json({ data: { mapped: staff.id } });
   }),
 );
 

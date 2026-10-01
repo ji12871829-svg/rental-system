@@ -37,6 +37,7 @@ const SmsNotifications = lazy(routeChunks.sms);
 const EmailCampaign = lazy(routeChunks.emailCampaign);
 const Users = lazy(routeChunks.users);
 const AuditLogs = lazy(routeChunks.audit);
+const ClerkSignups = lazy(routeChunks.clerkSignups);
 const PrivacyRegister = lazy(routeChunks.privacyRegister);
 const MpesaReview = lazy(routeChunks.mpesaReview);
 
@@ -215,6 +216,14 @@ export default function App() {
               element={
                 <RequireAdmin>
                   <AuditLogs />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/clerk-signups"
+              element={
+                <RequireAdmin>
+                  <ClerkSignups />
                 </RequireAdmin>
               }
             />

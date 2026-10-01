@@ -31,6 +31,7 @@ export const routeChunks = {
   emailCampaign: () => import('../pages/EmailCampaign'),
   users: () => import('../pages/Users'),
   audit: () => import('../pages/AuditLogs'),
+  clerkSignups: () => import('../pages/ClerkSignups'),
   privacyRegister: () => import('../pages/PrivacyRegister'),
   mpesaReview: () => import('../pages/MpesaReview'),
   legal: () => import('../pages/Legal'),

@@ -102,6 +102,13 @@ attributed to the linked staff user; `CLERK_LINK_REFUSED` rows shown as
 system, with the reason — e.g. an email that matches no ACTIVE staff user).
 Replays and ignored events are not logged, so Clerk retries stay invisible.
 
+Refused sign-ups also surface on the **Clerk Sign-ups** admin page
+(`/clerk-signups`): one row per refused Clerk identity with the claimed
+email, reason and attempt count, and a **Link to staff user…** action that
+creates the mapping the webhook could not (typo'd/renamed email, or a role
+outside the auto-link set) — no SQL needed. Rows move to the "since linked"
+section once mapped.
+
 ### B. Manual: pre-provision from the Clerk dashboard (fallback)
 
 In Clerk → **Users**, create or open each staff member's user, copy their

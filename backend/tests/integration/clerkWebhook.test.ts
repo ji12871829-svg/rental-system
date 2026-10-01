@@ -315,4 +315,131 @@ describe('POST /api/webhooks/clerk', () => {
     );
     expect(row).toMatchObject({ status: 'ACTIVE' });
   });
+
+  // --- Admin review of refused sign-ups (GET + link action) ----------------
+
+  async function staffSession(email: string, password: string) {
+    const login = await request(app).post('/api/auth/login').send({ email, password });
+    expect(login.status).toBe(200);
+    const setCookie = login.headers['set-cookie'];
+    const cookies = (Array.isArray(setCookie) ? setCookie : [String(setCookie)]).map((c) => c.split(';')[0]);
+    const session = cookies.find((c) => c.startsWith('rpms_session='))!;
+    const csrfCookie = cookies.find((c) => c.startsWith('rpms_csrf='))!;
+    return { cookie: `${session}; ${csrfCookie}`, csrf: decodeURIComponent(csrfCookie.split('=')[1]) };
+  }
+
+  describe('admin review of refused sign-ups', () => {
+    it('requires a staff session (webhook POST stays the only public path)', async () => {
+      const res = await request(app).get('/api/webhooks/clerk/signups');
+      expect(res.status).toBe(401);
+    });
+
+    it('forbids non-admin staff', async () => {
+      const staff = await staffSession('staff@rpms.local', 'Staff@2026!');
+      const res = await request(app).get('/api/webhooks/clerk/signups').set('Cookie', staff.cookie);
+      expect(res.status).toBe(403);
+    });
+
+    it('lists deduplicated refusals with reason and live linked status', async () => {
+      const admin = await staffSession('admin@rpms.local', 'Admin@2026!');
+      // The earlier refusal tests produced rows for these two identities.
+      const res = await request(app).get('/api/webhooks/clerk/signups').set('Cookie', admin.cookie);
+      expect(res.status).toBe(200);
+      const rows = res.body.data as {
+        external_id: string; email: string | null; reason: string; refusals: number; linked_user_id: number | null;
+      }[];
+      const nobody = rows.find((r) => r.external_id === 'user_test_wh_nobody');
+      expect(nobody).toMatchObject({
+        email: 'stranger@nowhere.test',
+        reason: 'no matching active staff user',
+        linked_user_id: null,
+      });
+      expect(nobody!.refusals).toBeGreaterThanOrEqual(1);
+      const unverified = rows.find((r) => r.external_id === 'user_test_wh_unverified');
+      expect(unverified).toMatchObject({ reason: 'no verified email' });
+    });
+
+    it('links a refused identity to a staff user from the review view', async () => {
+      const { queryOne } = await import('../../src/config/db');
+      // Produce a refusal first, so the flow mirrors the real one: refused
+      // sign-up appears in the review list, then an admin fixes it.
+      const refused = signed({
+        type: ClerkUserCreated,
+        data: {
+          id: 'user_test_wh_link_e2e',
+          primary_email_address_id: 'email_1',
+          email_addresses: [{ id: 'email_1', email_address: 'link.me@nowhere.test', verification: { status: 'verified' } }],
+        },
+      });
+      const refusedRes = await request(app).post('/api/webhooks/clerk').set(refused.headers).send(refused.body);
+      expect(refusedRes.status).toBe(200);
+      expect(refusedRes.body.data.mapped).toBeNull();
+
+      const admin = await staffSession('admin@rpms.local', 'Admin@2026!');
+      const manager = await queryOne<{ id: number }>("SELECT id FROM users WHERE email = 'manager@rpms.local'");
+      expect(manager).toBeTruthy();
+
+      const link = await request(app)
+        .post('/api/webhooks/clerk/signups/user_test_wh_link_e2e/link')
+        .set('Cookie', admin.cookie)
+        .set('x-csrf-token', admin.csrf)
+        .send({ userId: manager!.id, refusalReason: 'no matching active staff user' });
+      expect(link.status).toBe(201);
+      expect(link.body.data).toMatchObject({ mapped: manager!.id });
+
+      // The mapping is real: bridge-consumable shape, and the review list
+      // now reports the identity as linked.
+      const row = await queryOne<{ user_id: number }>(
+        "SELECT user_id FROM user_external_ids WHERE provider = 'clerk' AND external_id = 'user_test_wh_link_e2e'",
+      );
+      expect(row!.user_id).toBe(manager!.id);
+      const list = await request(app).get('/api/webhooks/clerk/signups').set('Cookie', admin.cookie);
+      const linked = (list.body.data as { external_id: string; linked_user_id: number | null }[])
+        .find((r) => r.external_id === 'user_test_wh_link_e2e');
+      expect(linked!.linked_user_id).toBe(manager!.id);
+
+      // Admin-attributed trail row (not system) — an admin action, not a
+      // webhook decision.
+      const audit = await queryOne<{ user_id: number }>(
+        `SELECT user_id FROM audit_logs
+          WHERE action = 'CLERK_LINKED' AND new_value->>'external_id' = 'user_test_wh_link_e2e'
+            AND new_value->>'event' = 'admin_link'`,
+      );
+      expect(audit).toBeTruthy();
+      expect(audit!.user_id).toEqual(expect.any(Number));
+
+      // Double-link guards.
+      const again = await request(app)
+        .post('/api/webhooks/clerk/signups/user_test_wh_link_e2e/link')
+        .set('Cookie', admin.cookie)
+        .set('x-csrf-token', admin.csrf)
+        .send({ userId: manager!.id });
+      expect(again.status).toBe(409);
+      expect(again.body.error).toBe('ALREADY_MAPPED');
+
+      const other = signed({
+        type: ClerkUserCreated,
+        data: {
+          id: 'user_test_wh_link_other',
+          primary_email_address_id: 'email_1',
+          email_addresses: [{ id: 'email_1', email_address: 'other@nowhere.test', verification: { status: 'verified' } }],
+        },
+      });
+      await request(app).post('/api/webhooks/clerk').set(other.headers).send(other.body);
+      const userDupe = await request(app)
+        .post('/api/webhooks/clerk/signups/user_test_wh_link_other/link')
+        .set('Cookie', admin.cookie)
+        .set('x-csrf-token', admin.csrf)
+        .send({ userId: manager!.id });
+      expect(userDupe.status).toBe(409);
+      expect(userDupe.body.error).toBe('USER_ALREADY_MAPPED');
+
+      const missing = await request(app)
+        .post('/api/webhooks/clerk/signups/user_test_wh_link_other/link')
+        .set('Cookie', admin.cookie)
+        .set('x-csrf-token', admin.csrf)
+        .send({ userId: 999999999 });
+      expect(missing.status).toBe(404);
+    });
+  });
 });
