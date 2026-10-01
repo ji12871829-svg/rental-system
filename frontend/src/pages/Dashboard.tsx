@@ -9,9 +9,11 @@ import { QuickActions } from '../components/QuickActions';
 import { KpiBand } from '../components/dashboard/KpiBand';
 import { ChartGrid } from '../components/dashboard/ChartGrid';
 import { HealthCards } from '../components/dashboard/HealthCards';
+import { ClerkSignupsStats } from '../components/dashboard/ClerkSignupsStats';
 import type { DashboardData } from '@rpms/shared';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
+import { useAuth } from '../lib/auth';
 
 // Live-poll cadence for the KPI strip and provider health. Quiet by design:
 // failed polls keep the last good data and retry next tick, hidden tabs skip
@@ -19,6 +21,7 @@ import { api } from '../lib/api';
 const POLL_MS = 60_000;
 
 export default function Dashboard() {
+  const { isAdmin } = useAuth();
   // Live dashboard: refetch every 60s while the page is open. Polls stay
   // calm by design: a failed poll keeps the last good KPIs on screen (the
   // next tick retries silently) and identical payloads never re-render.
@@ -91,6 +94,13 @@ export default function Dashboard() {
       <div className="rise-in" style={{ animationDelay: '90ms' }}>
         <HealthCards data={data} />
       </div>
+      {/* Admin-only, and self-gating: renders nothing unless refused Clerk
+          sign-ups are actually pending. */}
+      {isAdmin && (
+        <div className="rise-in" style={{ animationDelay: '135ms' }}>
+          <ClerkSignupsStats />
+        </div>
+      )}
       <div className="rise-in" style={{ animationDelay: '180ms' }}>
         <ChartGrid
           charts={data.charts}
