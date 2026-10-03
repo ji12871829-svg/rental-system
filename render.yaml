@@ -25,7 +25,13 @@ services:
     buildCommand: npm run build --prefix shared && cd frontend && npm ci --include=dev && npm run build && cd ../backend && npm ci --include=dev && npm run build
     startCommand: npm run start --prefix backend
     healthCheckPath: /api/health
-    autoDeploy: true
+    # Auto-deploy is disabled: the repo bypasses the 6 required status
+    # checks on push, and Render's GitHub App will not build a commit that
+    # has no passing checks (the deploy aborts and the service never takes
+    # over the new code). Use the Render dashboard 'Redeploy this commit'
+    # button to promote the latest commit. Re-enable (autoDeploy: true) once
+    # the status gate is no longer bypassed.
+    autoDeploy: false
     envVars:
       # Pin Node to the version used in local development (v26.3.0). Render
       # otherwise defaults to 24.14.1 for services created 2026-04-21+.
