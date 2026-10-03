@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import { createApp } from './app';
 import { env } from './config/env';
 import { pool } from './config/db';
@@ -12,7 +13,24 @@ const app = createApp();
 
 async function main() {
   try {
-    await pool.query('SELECT 1');
+    // Boot probe with retry — the free Neon pooler's first connections after
+    // idle can intermittently return a mangled response (pg v3 "syntax error
+    // at or near //"), even interleaved with successes. The pre-deploy gate
+    // (scripts/predeploy-check.mjs) already retries its probe for exactly
+    // this; the app must too, or a cold pooler aborts a good deploy right
+    // after the gate passed. Same policy: 5 attempts, short backoff.
+    const BOOT_PROBE_ATTEMPTS = 5;
+    for (let attempt = 1; attempt <= BOOT_PROBE_ATTEMPTS; attempt += 1) {
+      try {
+        if (attempt > 1) await sleep(Math.min(2000 * (attempt - 1), 6000));
+        await pool.query('SELECT 1');
+        break;
+      } catch (err) {
+        if (attempt === BOOT_PROBE_ATTEMPTS) throw err;
+        // eslint-disable-next-line no-console
+        console.warn(`[boot] DB probe attempt ${attempt} failed (${(err as Error).message}) — retrying…`);
+      }
+    }
     // First-boot bootstrap (prod deploys onto a fresh, empty database): no-op
     // on every subsequent boot. Awaited so the health check only turns green
     // on a ready service.
