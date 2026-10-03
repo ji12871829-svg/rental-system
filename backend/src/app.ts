@@ -19,6 +19,7 @@ import auditRoutes from './routes/audit';
 import authRoutes from './routes/auth';
 import brandingRoutes from './routes/branding';
 import emailRoutes from './routes/emails';
+import templateRoutes from './routes/templates';
 import privacyRequestRoutes from './routes/privacyRequests';
 import publicRoutes from './routes/public';
 import expenseRoutes from './routes/expenses';
@@ -147,6 +148,7 @@ export function createApp() {
   app.use('/api/receipts', receiptRoutes);
   app.use('/api/sms', smsRoutes);
   app.use('/api/emails', emailRoutes);
+  app.use('/api/templates', templateRoutes);
   app.use('/api/privacy-requests', privacyRequestRoutes);
   app.use('/api/reports', reportRoutes);
   app.use('/api/audit', auditRoutes);

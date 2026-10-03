@@ -10,6 +10,8 @@ import { getBusinessIdentity, getPaybillInstructions, type BusinessIdentity } fr
 import { getSettings } from './settingsService';
 import { composeRentStatementEmail } from '../utils/emailTemplates';
 import { queueReminderEmail } from './emailService';
+import { getCustomTemplate } from './templateService';
+import { renderMergeFields } from '../utils/mergeFields';
 import {
   africasTalkingBalance,
   evaluateBalance,
@@ -57,7 +59,12 @@ export function buildMessage(receipt: ReceiptLike, opts: {
   unitNumber: string;
   currency: string;
   identity?: BusinessIdentity;
+  template?: string | null;
 }): string {
+  // A user-customized Message Templates body (already rendered by the caller
+  // with the receipt's merge vars) wins outright; everything below is the
+  // hardcoded fallback so untouched installs behave exactly as before.
+  if (opts.template) return opts.template;
   const id = opts.identity ?? {
     name: env.businessName.trim() || null,
     regNo: env.businessRegNo.trim() || null,
@@ -108,6 +115,42 @@ export function buildMessage(receipt: ReceiptLike, opts: {
   return rentReceiptMessage({ ...base, rentPaid: toNumber(receipt.rent_amount) });
 }
 
+// Resolves the user-editable receipt template (Message Templates page),
+// rendered with the receipt's merge vars — or null when no customized row
+// exists, in which case buildMessage's hardcoded spec wording is unchanged.
+// The lookup runs on a normal pooled connection (read-only) while the caller's
+// payment transaction keeps using `exec`.
+async function resolveReceiptTemplate(
+  receipt: ReceiptLike,
+  vars: { name: string; unit: string; currency: string; business: string },
+): Promise<string | null> {
+  const kind =
+    receipt.receipt_type === 'RENT' ? 'SMS_RENT_RECEIPT'
+    : receipt.receipt_type === 'WATER' ? 'SMS_WATER_RECEIPT'
+    : 'SMS_COMBINED_RECEIPT';
+  const custom = await getCustomTemplate(kind);
+  if (!custom) return null;
+  const common = {
+    ...vars,
+    month: MONTH_NAMES[receipt.billing_month - 1],
+    year: receipt.billing_year,
+    receipt: receipt.receipt_number,
+  };
+  const fullVars: Record<string, string | number> =
+    receipt.receipt_type === 'RENT'
+      ? { ...common, amount: toNumber(receipt.rent_amount), balance: toNumber(receipt.balance) }
+      : receipt.receipt_type === 'WATER'
+        ? { ...common, amount: toNumber(receipt.water_amount), balance: toNumber(receipt.balance) }
+        : {
+            ...common,
+            rent: toNumber(receipt.rent_amount),
+            water: toNumber(receipt.water_amount),
+            total: toNumber(receipt.total_amount),
+            balance: toNumber(receipt.balance),
+          };
+  return renderMergeFields(custom.body, fullVars);
+}
+
 // Creates a PENDING sms_notifications row for a receipt (called inside the
 // payment transaction via the injected `exec`). Returns the new row's id so
 // the caller can auto-dispatch it after commit, or null when there is nothing
@@ -129,11 +172,19 @@ export async function prepareForReceipt(
 
   // Identity comes from business_branding (DB, env fallback) so Settings
   // edits apply to new SMS immediately.
+  const identity = await getBusinessIdentity();
+  const template = await resolveReceiptTemplate(receipt, {
+    name: row.full_name,
+    unit: row.unit_number ?? '',
+    currency: row.currency,
+    business: identity.name ?? '',
+  });
   const message = buildMessage(receipt, {
     tenantName: row.full_name,
     unitNumber: row.unit_number,
     currency: row.currency,
-    identity: await getBusinessIdentity(),
+    identity,
+    template,
   });
   const inserted = await exec.query(
     `INSERT INTO sms_notifications (receipt_id, tenant_id, phone_number, message, status)
@@ -317,6 +368,15 @@ export async function prepareReminder(
 }
 
 // WHATSAPP — nothing is queued or sent: returns a wa.me click-to-chat URL
+// The exact "chat with support" sentence whatsappOverdueMessage appends,
+// factored out so the customized WHATSAPP_OVERDUE template's {{support_link}}
+// merge field expands to identical text.
+function whatsappSupportLink(phone: string | null): string {
+  return phone
+    ? ` Click here to chat with support if you have any questions: https://wa.me/${phone.replace(/\D/g, '')}.`
+    : '';
+}
+
 // with the text pre-filled. The operator reviews it in WhatsApp before
 // pressing send; there is no provider cost and no unreviewed outbound.
 async function whatsappReminder(
@@ -325,7 +385,36 @@ async function whatsappReminder(
   tenantId: number,
   userId: number | null,
 ): Promise<ReminderResult | null> {
-  const text = kind === 'BALANCE_DUE'
+  // A customized Message Templates row (WHATSAPP_BALANCE_DUE /
+  // WHATSAPP_OVERDUE) overrides the pre-filled wording. {{support_link}}
+  // expands to the same "chat with support" sentence whatsappOverdueMessage
+  // appends, or to nothing when no support phone is configured.
+  const custom = await getCustomTemplate(kind === 'BALANCE_DUE' ? 'WHATSAPP_BALANCE_DUE' : 'WHATSAPP_OVERDUE');
+  const text = custom
+    ? renderMergeFields(
+        custom.body,
+        kind === 'BALANCE_DUE'
+          ? {
+              name: f.tenantName,
+              unit: f.unitNumber,
+              month: f.monthName,
+              year: f.year,
+              current_rent: f.currentRent,
+              previous_balance: f.previousRentBalance,
+              total_due: Math.max(f.combinedBalance, 0),
+              account: f.accountNumber,
+              payment_method: f.paymentMethod,
+              currency: f.currency,
+            }
+          : {
+              name: f.tenantName,
+              unit: f.unitNumber,
+              amount_due: Math.max(f.rentBalance, 0),
+              support_link: whatsappSupportLink((await getBusinessIdentity()).phone),
+              currency: f.currency,
+            },
+      )
+    : kind === 'BALANCE_DUE'
     ? whatsappBalanceDueMessage({
         tenantName: f.tenantName,
         unitNumber: f.unitNumber,
@@ -407,7 +496,34 @@ async function smsReminder(
   userId: number | null,
 ): Promise<ReminderResult | null> {
   if (!f.phoneNumber) return null;
-  const message = kind === 'BALANCE_DUE'
+  // A customized Message Templates row (SMS_BALANCE_DUE / SMS_OVERDUE)
+  // overrides the hardcoded wording; merge fields resolve per tenant.
+  const custom = await getCustomTemplate(kind === 'BALANCE_DUE' ? 'SMS_BALANCE_DUE' : 'SMS_OVERDUE');
+  const baseVars = {
+    name: f.tenantName,
+    unit: f.unitNumber,
+    month: f.monthName,
+    year: f.year,
+    currency: f.currency,
+    business: f.identityName ?? '',
+  };
+  const message = custom
+    ? renderMergeFields(
+        custom.body,
+        kind === 'BALANCE_DUE'
+          ? {
+              ...baseVars,
+              total_due: Math.max(f.combinedBalance, 0),
+              account: f.accountNumber,
+              payment_method: f.paymentMethod,
+            }
+          : {
+              ...baseVars,
+              amount_due: Math.max(f.rentBalance, 0),
+              total_due: Math.max(f.combinedBalance, 0),
+            },
+      )
+    : kind === 'BALANCE_DUE'
     ? monthlyBalanceDueMessage({
         tenantName: f.tenantName,
         unitNumber: f.unitNumber,
@@ -538,13 +654,18 @@ export async function sendSmsNotification(id: number): Promise<unknown> {
       [id, result.providerMessageId ?? null, result.cost?.amount ?? null, result.cost?.currency ?? null]
     );
   } else {
+    // A network-level block (e.g. recipient DND) is never going to clear
+    // with a retry — the retry job would just re-spend $0 on a fixed delay.
+    // Keep FAILED but remove the next_retry_at deadline so the sweep stops
+    // touching this row (it can still be sent manually).
+    const isDnd = (result.failureReason ?? '').toLowerCase().includes('dnd');
     const attempts = await queryOne<{ n: string }>(
       'SELECT attempt_count::text AS n FROM sms_notifications WHERE id = $1',
       [id]
     );
     const attemptCount = Number(attempts?.n ?? 0) + 1;
     const giveUp = attemptCount >= env.smsMaxSendAttempts;
-    const delayMs = env.smsRetryEnabled && !giveUp ? env.smsRetryBaseDelayMs * Math.pow(5, attemptCount - 1) : null;
+    const delayMs = env.smsRetryEnabled && !isDnd && !giveUp ? env.smsRetryBaseDelayMs * Math.pow(5, attemptCount - 1) : null;
     await query(
       `UPDATE sms_notifications
        SET status = 'FAILED',

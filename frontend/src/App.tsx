@@ -35,6 +35,7 @@ const Arrears = lazy(routeChunks.arrears);
 const Receipts = lazy(routeChunks.receipts);
 const SmsNotifications = lazy(routeChunks.sms);
 const EmailCampaign = lazy(routeChunks.emailCampaign);
+const MessageTemplates = lazy(routeChunks.messageTemplates);
 const Users = lazy(routeChunks.users);
 const AuditLogs = lazy(routeChunks.audit);
 const ClerkSignups = lazy(routeChunks.clerkSignups);
@@ -100,6 +101,7 @@ const TITLES: Record<string, string> = {
   '/receipts': 'Receipts',
   '/sms': 'SMS Notifications',
   '/email-campaign': 'Tenant Email',
+  '/message-templates': 'Message Templates',
   '/users': 'Users',
   '/audit': 'Audit Logs',
   '/privacy-register': 'Privacy Register',
@@ -202,6 +204,7 @@ export default function App() {
             <Route path="/receipts" element={<Receipts />} />
             <Route path="/sms" element={<SmsNotifications />} />
             <Route path="/email-campaign" element={<EmailCampaign />} />
+          <Route path="/message-templates" element={<MessageTemplates />} />
             <Route path="/mpesa-review" element={<MpesaReview />} />
             <Route
               path="/users"

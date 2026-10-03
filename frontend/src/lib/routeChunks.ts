@@ -29,6 +29,7 @@ export const routeChunks = {
   receipts: () => import('../pages/Receipts'),
   sms: () => import('../pages/SmsNotifications'),
   emailCampaign: () => import('../pages/EmailCampaign'),
+  messageTemplates: () => import('../pages/MessageTemplates'),
   users: () => import('../pages/Users'),
   audit: () => import('../pages/AuditLogs'),
   clerkSignups: () => import('../pages/ClerkSignups'),

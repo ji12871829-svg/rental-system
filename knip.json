@@ -1,6 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "ignore": [".ua/**", "shared/**", "design/**"],
+  "ignoreDependencies": ["jest-environment-node", "@jest/environment"],
   "workspaces": {
     ".": {
       "entry": ["scripts/*.mjs"]

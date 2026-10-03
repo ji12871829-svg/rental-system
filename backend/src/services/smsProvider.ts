@@ -157,9 +157,16 @@ function parseAtRecipient(body: AtResponse): SendResult {
       cost: parseProviderCost(recipient.cost),
     };
   }
+  // Africa's Talking relays Safaricom network-level blocks as 201 — the
+  // fetch succeeds, so the app must read the status string to classify the
+  // real outcome. DND / self-OTPs / closed accounts all surface here.
+  const isDnd = recipient.status === 'UserInBlacklist';
   return {
     ok: false,
-    failureReason: recipient.statusDescription || recipient.status || 'Unknown provider error',
+    failureReason:
+      isDnd
+        ? 'SMS blocked by the recipient (Safaricom DND) — the recipient dialled the opt-out; delivery is not possible until they reactivate. Cost 0.'
+        : recipient.statusDescription || recipient.status || 'Unknown provider error',
   };
 }
 

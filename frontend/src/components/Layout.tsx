@@ -3,7 +3,7 @@ import { BrandLogo } from './BrandLogo';
 import { Suspense } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, BookUser, Building2, CalendarDays, ChevronDown, Droplets, FileText, LayoutDashboard, Loader2, LogOut, Mail, Menu, ReceiptText, Settings,
+  AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, BookUser, Building2, CalendarDays, ChevronDown, Droplets, FileText, LayoutDashboard, Loader2, LogOut, Mail, Menu, MessageSquareText, ReceiptText, Settings,
   Smartphone, Ticket, UserCog, Users as UsersIcon, Wallet, X, ClipboardCheck, Zap,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
@@ -40,6 +40,7 @@ const PREFETCH_BY_PATH: Record<string, keyof typeof routeChunks> = {
   '/arrears': 'arrears',
   '/sms': 'sms',
   '/email-campaign': 'emailCampaign',
+  '/message-templates': 'messageTemplates',
   '/mpesa-review': 'mpesaReview',
   '/settings': 'settings',
   '/users': 'users',
@@ -105,6 +106,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/sms', label: 'SMS Notifications', icon: Smartphone },
       { to: '/email-campaign', label: 'Tenant Email', icon: Mail, managerOnly: true },
+      { to: '/message-templates', label: 'Message Templates', icon: MessageSquareText, managerOnly: true },
       { to: '/mpesa-review', label: 'M-Pesa Review', icon: ClipboardCheck, managerOnly: true },
     ],
   },

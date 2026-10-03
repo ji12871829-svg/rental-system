@@ -530,3 +530,32 @@ CREATE INDEX IF NOT EXISTS idx_tenant_portal_access_email  ON tenant_portal_acce
 DROP TRIGGER IF EXISTS trg_tenant_portal_access_updated_at ON tenant_portal_access;
 CREATE TRIGGER trg_tenant_portal_access_updated_at BEFORE UPDATE ON tenant_portal_access
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- User-editable message templates (8 kinds) with mail-merge support.
+-- A row exists ONLY for a customized template: every send path falls back to
+-- its hardcoded default (businessRules.ts / utils/emailTemplates.ts) when no
+-- row exists, so a fresh install behaves byte-for-byte like before. The same
+-- DDL lives in backend/src/db/migrations/008_message_templates.sql for
+-- existing installs; both are IF NOT EXISTS so either runner wins safely.
+
+CREATE TABLE IF NOT EXISTS message_templates (
+  id         SERIAL PRIMARY KEY,
+  kind       VARCHAR(40) NOT NULL UNIQUE
+             CHECK (kind IN (
+               'SMS_RENT_RECEIPT', 'SMS_WATER_RECEIPT', 'SMS_COMBINED_RECEIPT',
+               'SMS_BALANCE_DUE', 'SMS_OVERDUE',
+               'WHATSAPP_BALANCE_DUE', 'WHATSAPP_OVERDUE',
+               'WHATSAPP_PAYMENT_CONFIRMATION',
+               'EMAIL_CAMPAIGN'
+             )),
+  subject    VARCHAR(200),                       -- EMAIL_CAMPAIGN only
+  body       TEXT NOT NULL,
+  is_custom  BOOLEAN NOT NULL DEFAULT TRUE,      -- rows only exist once edited
+  updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DROP TRIGGER IF EXISTS trg_message_templates_updated_at ON message_templates;
+CREATE TRIGGER trg_message_templates_updated_at BEFORE UPDATE ON message_templates
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();

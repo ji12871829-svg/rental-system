@@ -25,6 +25,8 @@ import { getEmailConfig, isValidEmail, sendEmail, type EmailPayload } from './em
 import { logAudit } from './auditService';
 import { monthlyReportPdf, tenantStatementPdf } from './financeService';
 import { badRequest, notFound } from '../utils/httpError';
+import { getCustomTemplate } from './templateService';
+import { renderMergeFields } from '../utils/mergeFields';
 import {
   receiptEmailHtml,
   receiptSubject,
@@ -559,16 +561,21 @@ export async function sendTenantCampaign(opts: {
   let sent = 0;
   let failed = 0;
   let skipped = 0;
+  // A customized EMAIL_CAMPAIGN template (Message Templates page) overrides
+  // the subject/body composed in the UI; merge fields resolve per tenant.
+  const custom = await getCustomTemplate('EMAIL_CAMPAIGN');
+  const businessName = custom ? (await getBusinessIdentity()).name ?? '' : '';
   for (const tenant of tenants) {
     if (!tenant.email || !isValidEmail(tenant.email)) {
       skipped += 1;
       continue;
     }
+    const vars = { name: tenant.full_name, unit: tenant.unit_number ?? '', business: businessName };
     const composed = composeCampaignEmail({
       tenantName: tenant.full_name,
       unitNumber: tenant.unit_number,
-      subject: opts.subject,
-      message: opts.message,
+      subject: custom ? (custom.subject ? renderMergeFields(custom.subject, vars) : opts.subject) : opts.subject,
+      message: custom ? renderMergeFields(custom.body, vars) : opts.message,
     });
     const inserted = await queueEmail({
       to: tenant.email,
