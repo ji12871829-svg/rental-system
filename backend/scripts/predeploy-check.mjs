@@ -12,7 +12,7 @@
 // Render's dashboard config takes precedence exactly like src/config/env.ts.
 // SSL policy mirrors src/config/db.ts (sslmode= wins; prod remote = TLS on).
 import dotenv from 'dotenv';
-import { Client } from 'pg';
+import { Pool } from 'pg';
 
 dotenv.config({ path: new URL('../.env', import.meta.url) });
 
@@ -35,6 +35,13 @@ for (const key of ['BUSINESS_NAME', 'BUSINESS_REG_NO', 'BUSINESS_PHONE', 'BUSINE
 }
 
 // 3. Database reachability + schema presence.
+//
+// Use a pooled Client instead of a single-use `new Client()`: the free-tier
+// Neon pooler's very first connection after idle can return a mangled
+// response (`pg v3 syntax error at or near //`), which makes a one-shot
+// client fail and abort the whole deploy even though the app itself boots
+// fine. The pooled client reconnects on failure, so the pre-deploy probe
+// reflects reality instead of the pooler's cold-start quirk.
 if (process.env.DATABASE_URL) {
   const url = process.env.DATABASE_URL;
   const sslmode = /sslmode=([a-z-]+)/.exec(url);
@@ -47,11 +54,15 @@ if (process.env.DATABASE_URL) {
     } catch { ssl = true; }
   }
 
-  const client = new Client({ connectionString: url, ssl: ssl ? { rejectUnauthorized: false } : false, connectionTimeoutMillis: 10_000 });
+  const pool = new Pool({
+    connectionString: url,
+    ssl: ssl ? { rejectUnauthorized: false } : false,
+    max: 1,
+    connectionTimeoutMillis: 10_000,
+  });
   const EXPECTED_TABLES = ['users', 'tenants', 'rent_payments', 'settings', 'business_branding', 'audit_logs'];
   try {
-    await client.connect();
-    const { rows } = await client.query(
+    const { rows } = await pool.query(
       `SELECT table_name FROM information_schema.tables
        WHERE table_schema = 'public' AND table_name = ANY($1)`,
       [EXPECTED_TABLES]
@@ -67,7 +78,7 @@ if (process.env.DATABASE_URL) {
   } catch (err) {
     problems.push(`cannot reach PostgreSQL: ${err.message}`);
   } finally {
-    try { await client.end(); } catch { /* already closed */ }
+    try { await pool.end(); } catch { /* already closed */ }
   }
 }
 
