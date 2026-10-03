@@ -1,4 +1,7 @@
-import { TEMPLATE_KINDS, renderMergeFields } from '../../src/services/templateService';
+import { TEMPLATE_KINDS } from '../../src/services/templateService';
+// renderMergeFields lives in utils/mergeFields — templateService imports it
+// but never re-exported it (this suite shipped importing the wrong module).
+import { renderMergeFields } from '../../src/utils/mergeFields';
 
 describe('template kind registry', () => {
   it('declares exactly the 9 supported kinds in a stable order', () => {
