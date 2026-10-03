@@ -5,15 +5,13 @@
 // emailService tenant campaign) falls back to its hardcoded default when
 // there is no row, so an untouched install behaves exactly as before and
 // "Revert" is just a DELETE. The default bodies here mirror the hardcoded
-// builders in utils/businessRules.ts — they are the editor UI's starting
+// builders in utils/businessRules.ts; they are the editor UI's starting
 // text; the runtime fallback keeps using businessRules directly so the two
 // never drift for sends.
 
 import { query, queryOne } from '../config/db';
 import { renderMergeFields, type MergeVars } from '../utils/mergeFields';
 import { notFound } from '../utils/httpError';
-
-export type TemplateChannel = 'SMS' | 'WHATSAPP' | 'EMAIL';
 
 export type TemplateKind =
   | 'SMS_RENT_RECEIPT'
@@ -29,7 +27,7 @@ export type TemplateKind =
 export interface TemplateKindMeta {
   kind: TemplateKind;
   label: string;
-  channel: TemplateChannel;
+  channel: 'SMS' | 'WHATSAPP' | 'EMAIL';
   description: string;
   fields: string[];
   hasSubject: boolean;
@@ -41,7 +39,7 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
   {
     kind: 'SMS_RENT_RECEIPT',
     label: 'Rent Receipt',
-    channel: 'SMS',
+    channel: 'SMS' as const,
     description:
       'Sent (queued) whenever a rent payment is receipted. Note: customized templates are sent as-is — the automatic business-identity line is only appended to the default wording, so include {{business}} in the text if you want it.',
     fields: ['name', 'unit', 'month', 'year', 'amount', 'balance', 'receipt', 'currency', 'business'],
@@ -53,7 +51,7 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
   {
     kind: 'SMS_WATER_RECEIPT',
     label: 'Water Receipt',
-    channel: 'SMS',
+    channel: 'SMS' as const,
     description: 'Sent whenever a water payment is receipted.',
     fields: ['name', 'unit', 'month', 'year', 'amount', 'balance', 'receipt', 'currency', 'business'],
     hasSubject: false,
@@ -64,7 +62,7 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
   {
     kind: 'SMS_COMBINED_RECEIPT',
     label: 'Combined Receipt (Rent + Water)',
-    channel: 'SMS',
+    channel: 'SMS' as const,
     description: 'Sent whenever a combined rent + water payment is receipted.',
     fields: ['name', 'unit', 'month', 'year', 'rent', 'water', 'total', 'balance', 'receipt', 'currency', 'business'],
     hasSubject: false,
@@ -75,7 +73,7 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
   {
     kind: 'SMS_BALANCE_DUE',
     label: 'Balance Due Statement',
-    channel: 'SMS',
+    channel: 'SMS' as const,
     description: 'The "Balance Due" reminder an operator sends from the SMS page or a tenant card.',
     fields: ['name', 'unit', 'month', 'year', 'total_due', 'account', 'payment_method', 'currency', 'business'],
     hasSubject: false,
@@ -86,7 +84,7 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
   {
     kind: 'SMS_OVERDUE',
     label: 'Overdue Notice',
-    channel: 'SMS',
+    channel: 'SMS' as const,
     description: 'The firmer "Overdue Notice" reminder for a past-due balance.',
     fields: ['name', 'unit', 'amount_due', 'total_due', 'currency', 'business'],
     hasSubject: false,
@@ -97,7 +95,7 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
   {
     kind: 'WHATSAPP_BALANCE_DUE',
     label: 'WhatsApp Balance Due',
-    channel: 'WHATSAPP',
+    channel: 'WHATSAPP' as const,
     description: 'Pre-filled text for the WhatsApp click-to-chat balance statement (you press send in WhatsApp).',
     fields: ['name', 'unit', 'month', 'year', 'current_rent', 'previous_balance', 'total_due', 'account', 'payment_method', 'currency'],
     hasSubject: false,
@@ -108,7 +106,7 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
   {
     kind: 'WHATSAPP_OVERDUE',
     label: 'WhatsApp Overdue',
-    channel: 'WHATSAPP',
+    channel: 'WHATSAPP' as const,
     description:
       'Pre-filled text for the WhatsApp click-to-chat overdue reminder. {{support_link}} expands to the "chat with support" sentence when a support phone is configured, or to nothing otherwise.',
     fields: ['name', 'unit', 'amount_due', 'support_link', 'currency'],
@@ -120,7 +118,7 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
   {
     kind: 'WHATSAPP_PAYMENT_CONFIRMATION',
     label: 'WhatsApp Payment Confirmation',
-    channel: 'WHATSAPP',
+    channel: 'WHATSAPP' as const,
     description:
       'Pre-filled text for the WhatsApp click-to-chat payment thank-you with the updated balance (you press send in WhatsApp).',
     fields: ['name', 'unit', 'amount_paid', 'payment_date', 'new_balance', 'currency'],
@@ -132,7 +130,7 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
   {
     kind: 'EMAIL_CAMPAIGN',
     label: 'Tenant Email Campaign',
-    channel: 'EMAIL',
+    channel: 'EMAIL' as const,
     description:
       'Overrides the subject and body typed into the Tenant Email page: when customized, every campaign is sent with this template instead, with merge fields resolved per tenant.',
     fields: ['name', 'unit', 'business'],
@@ -186,11 +184,6 @@ export function applyTemplate(
 ): string {
   if (!custom) return fallback();
   return renderMergeFields(custom.body, vars);
-}
-
-export async function renderMessage(kind: TemplateKind, vars: MergeVars, fallback: () => string): Promise<string> {
-  const custom = await getCustomTemplate(kind);
-  return applyTemplate(custom, vars, fallback);
 }
 
 export async function listTemplateState(): Promise<TemplateState[]> {
