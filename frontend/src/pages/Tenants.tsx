@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { KeyRound, Loader2, MessageSquare, Plus } from 'lucide-react';
+import { KeyRound, Loader2, MessageSquare, Plus, TriangleAlert, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { DataRequestLetterModal, type LetterData } from '../components/DataRequestLetter';
@@ -48,6 +48,16 @@ export default function Tenants() {
   const [letter, setLetter] = useState<LetterData | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [portalTenant, setPortalTenant] = useState<Tenant | null>(null);
+  // Contact-gaps view: the receipt-delivery worklist (tenants missing a phone
+  // or email). Filtered server-side via ?contactGap=1 — a fetched subset, not
+  // a client-side filter of the main table.
+  const [showContactGaps, setShowContactGaps] = useState(false);
+  const [gapPage, setGapPage] = useState(1);
+  const { data: gapData, loading: gapLoading, error: gapError } = useFetch(
+    () => (showContactGaps ? api.list<Tenant>(`/api/tenants/contact-gaps?limit=100&page=${gapPage}`) : Promise.resolve(null)),
+    [showContactGaps, gapPage, refreshKey]
+  );
+  const gapCount = gapData?.pagination?.total ?? null;
   // Reminder SMS flow: pick a template kind → backend composes from the live
   // ledger → confirm modal shows the exact message → queued as PENDING.
   const [reminder, setReminder] = useState<{ tenant: Tenant; kind: 'BALANCE_DUE' | 'OVERDUE' } | null>(null);
@@ -119,7 +129,81 @@ export default function Tenants() {
           <option value="ACTIVE">Active</option>
           <option value="MOVED_OUT">Moved out</option>
         </Select>
+        <Button
+          variant="secondary"
+          className={showContactGaps ? 'border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100' : undefined}
+          onClick={() => { setShowContactGaps((v) => !v); setGapPage(1); }}
+        >
+          <TriangleAlert size={15} strokeWidth={1.75} aria-hidden />
+          {gapCount !== null && gapCount > 0 ? `Contact gaps (${gapCount})` : 'Contact gaps'}
+        </Button>
       </div>
+
+      {showContactGaps && (
+        <div role="region" aria-label="Contact gaps" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <div className="mb-2 flex items-start justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-1.5 text-sm font-semibold text-amber-900">
+                <TriangleAlert size={15} strokeWidth={1.75} aria-hidden />
+                Tenants missing a phone or email
+              </div>
+              <p className="mt-0.5 text-xs text-amber-800">
+                Receipt SMS and emailed receipt PDFs cannot reach them. Fix the records below before month-end so every
+                receipt finds a channel.
+              </p>
+            </div>
+            <button type="button" aria-label="Close contact gaps" onClick={() => setShowContactGaps(false)} className="text-amber-700 hover:text-amber-900">
+              <X size={16} strokeWidth={1.75} aria-hidden />
+            </button>
+          </div>
+          {gapLoading && <div className="flex items-center gap-2 text-sm text-amber-800"><Loader2 size={14} className="animate-spin" aria-hidden /> Loading…</div>}
+          {gapError && <div className="text-sm text-red-700">{gapError}</div>}
+          {gapData && gapData.data.length === 0 && (
+            <div className="text-sm text-amber-800">No contact gaps — every tenant has both a phone and an email on file.</div>
+          )}
+          {gapData && gapData.data.length > 0 && (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tenant</th><th>Unit</th><th>Phone</th><th>Email</th><th>Missing</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {gapData.data.map((t) => (
+                    <tr key={t.id}>
+                      <td className="font-medium">{t.full_name}</td>
+                      <td>{t.unit_number ? `Unit ${t.unit_number}` : '—'}</td>
+                      <td>{t.phone_number || '—'}</td>
+                      <td>{t.email || '—'}</td>
+                      <td>
+                        <div className="flex flex-wrap gap-1">
+                          {!t.phone_number && <span className="rounded-full border border-amber-400 bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">no phone</span>}
+                          {!t.email && <span className="rounded-full border border-amber-400 bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">no email</span>}
+                        </div>
+                      </td>
+                      <td>
+                        {canManage && (
+                          <Button
+                            variant="secondary"
+                            className="!px-2 !py-1 text-xs"
+                            onClick={() => { setEdit(t); setShowForm(true); }}
+                          >
+                            Edit contact
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {gapData.pagination.totalPages > 1 && (
+                <Pagination page={gapData.pagination.page} totalPages={gapData.pagination.totalPages} onChange={setGapPage} />
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {loading && <SkeletonTable cols={8} />}
       {error && <div className="text-sm text-red-600">{error}</div>}

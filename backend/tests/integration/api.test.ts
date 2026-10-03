@@ -3,6 +3,65 @@ import { PDFDocument } from 'pdf-lib';
 import { createApp } from '../../src/app';
 import { pool } from '../../src/config/db';
 import { runRetentionSweep } from '../../src/services/tenantRetentionJob';
+import * as smsServiceModule from '../../src/services/smsService';
+import * as emailServiceModule from '../../src/services/emailService';
+
+// ---------------------------------------------------------------------------
+// Receipt auto-dispatch wiring (the production auto-send contract)
+//
+// The test environment disables the REAL auto-send (isTest opts out of
+// dispatchAutoSend / dispatchAutoEmail) so integration tests can drive the
+// manual-send flow deterministically. These tests therefore SPY on the two
+// dispatch hooks (transparent — the real functions still run and early-return
+// in the test env) and pin the contract: recording a rent or water payment
+// manually must hand the freshly prepared notification/receipt ids to the
+// auto-dispatch hooks the moment the payment transaction commits.
+// Combined with tests/unit/dispatchAutoSend.test.ts (hook → provider when
+// enabled) and the PENDING-row assertions below (manual path), the full
+// chain "staff enters payment → it is processed → messages go out
+// automatically" is proven end to end.
+// (Plain jest.spyOn on the module namespace, NOT jest.mock factories:
+// requireActual-based factories can mint a second module record here, and
+// the spy ends up watching an instance the service never calls.)
+// ---------------------------------------------------------------------------
+const dispatchAutoSendSpy = jest.spyOn(
+  smsServiceModule as unknown as { dispatchAutoSend: (...args: unknown[]) => unknown },
+  'dispatchAutoSend',
+);
+const dispatchAutoEmailSpy = jest.spyOn(
+  emailServiceModule as unknown as { dispatchAutoEmail: (...args: unknown[]) => unknown },
+  'dispatchAutoEmail',
+);
+
+const WATER_AUTODISPATCH_MARKER = 'autodispatch-wiring-test';
+
+/** Remove every row the auto-dispatch suite created (FK-safe order). */
+async function cleanupAutoDispatchFixtures(rentReferences: string[]): Promise<void> {
+  const rentRefClause = rentReferences.length
+    ? `payment_reference = ANY($1::text[])`
+    : `payment_reference LIKE 'SEED-AUTODISPATCH-%'`;
+  const params = rentReferences.length ? [rentReferences] : [];
+  const receiptNumbersSubquery = `
+    SELECT receipt_number FROM rent_payments WHERE ${rentRefClause}
+    UNION
+    SELECT receipt_number FROM water_payments WHERE notes = '${WATER_AUTODISPATCH_MARKER}'`;
+  await pool.query(
+    `DELETE FROM email_notifications WHERE receipt_id IN (
+       SELECT r.id FROM receipts r WHERE r.receipt_number IN (${receiptNumbersSubquery}))`,
+    params,
+  );
+  await pool.query(
+    `DELETE FROM sms_notifications WHERE receipt_id IN (
+       SELECT r.id FROM receipts r WHERE r.receipt_number IN (${receiptNumbersSubquery}))`,
+    params,
+  );
+  await pool.query(
+    `DELETE FROM receipts WHERE receipt_number IN (${receiptNumbersSubquery})`,
+    params,
+  );
+  await pool.query(`DELETE FROM rent_payments WHERE ${rentRefClause}`, params);
+  await pool.query(`DELETE FROM water_payments WHERE notes = $1`, [WATER_AUTODISPATCH_MARKER]);
+}
 
 const app = createApp();
 
@@ -196,6 +255,78 @@ describe('Rent collection', () => {
     expect(row.provider_cost).toBeNull();
   });
 
+  it('auto-dispatches the receipt SMS + email the moment a manual rent entry commits', async () => {
+    const reference = `SEED-AUTODISPATCH-RENT-${Date.now()}`;
+    try {
+      // Other tests in this file record payments too (each legitimately calls
+      // the hooks) — clear the counters so the assertions below count ONLY
+      // this payment's dispatches.
+      dispatchAutoSendSpy.mockClear();
+      dispatchAutoEmailSpy.mockClear();
+      const res = await request(app)
+        .post('/api/rent/payments')
+        .set(auth(staffToken))
+        .send({
+          tenantId: 4, // Grace Njeri — unit 15, phone + email on file
+          paymentDate: '2026-09-14',
+          billingMonth: 9,
+          billingYear: 2026,
+          amount: 2000,
+          paymentMethod: 'CASH',
+          paymentReference: reference,
+        });
+      expect(res.status).toBe(201);
+      const receiptNumber: string = res.body.data.receipt;
+      expect(receiptNumber).toMatch(/^RC-2026-/);
+      // The response reports the SMS queued; autoSend=false is the test env's
+      // honest report (production flips it to true). The email reports
+      // queued=false BY DESIGN: an email row is only created when auto-send is
+      // actually enabled (dispatchAutoEmail prepares it lazily); reason=null
+      // because the tenant HAS an address — it's a config choice, not a gap.
+      expect(res.body.data.sms).toEqual({ queued: true, autoSend: false });
+      expect(res.body.data.email).toEqual({ queued: false, autoSend: false, reason: null });
+
+      // The receipt SMS row exists exactly as production would auto-send it.
+      const rentReceiptId = (await pool.query('SELECT id FROM receipts WHERE receipt_number = $1', [receiptNumber])).rows[0].id;
+      const smsRows = (await pool.query('SELECT id, status, phone_number, message FROM sms_notifications WHERE receipt_id = $1', [rentReceiptId])).rows;
+      expect(smsRows).toHaveLength(1);
+      const tenantPhone = (await pool.query('SELECT phone_number FROM tenants WHERE id = 4')).rows[0].phone_number;
+      expect(smsRows[0].status).toBe('PENDING');
+      expect(smsRows[0].phone_number).toBe(tenantPhone);
+      expect(smsRows[0].message).toContain(receiptNumber);
+
+      // Test env auto-send is off, so dispatchAutoEmail prepared no email row
+      // here (the manual email path in the "Email receipts" suite proves the
+      // prepare-with-PDF behavior it performs in production).
+      expect((await pool.query('SELECT id FROM email_notifications WHERE receipt_id = $1', [rentReceiptId])).rows).toHaveLength(0);
+
+      // THE CONTRACT: post-commit, the service handed BOTH fresh ids to the
+      // auto-dispatch hooks (spied here; the hooks' send behavior when
+      // enabled is proven by tests/unit/dispatchAutoSend.test.ts). In
+      // production the email hook prepares the PENDING email with the PDF
+      // attachment and sends it — no user action involved.
+      expect(dispatchAutoSendSpy).toHaveBeenCalledTimes(1);
+      expect(dispatchAutoSendSpy).toHaveBeenCalledWith(smsRows[0].id);
+      expect(dispatchAutoEmailSpy).toHaveBeenCalledTimes(1);
+      expect(dispatchAutoEmailSpy).toHaveBeenCalledWith(rentReceiptId);
+
+      // The audit trail agrees with the response about delivery.
+      const audit = await request(app)
+        .get('/api/audit?action=RENT_PAYMENT_CREATED&entity=rent_payments&limit=50')
+        .set(auth(adminToken));
+      const entry = audit.body.data.find((r: any) => r.entity_id === res.body.data.payment.id);
+      expect(entry).toBeDefined();
+      expect(entry.new_value.delivery).toEqual({
+        sms: { queued: true, autoSend: false },
+        email: { queued: false, autoSend: false, reason: null },
+      });
+    } finally {
+      await cleanupAutoDispatchFixtures([reference]);
+      dispatchAutoSendSpy.mockClear();
+      dispatchAutoEmailSpy.mockClear();
+    }
+  });
+
   it('marks OVERPAID when paid exceeds expected rent', async () => {
     const res = await request(app)
       .post('/api/rent/payments')
@@ -210,6 +341,147 @@ describe('Rent collection', () => {
       });
     expect(res.status).toBe(201);
     expect(res.body.data.status).toBe('OVERPAID');
+  });
+
+  it('reports a no-contact tenant honestly — no SMS row, no queued email', async () => {
+    // Dedicated tenant with no phone and no email, in a vacant unit (createRentPayment
+    // refuses unitless tenants). Rental unit 3 is VACANT in the fixture.
+    // Everything this test creates is removed in the finally block — later
+    // tests (privacy, retention sweep) depend on the pristine fixture state:
+    // the vacancy of unit 3 and tenant 4's untouched payment history.
+    const unit = await pool.query(
+      `SELECT u.id, u.unit_number FROM units u
+       LEFT JOIN tenants t ON t.unit_id = u.id AND t.status = 'ACTIVE'
+       WHERE u.unit_number = '3' AND t.id IS NULL`
+    );
+    expect(unit.rows).toHaveLength(1);
+    const unitId = unit.rows[0].id as number;
+    const { rows } = await pool.query(
+      `INSERT INTO tenants (unit_id, full_name, phone_number, email, move_in_date, status)
+       VALUES ($1, 'Contact Gap Tenant', NULL, NULL, DATE '2026-09-01', 'ACTIVE') RETURNING id`,
+      [unitId]
+    );
+    const tenantId = rows[0].id as number;
+    const paymentIds: number[] = [];
+    const receiptNumbers: string[] = [];
+
+    try {
+      const res = await request(app)
+        .post('/api/rent/payments')
+        .set(auth(staffToken))
+        .send({
+          tenantId,
+          paymentDate: '2026-09-05',
+          billingMonth: 9,
+          billingYear: 2026,
+          amount: 1000,
+          paymentMethod: 'CASH',
+        });
+      expect(res.status).toBe(201);
+      paymentIds.push(res.body.data.payment.id);
+      receiptNumbers.push(res.body.data.receipt);
+      // The response must confess BOTH channels were skipped — the UI turns
+      // these into its "no SMS/email" notes instead of implying a delivery.
+      expect(res.body.data.sms).toEqual({ queued: false, autoSend: false });
+      expect(res.body.data.email).toEqual({ queued: false, autoSend: false, reason: 'no email on file' });
+      // And nothing was queued behind the scenes either.
+      const smsHistory = await request(app).get(`/api/sms/history?tenantId=${tenantId}`).set(auth(adminToken));
+      expect(smsHistory.body.data).toHaveLength(0);
+      const emailHistory = await request(app).get(`/api/emails/history?tenantId=${tenantId}`).set(auth(adminToken));
+      expect(emailHistory.body.data).toHaveLength(0);
+
+      // The audit entry must carry the SAME delivery facts — "this receipt
+      // could not be delivered, and why" stays traceable in the audit trail
+      // long after the ephemeral API response is gone.
+      const audit = await request(app)
+        .get('/api/audit?action=RENT_PAYMENT_CREATED&entity=rent_payments&limit=50')
+        .set(auth(adminToken));
+      expect(audit.status).toBe(200);
+      const entry = audit.body.data.find((r: any) => r.entity_id === res.body.data.payment.id);
+      expect(entry).toBeDefined();
+      expect(entry.new_value.delivery).toEqual({ sms: res.body.data.sms, email: res.body.data.email });
+
+      // Contrast: the seeded contact-complete tenant (4) reports a queued SMS row.
+      const seeded = await request(app)
+        .post('/api/rent/payments')
+        .set(auth(staffToken))
+        .send({
+          tenantId: 4,
+          paymentDate: '2026-09-06',
+          billingMonth: 9,
+          billingYear: 2026,
+          amount: 1000,
+          paymentMethod: 'CASH',
+        });
+      expect(seeded.status).toBe(201);
+      paymentIds.push(seeded.body.data.payment.id);
+      receiptNumbers.push(seeded.body.data.receipt);
+      expect(seeded.body.data.sms.queued).toBe(true);
+      // Test env has auto-send off: dispatchAutoEmail creates no row, so
+      // queued=false — but reason is null because the tenant HAS an email;
+      // the receipt can still be emailed manually from the Receipts page.
+      // The response must not blame a missing address for a config choice.
+      expect(seeded.body.data.email).toEqual({ queued: false, autoSend: false, reason: null });
+      // The seeded payment's audit entry agrees with its response.
+      const seededAudit = await request(app)
+        .get('/api/audit?action=RENT_PAYMENT_CREATED&entity=rent_payments&limit=50')
+        .set(auth(adminToken));
+      const seededEntry = seededAudit.body.data.find((r: any) => r.entity_id === seeded.body.data.payment.id);
+      expect(seededEntry).toBeDefined();
+      expect(seededEntry.new_value.delivery).toEqual({ sms: seeded.body.data.sms, email: seeded.body.data.email });
+    } finally {
+      // Restore the fixture: notifications → payments → receipts → tenant →
+      // unit vacancy, in FK-safe order.
+      await pool.query(`DELETE FROM sms_notifications WHERE receipt_id IN (SELECT id FROM receipts WHERE receipt_number = ANY($1::text[]))`, [receiptNumbers]);
+      await pool.query(`DELETE FROM email_notifications WHERE receipt_id IN (SELECT id FROM receipts WHERE receipt_number = ANY($1::text[]))`, [receiptNumbers]);
+      await pool.query(`DELETE FROM rent_payments WHERE id = ANY($1::int[])`, [paymentIds]);
+      await pool.query(`DELETE FROM receipts WHERE receipt_number = ANY($1::text[])`, [receiptNumbers]);
+      await pool.query(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
+      await pool.query(`UPDATE units SET occupancy_status = 'VACANT' WHERE id = $1`, [unitId]);
+    }
+  });
+
+  it('lists contact gaps and lets an update close them', async () => {
+    // Dedicated gap tenant in a vacant unit; cleaned up in finally so the
+    // fixture stays pristine for the downstream suites (privacy, retention).
+    const unit = await pool.query(
+      `SELECT id FROM units u WHERE u.unit_number = '5' AND u.occupancy_status = 'VACANT'
+       AND NOT EXISTS (SELECT 1 FROM tenants t WHERE t.unit_id = u.id AND t.status = 'ACTIVE')`
+    );
+    expect(unit.rows).toHaveLength(1);
+    const unitId = unit.rows[0].id as number;
+    const { rows } = await pool.query(
+      `INSERT INTO tenants (unit_id, full_name, phone_number, email, move_in_date, status)
+       VALUES ($1, 'Gap View Tenant', NULL, NULL, DATE '2026-09-01', 'ACTIVE') RETURNING id`,
+      [unitId]
+    );
+    const tenantId = rows[0].id as number;
+
+    try {
+      // The gap view must find them (they have neither contact).
+      const gaps = await request(app).get('/api/tenants/contact-gaps?limit=100').set(auth(adminToken));
+      expect(gaps.status).toBe(200);
+      const row = gaps.body.data.find((t: any) => t.id === tenantId);
+      expect(row).toBeDefined();
+      expect(row.phone_number).toBeNull();
+      expect(row.email).toBeNull();
+      // The list endpoint must support the same filter directly.
+      const filtered = await request(app).get('/api/tenants?contactGap=1&status=ACTIVE&limit=100').set(auth(staffToken));
+      expect(filtered.status).toBe(200);
+      expect(filtered.body.data.find((t: any) => t.id === tenantId)).toBeDefined();
+
+      // Editing the record closes the gap — the tenant drops off both views.
+      const fix = await request(app).put(`/api/tenants/${tenantId}`)
+        .set(auth(adminToken))
+        .send({ phoneNumber: '+254700555999', email: 'gapview@example.com' });
+      expect(fix.status).toBe(200);
+      const after = await request(app).get('/api/tenants/contact-gaps?limit=100').set(auth(adminToken));
+      expect(after.body.data.find((t: any) => t.id === tenantId)).toBeUndefined();
+      expect(after.body.meta.gapCount).toBe(after.body.data.length);
+    } finally {
+      await pool.query(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
+      await pool.query(`UPDATE units SET occupancy_status = 'VACANT' WHERE id = $1`, [unitId]);
+    }
   });
 
   it('rejects a negative payment amount', async () => {
@@ -416,6 +688,51 @@ describe('Water metering', () => {
 // ---------------------------------------------------------------------------
 // Receipts (spec §33)
 // ---------------------------------------------------------------------------
+describe('Receipt auto-dispatch wiring (manual entry)', () => {
+  beforeAll(async () => {
+    // Sweep leftovers from any previously interrupted run.
+    await cleanupAutoDispatchFixtures([]);
+  });
+
+  it('auto-dispatches the receipt SMS (SMS-only) the moment a manual water entry commits', async () => {
+    try {
+      dispatchAutoSendSpy.mockClear();
+      dispatchAutoEmailSpy.mockClear();
+      const res = await request(app)
+        .post('/api/water/payments')
+        .set(auth(staffToken))
+        .send({
+          tenantId: 4, // unit 15 — water billing enabled
+          paymentDate: '2026-11-14',
+          billingMonth: 11,
+          billingYear: 2026,
+          amount: 500,
+          paymentMethod: 'M_PESA',
+          notes: WATER_AUTODISPATCH_MARKER,
+        });
+      expect(res.status).toBe(201);
+      const receiptNumber: string = res.body.data.receipt;
+      expect(res.body.data.sms).toEqual({ queued: true, autoSend: false });
+
+      const receiptId = (await pool.query('SELECT id FROM receipts WHERE receipt_number = $1', [receiptNumber])).rows[0].id;
+      const smsRows = (await pool.query('SELECT id, status, message FROM sms_notifications WHERE receipt_id = $1', [receiptId])).rows;
+      expect(smsRows).toHaveLength(1);
+      expect(smsRows[0].status).toBe('PENDING');
+      expect(smsRows[0].message).toContain(receiptNumber);
+
+      // SMS-only pipeline: the SMS hook fired, the email hook did not.
+      expect(dispatchAutoSendSpy).toHaveBeenCalledTimes(1);
+      expect(dispatchAutoSendSpy).toHaveBeenCalledWith(smsRows[0].id);
+      expect(dispatchAutoEmailSpy).not.toHaveBeenCalled();
+      expect((await pool.query('SELECT id FROM email_notifications WHERE receipt_id = $1', [receiptId])).rows).toHaveLength(0);
+    } finally {
+      await cleanupAutoDispatchFixtures([]);
+      dispatchAutoSendSpy.mockClear();
+      dispatchAutoEmailSpy.mockClear();
+    }
+  });
+});
+
 describe('Receipts', () => {
   it('lists receipts and generates a combined RWC receipt', async () => {
     const list = await request(app).get('/api/receipts?limit=5').set(auth(adminToken));

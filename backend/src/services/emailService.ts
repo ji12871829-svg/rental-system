@@ -242,6 +242,13 @@ export async function sendEmailNotification(id: number): Promise<EmailRow> {
   return queryOne<EmailRow>('SELECT * FROM email_notifications WHERE id = $1', [id]) as Promise<EmailRow>;
 }
 
+// Whether a freshly recorded payment will actually dispatch its receipt
+// email — mirrors autoSendEnabled() on the SMS side so the payment response
+// can tell the truth about what happens post-commit.
+export function emailAutoSendEnabled(): boolean {
+  return env.emailAutoSend && !isTest;
+}
+
 // Queue and send a receipt email only after the payment transaction commits.
 // A missing tenant email or provider outage must never undo a recorded payment.
 export function dispatchAutoEmail(receiptId: number | null | undefined): void {

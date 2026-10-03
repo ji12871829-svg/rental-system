@@ -19,6 +19,11 @@ interface TenantOption {
   unit_number: string | null;
   monthly_rent: string | null;
   water_enabled: boolean;
+  // Receipt delivery channels — shown in the form's contact warning when
+  // missing so a payment is never recorded under the impression a receipt
+  // message went out when it could not.
+  phone_number: string | null;
+  email: string | null;
 }
 
 interface Payment {
@@ -105,6 +110,13 @@ export default function RentCollection() {
     [tenantId, tenants]
   );
 
+  // Missing receipt channels for the selected tenant — drives the inline
+  // warning under the form. The backend reports the same facts in the
+  // payment response (sms.queued / email.reason); this is the heads-up
+  // BEFORE money is recorded, so contact details can be fixed first.
+  const missingPhone = selectedTenant != null && !(selectedTenant.phone_number ?? '').trim();
+  const missingEmail = selectedTenant != null && !(selectedTenant.email ?? '').trim();
+
   // Export follows the active filters; with no year filter chosen it exports
   // the reporting year from Settings (never a hardcoded year).
   const exportUrl = useMemo(() => {
@@ -131,7 +143,7 @@ export default function RentCollection() {
     }
     setBusy(true);
     try {
-      const res = await api.post<{ data: { status: string; balance: number; receipt: string; totalPaidForMonth: number; sms?: { queued: boolean; autoSend: boolean } } }>('/api/rent/payments', {
+      const res = await api.post<{ data: { status: string; balance: number; receipt: string; totalPaidForMonth: number; sms?: { queued: boolean; autoSend: boolean }; email?: { queued: boolean; autoSend: boolean; reason: string | null } } }>('/api/rent/payments', {
         tenantId,
         paymentDate,
         billingMonth,
@@ -141,17 +153,26 @@ export default function RentCollection() {
         paymentReference: paymentReference || undefined,
         notes: notes || undefined,
       });
-      // SMS line: honest about what happened — auto-sent, queued for manual
-      // sending, or nothing queued (no phone on file / disabled). Links to
-      // the message's place in the SMS history.
+      // SMS/email lines: honest about what happened — auto-sent, queued for
+      // manual sending, or skipped (no phone / no email on file). Mirrors the
+      // backend response fields exactly, so neither channel can silently be
+      // assumed to have gone out.
       const smsNote = !res.data.sms?.queued
         ? ' No SMS — no phone on file.'
         : res.data.sms.autoSend
           ? ' Receipt SMS sent automatically.'
           : ' Receipt SMS queued for sending.';
+      // queued=false means either no address on file (reason says so) or
+      // auto-send off — the note must not blame a missing address when the
+      // real cause is configuration.
+      const emailNote = res.data.email?.reason === 'no email on file'
+        ? ' No email — no address on file.'
+        : res.data.email?.queued
+          ? ' Receipt email sent automatically.'
+          : ' Receipt email not auto-sent (auto-send is off).';
       toast(
         'success',
-        `Payment recorded (${res.data.status}) — balance ${money(res.data.balance)}. Receipt ${res.data.receipt}.${smsNote}`,
+        `Payment recorded (${res.data.status}) — balance ${money(res.data.balance)}. Receipt ${res.data.receipt}.${smsNote}${emailNote}`,
         { label: 'View in SMS history →', to: '/sms' }
       );
       setAmount('');
@@ -213,6 +234,13 @@ export default function RentCollection() {
                 <div className="text-graphite">Unit {selectedTenant.unit_number} · Expected rent: <b>{money(selectedTenant.monthly_rent)}</b></div>
                 {mostInArrears?.tenantId === selectedTenant.id && mostInArrears.totalOutstanding > 0 && (
                   <div className="mt-0.5 text-xs text-graphite">Largest outstanding balance — {money(mostInArrears.totalOutstanding)}</div>
+                )}
+                {(missingPhone || missingEmail) && (
+                  <div role="status" className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                    {missingPhone && <div>No phone on file — the receipt SMS will be skipped.</div>}
+                    {missingEmail && <div>No email on file — the receipt email will be skipped.</div>}
+                    <div className="mt-0.5 opacity-80">Add the missing contact(s) on the Tenants page to receive receipts.</div>
+                  </div>
                 )}
               </div>
             )}

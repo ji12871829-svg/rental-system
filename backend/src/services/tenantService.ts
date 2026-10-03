@@ -22,6 +22,8 @@ export interface TenantFilters {
   status?: string;
   unitId?: number;
   q?: string;
+  /** Only tenants with a blank phone_number or email (receipt-delivery gaps). */
+  contactGap?: boolean;
 }
 
 // The reporting year's "current month" horizon: the real current month when
@@ -43,6 +45,11 @@ export async function listTenants(filters: TenantFilters): Promise<{ rows: unkno
   if (filters.unitId) {
     params.push(filters.unitId);
     where.push(`t.unit_id = $${params.length}`);
+  }
+  if (filters.contactGap) {
+    // Receipt-delivery gaps: SMS needs a phone, email needs an address.
+    // COALESCE treats NULL and '' the same — both are "not on file".
+    where.push(`(COALESCE(t.phone_number, '') = '' OR COALESCE(t.email, '') = '')`);
   }
   if (filters.q) {
     params.push(`%${filters.q}%`);

@@ -8,7 +8,7 @@ import { toNumber, round2 } from '../utils/money';
 import { logAudit } from './auditService';
 import { createReceipt } from './receiptService';
 import { autoSendEnabled, dispatchAutoSend, prepareForReceipt } from './smsService';
-import { dispatchAutoEmail } from './emailService';
+import { dispatchAutoEmail, emailAutoSendEnabled } from './emailService';
 import { getSettings } from './settingsService';
 
 export interface RentPaymentInput {
@@ -100,8 +100,8 @@ export async function listRentPayments(filters: RentPaymentFilters): Promise<{ r
 // The full payment transaction (spec §43): validate → record → receipt →
 // SMS prep → audit, all-or-nothing.
 export async function createRentPayment(input: RentPaymentInput, userId: number | null): Promise<unknown> {
-  const tenant = await queryOne<{ id: number; unit_id: number | null; full_name: string; status: string }>(
-    'SELECT id, unit_id, full_name, status FROM tenants WHERE id = $1',
+  const tenant = await queryOne<{ id: number; unit_id: number | null; full_name: string; status: string; email: string | null; phone_number: string | null }>(
+    'SELECT id, unit_id, full_name, status, email, phone_number FROM tenants WHERE id = $1',
     [input.tenantId]
   );
   if (!tenant) throw notFound('Tenant not found.');
@@ -122,6 +122,21 @@ export async function createRentPayment(input: RentPaymentInput, userId: number 
   // dispatch can happen strictly after commit.
   let preparedSmsId: number | null = null;
   let receiptId: number | null = null;
+  // Receipt-delivery facts, evaluated lazily and reported identically in BOTH
+  // the audit entry (inside the transaction) and the API response (after it)
+  // — the two records can never disagree about what was deliverable.
+  const emailOnFile = Boolean(tenant.email?.trim());
+  const deliveryFacts = () => ({
+    sms: { queued: preparedSmsId != null, autoSend: autoSendEnabled() },
+    email: {
+      // An email row is created only when auto-send will dispatch it (see
+      // dispatchAutoEmail) and only when a recipient exists — queued must
+      // never imply a delivery that cannot happen.
+      queued: receiptId != null && emailOnFile && emailAutoSendEnabled(),
+      autoSend: emailAutoSendEnabled(),
+      reason: (emailOnFile ? null : 'no email on file') as string | null,
+    },
+  });
   const result = await withTransaction(async (client) => {
     const inserted = await client.query(
       `INSERT INTO rent_payments
@@ -177,6 +192,11 @@ export async function createRentPayment(input: RentPaymentInput, userId: number 
         method: input.paymentMethod,
         status: paymentStatus(expectedRent, paid),
         balance,
+        // Delivery facts at the moment of recording: makes "this receipt
+        // could not be delivered (and why)" traceable in the audit trail,
+        // not just in the ephemeral API response. Same shapes as the
+        // response's sms/email fields — see deliveryFacts above.
+        delivery: deliveryFacts(),
       },
     });
 
@@ -194,13 +214,16 @@ export async function createRentPayment(input: RentPaymentInput, userId: number 
     };
   });
 
-  // Auto-send the receipt SMS now that the payment transaction has committed
-  // (fire-and-forget — see dispatchAutoSend; the response never waits on the
-  // provider). Row exists in the DB either way; PENDING rows without a phone
-  // never happen, so null just means "no phone on file".
+  // Auto-send the receipt SMS/email now that the payment transaction has
+  // committed (fire-and-forget — the response never waits on a provider).
+  // A receipt exists in the DB either way; null just means "no phone / no
+  // email on file" — the response reports that honestly so the UI can warn
+  // instead of implying a message went out.
   dispatchAutoSend(preparedSmsId);
-  dispatchAutoEmail(receiptId);
-  return { ...result, sms: { queued: preparedSmsId != null, autoSend: autoSendEnabled() }, email: { queued: receiptId != null, autoSend: true } };
+  // Skip only the dispatch that queueEmail would reject (blank recipient);
+  // auto-send on/off and test-mode gating stay inside dispatchAutoEmail.
+  if (emailOnFile) dispatchAutoEmail(receiptId);
+  return { ...result, ...deliveryFacts() };
 }
 
 export async function deleteRentPayment(id: number, userId: number): Promise<void> {

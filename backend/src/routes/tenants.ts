@@ -24,11 +24,13 @@ const listQuerySchema = baseListQuerySchema.extend({
   status: z.enum(['ACTIVE', 'MOVED_OUT']).optional(),
   unitId: z.coerce.number().int().positive().optional(),
   q: z.string().optional(),
+  /** Only tenants with a blank phone or email — receipt-delivery gaps. */
+  contactGap: z.enum(['1', 'true']).optional(),
 });
 
 router.get('/', asyncHandler(async (req, res) => {
   const q = listQuerySchema.parse(req.query);
-  const result = await listTenants({ page: q.page, limit: q.limit, status: q.status, unitId: q.unitId, q: q.q });
+  const result = await listTenants({ page: q.page, limit: q.limit, status: q.status, unitId: q.unitId, q: q.q, contactGap: q.contactGap !== undefined });
   res.json({ data: result.rows, pagination: result.pagination });
 }));
 
@@ -48,6 +50,21 @@ router.post('/', managerOrAdmin, validateBody(createSchema), asyncHandler(async 
 }));
 
 const paramsSchema = z.object({ id: z.coerce.number().int().positive() });
+
+// Contact-gaps view: every tenant missing a phone or email. Receipts
+// (SMS/email) cannot be delivered to them, so this list is the month-end
+// worklist for fixing records. Must be declared BEFORE /:id — otherwise
+// Express would treat "contact-gaps" as an id and 400.
+router.get('/contact-gaps', validateQuery(listQuerySchema), asyncHandler(async (req, res) => {
+  const q = listQuerySchema.parse(req.query);
+  const result = await listTenants({
+    page: q.page,
+    limit: q.limit,
+    status: q.status ?? 'ACTIVE',
+    contactGap: true,
+  });
+  res.json({ data: result.rows, pagination: result.pagination, meta: { gapCount: result.pagination.total } });
+}));
 
 router.get('/:id', validateParams(paramsSchema), asyncHandler(async (req, res) => {
   const settings = await getSettings();

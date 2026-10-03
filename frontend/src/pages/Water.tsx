@@ -299,6 +299,9 @@ interface TenantOption {
   id: number;
   full_name: string;
   unit_number: string | null;
+  // Receipt delivery channel — drives the form's missing-phone warning (water
+  // receipts are SMS-only; there is no email channel to warn about).
+  phone_number: string | null;
 }
 
 interface WPayment {
@@ -437,6 +440,12 @@ function WaterPaymentForm({ open, tenants, onClose, onSaved }: { open: boolean; 
   const [shakeN, setShakeN] = useState(0);
   const bumpShake = () => setShakeN((n) => n + 1);
 
+  // Missing receipt channel for the selected tenant — same heads-up as the
+  // rent form: warn BEFORE the payment is recorded, not just in the toast
+  // after. Water receipts are SMS-only, so phone is the only channel here.
+  const selectedTenant = tenantId === '' ? null : tenants.find((t) => t.id === tenantId) ?? null;
+  const missingPhone = selectedTenant != null && !(selectedTenant.phone_number ?? '').trim();
+
   async function save() {
     if (tenantId === '' || !amount || Number(amount) <= 0) {
       toast('error', 'Select a tenant and enter an amount greater than zero.');
@@ -479,6 +488,11 @@ function WaterPaymentForm({ open, tenants, onClose, onSaved }: { open: boolean; 
             {tenants.map((t) => <option key={t.id} value={t.id}>{t.full_name} — Unit {t.unit_number}</option>)}
           </Select>
         </Field>
+        {missingPhone && (
+          <div role="status" className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+            No phone on file — the receipt SMS will be skipped. Add a phone number on the Tenants page to receive receipts.
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Payment Date"><TextInput type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} /></Field>
           <Field label="Amount (KSh)"><TextInput type="number" min={0} step={0.5} value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
