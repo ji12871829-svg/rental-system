@@ -103,7 +103,9 @@ npx tsx -e "import {pool} from './src/config/db'; pool.query('select count(*) fr
    | `DATABASE_URL` | Neon pooled URL | `?sslmode=require` included |
    | `JWT_SECRET` | long random string | **required in prod** — app refuses to trust the dev fallback |
    | `SMS_PROVIDER` | `mock` | start safe; switch to `africastalking` when ready |
+   | `SMS_AUTO_SEND` | *(unset)* | defaults **on**: receipt SMS dispatch themselves right after the payment commits. Set `false` to keep every SMS `PENDING` until staff send it from the SMS history page |
    | `EMAIL_PROVIDER` | `mock` | same |
+   | `EMAIL_AUTO_SEND` | *(unset)* | defaults **on**: rent receipts auto-email their PDF right after the payment commits (water is SMS-only). Set `false` to keep receipt emails queued for manual sending from the Receipts page |
    | `BUSINESS_NAME`, `BUSINESS_REG_NO`, `BUSINESS_PHONE`, `BUSINESS_EMAIL` | your details | appended to receipt SMS + legal pages (also editable later in Settings) |
 
    **Do not set `PORT`** — Render injects it and the app reads it.
@@ -184,11 +186,24 @@ the first real tenant.
    `https://<your-service>.onrender.com/api/sms/delivery-reports`
    (AT requires an HTTPS endpoint — Render gives you one for free).
    Optionally set `SMS_LOW_BALANCE_THRESHOLD`.
+   Receipt SMS **auto-send by default**: the moment a payment commits
+   (`/api/rent/payments`, C2B confirm, STK callback) the SMS is dispatched
+   automatically — a provider outage never fails the payment, and a failed
+   send stays visible for retry from the SMS history page. To review every
+   message manually instead, set `SMS_AUTO_SEND=false` and rows stay
+   `PENDING` until sent from SMS history.
 4. **Email** — for safe Brevo testing, set `EMAIL_PROVIDER=brevo`, a Brevo
    `BREVO_API_KEY`, verified `EMAIL_FROM` / `EMAIL_FROM_NAME`, and
    `BREVO_TEST_RECIPIENTS` to a comma-separated allowlist. Only those test
    recipients can receive mail while the allowlist is configured. For SMTP,
    set `EMAIL_PROVIDER=smtp` plus `SMTP_*` and `EMAIL_FROM`.
+   Rent receipts also **auto-email by default** (`EMAIL_AUTO_SEND=true`):
+   once a payment commits, the PDF receipt email is queued and sent to the
+   tenant's address without further clicks (water payments never email).
+   Set `EMAIL_AUTO_SEND=false` to queue receipt emails for manual sending
+   from the Receipts page. Remember: while `EMAIL_PROVIDER=mock` the email
+   is only recorded, never delivered — real delivery needs Brevo/SMTP
+   configured first.
 5. **Backups** — Neon free tier does not include scheduled backups. Until you
    upgrade, take manual exports: Neon console → **Backup & restore** → or
    `pg_dump "$DATABASE_URL" > backup-$(date +%F).sql` from a cron machine.
@@ -267,19 +282,34 @@ existing service cannot be moved. Migrating = recreating:
 | Health check fails, log shows `Could not connect to PostgreSQL` | Wrong/unreachable `DATABASE_URL` | Re-paste the **pooled** Neon URL, keep `?sslmode=require` |
 | Login returns 401 for every user | Seed users never created and bootstrap didn't run | Check boot logs for `[bootstrap]` lines; if absent, re-run `npm run db:setup` locally with `DATABASE_URL` pointing at Neon |
 | `text` fields render with `[bracketed placeholders]` | Business branding not filled | Settings page → fill identity fields |
-| SMS recorded but never delivered | `SMS_PROVIDER=mock` | Set provider + credentials, redeploy |
+| SMS recorded but never delivered | `SMS_PROVIDER=mock` (records only) or `SMS_AUTO_SEND=false` (rows stay `PENDING`) | If `PENDING`, send from the SMS history page or set `SMS_AUTO_SEND=true`; if `SENT` but undelivered, set a real provider + credentials, redeploy |
+| AT returns HTTP 201 but recipient `status: UserInBlacklist` (outbox stays empty, no charge) | Recipient's telco has them opted out of bulk/promotional messages — common default on Safaricom lines | Recipient dials `4569#` → option 5 (Marketing) → option 5 (Activate all). AT's opt-out cache can lag hours — retry the next day before assuming failure |
+| AT credentials 401 right after key generation (`The supplied authentication is invalid`) | Key propagation delay — keys can take ~30 min to activate even when the dashboard shows them | Wait and re-run `node scripts/check-providers.mjs --no-send`; the script falls back to a zero-cost messaging auth probe when `/version1/user` still 401s |
 | Emailed receipts fail | `EMAIL_PROVIDER=mock` or missing `SMTP_*` | Configure SMTP, redeploy |
+| Receipt SMS/emails queue but nobody sends them | `SMS_AUTO_SEND=false` / `EMAIL_AUTO_SEND=false` left set from testing | Remove both from Render env (default is on) and redeploy; clear the backlog from SMS history / Receipts |
 | App loads but every API call 404s | Built frontend served but API routes missing → usually a stale build | Dashboard → **Manual deploy → Clear build cache & deploy** |
 | Blank page after a deploy | Stale index.html referencing old hashed chunks | Hard refresh (Ctrl+Shift+R); the app also self-heals by reloading once on a failed chunk load |
 
 ## 8. M-Pesa rent automation
 
-The system supports both Paybill/Till C2B confirmations and STK Push. Tenants
-must enter their unit number as the M-Pesa account/reference. Confirmed
-transactions are matched to the active tenant in that unit, posted as rent,
-calculated against the tenant's monthly balance, and sent through the existing
-receipt SMS flow. Unknown unit references are retained as `UNMATCHED` and do
-not create a rent payment.
+Rent money arrives through three paths that all converge on the same posting
+engine and receipt pipeline — `docs/RUNBOOK-mpesa-payment-flows.md` is the
+full walkthrough (matching cascade, review queue, STK outcomes, debug SQL):
+
+1. **Paybill/Till C2B confirmations (automatic)** — the tenant pays the
+   shortcode; Daraja POSTs the confirmation to `/api/mpesa/c2b/confirm`. The
+   unit number in the account reference selects the active tenant (`15` =
+   rent, `15-WATER` = water); a blank reference falls back to matching the
+   sender's phone number. Unresolvable payments are parked `UNMATCHED` or
+   `AMBIGUOUS` in the M-Pesa Review queue — nothing is guessed and no rent
+   payment is created until staff resolve it.
+2. **Manual entry by staff** — cash, bank, and off-paybill M-Pesa payments
+   are recorded in Rent Collection (`POST /api/rent/payments`).
+3. **Manager STK prompt (staff-initiated)** — "Send M-Pesa Prompt" in Rent
+   Collection pushes a Daraja STK request to the tenant's phone with the unit
+   number preset; the result arrives at `/api/mpesa/stk/callback` and posts
+   like any other confirmation. The tenant portal cannot trigger payments —
+   it only watches the payment timeline.
 
 Set these environment variables in Render:
 
@@ -290,13 +320,15 @@ Set these environment variables in Render:
 | `MPESA_CONSUMER_SECRET` | Daraja consumer secret |
 | `MPESA_SHORTCODE` | Paybill/Till shortcode |
 | `MPESA_PASSKEY` | Daraja passkey for STK Push |
-| `MPESA_CALLBACK_URL` | `https://<service>.onrender.com/api/mpesa/stk/callback` |
+| `MPESA_CALLBACK_URL` | `https://<service>.onrender.com/api/mpesa/stk/callback?token=<MPESA_CALLBACK_TOKEN>` |
+| `MPESA_CALLBACK_TOKEN` | Shared secret guarding all `/api/mpesa/*` callbacks; see `docs/RUNBOOK-mpesa-callback-gate.md` |
 | `MPESA_BASE_URL` | `https://sandbox.safaricom.co.ke` for testing, or the Daraja production URL |
 
-Register these HTTPS endpoints with Safaricom for C2B:
+Register these HTTPS endpoints with Safaricom for C2B (append the same
+`?token=<MPESA_CALLBACK_TOKEN>` suffix to each):
 
-- Validation URL: `https://<service>.onrender.com/api/mpesa/c2b/validate`
-- Confirmation URL: `https://<service>.onrender.com/api/mpesa/c2b/confirm`
+- Validation URL: `https://<service>.onrender.com/api/mpesa/c2b/validate?token=<MPESA_CALLBACK_TOKEN>`
+- Confirmation URL: `https://<service>.onrender.com/api/mpesa/c2b/confirm?token=<MPESA_CALLBACK_TOKEN>`
 
 For real tenant SMS confirmations, also configure `SMS_PROVIDER` and its
 provider credentials. Keep `MPESA_PROVIDER=mock` in local development until
