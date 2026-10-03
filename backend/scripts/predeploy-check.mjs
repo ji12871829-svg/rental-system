@@ -13,6 +13,7 @@
 // SSL policy mirrors src/config/db.ts (sslmode= wins; prod remote = TLS on).
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 dotenv.config({ path: new URL('../.env', import.meta.url) });
 
@@ -61,12 +62,28 @@ if (process.env.DATABASE_URL) {
     connectionTimeoutMillis: 10_000,
   });
   const EXPECTED_TABLES = ['users', 'tenants', 'rent_payments', 'settings', 'business_branding', 'audit_logs'];
-  try {
-    const { rows } = await pool.query(
-      `SELECT table_name FROM information_schema.tables
-       WHERE table_schema = 'public' AND table_name = ANY($1)`,
-      [EXPECTED_TABLES]
-    );
+  let rows = null;
+  // The free-tier Neon pooler's first connection after idle can return a
+  // mangled response (pg v3 syntax error at or near //). Retry the probe a
+  // few times with a short backoff so a transient cold-start failure does
+  // not abort the whole deploy.
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    try {
+      if (attempt > 1) await sleep(Math.min(2000 * (attempt - 1), 6000));
+      const { rows: r } = await pool.query(
+        `SELECT table_name FROM information_schema.tables
+         WHERE table_schema = 'public' AND table_name = ANY($1)`,
+        [EXPECTED_TABLES]
+      );
+      rows = r;
+      break;
+    } catch (err) {
+      if (attempt === 5) {
+        problems.push(`cannot reach PostgreSQL (after ${attempt} attempts): ${err.message}`);
+      }
+    }
+  }
+  if (rows) {
     const found = new Set(rows.map((r) => r.table_name));
     const missing = EXPECTED_TABLES.filter((t) => !found.has(t));
     if (missing.length > 0) {
@@ -75,11 +92,8 @@ if (process.env.DATABASE_URL) {
       // explains why the first boot takes a little longer.
       warnings.push(`schema missing tables (${missing.join(', ')}) — first boot will apply schema + seed + default users automatically`);
     }
-  } catch (err) {
-    problems.push(`cannot reach PostgreSQL: ${err.message}`);
-  } finally {
-    try { await pool.end(); } catch { /* already closed */ }
   }
+  try { await pool.end(); } catch { /* already closed */ }
 }
 
 // 4. Frontend build present (same-origin deploys only — API-split deploys skip).
