@@ -95,11 +95,33 @@ export function createApp() {
   // Liveness + configuration diagnosis. Never exposes secret values — only
   // which env knobs are unset, so a failed deploy can be debugged from the
   // outside (Render health checks and the browser).
+  //
+  // `db` mirrors the real Postgres reachability. It starts as 'checking' at
+  // boot and is flipped to 'ok' (or 'unreachable') as soon as the pool has
+  // answered a query. The SELECT 1 is fire-and-forget on purpose: the free
+  // Neon pooler's very first connection after idle can return a mangled
+  // response (pg v3 syntax error at or near //), and a blocked health route
+  // would make a healthy service look unhealthy.
+  let dbState: 'checking' | 'ok' | 'unreachable' = 'checking';
+
+  // Seed `dbState` once at boot, then keep refreshing it so a long idle
+  // period (free-tier pooler wake-up) is reflected without a restart.
+  pool
+    .query('SELECT 1')
+    .then(() => {
+      dbState = 'ok';
+      console.log('[health] db reachable');
+    })
+    .catch((err: Error) => {
+      dbState = 'unreachable';
+      console.error('[health] db unreachable:', err.message);
+    });
+
   app.get('/api/health', (_req, res) => {
     res.json({
       status: 'ok',
       nodeEnv: env.nodeEnv,
-      db: 'checking',
+      db: dbState,
       smsProvider: env.smsProvider,
       emailProvider: env.emailProvider,
       config: {
