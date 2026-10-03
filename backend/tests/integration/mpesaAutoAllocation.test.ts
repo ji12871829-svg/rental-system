@@ -1,5 +1,5 @@
 // Integration tests for the M-Pesa smart-allocation flow: a payment that
-// "just arrives" (via PayHero poll or C2B callback) must be identified and
+// "just arrives" (via C2B callback or manual entry) must be identified and
 // booked onto the tenant's OLDEST rent arrears automatically, with a receipt
 // and prepared receipt SMS per allocated month.
 //

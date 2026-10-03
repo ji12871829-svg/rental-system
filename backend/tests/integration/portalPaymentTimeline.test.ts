@@ -4,9 +4,9 @@
 // NEEDS_REVIEW), scoped strictly to the session tenant, with no provider
 // payloads, staff error wording, or other tenants' rows leaking.
 //
-// Fixtures: portal access is attached to an existing seeded ACTIVE tenant
-// (same pattern as portalStkPush.test.ts); rows are inserted directly into
-// mpesa_transactions with backdated timestamps and cleaned up completely.
+// Fixtures: portal access is attached to an existing seeded ACTIVE tenant;
+// rows are inserted directly into mpesa_transactions with backdated
+// timestamps and cleaned up completely.
 import request from 'supertest';
 import { createApp } from '../../src/app';
 import { pool, query, queryOne } from '../../src/config/db';

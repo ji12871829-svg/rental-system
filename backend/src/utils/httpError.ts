@@ -31,5 +31,3 @@ export const conflict = (message: string, code = 'CONFLICT') =>
 export const unprocessable = (message: string, details?: Record<string, unknown>) =>
   new HttpError(422, 'UNPROCESSABLE_ENTITY', message, details);
 
-export const serviceUnavailable = (message: string, code = 'SERVICE_UNAVAILABLE') =>
-  new HttpError(503, code, message);

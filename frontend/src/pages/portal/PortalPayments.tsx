@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Check, Copy, Smartphone } from 'lucide-react';
+import { Check, Copy } from 'lucide-react';
 import { PageHeader, SkeletonTable, useFetch } from '../../components/ui';
 import { Toon } from '../../components/Toon';
 import { money, formatDate, monthLabel } from '../../lib/format';
 import { portalApi } from '../../lib/portalApi';
-import { useStkPush } from '../../lib/useStkPush';
 import { PaymentTimeline, type PaymentStatusRow } from '../../components/portal/PaymentTimeline';
 import type { PortalSummary } from './PortalHome';
 
@@ -38,14 +37,8 @@ export default function PortalPayments() {
     () => portalApi.get<{ data: PortalPayment[] }>('/api/portal/payments'),
     [],
   );
-  const { data: instructionsData, refresh: refreshInstructions } = useFetch(
+  const { data: instructionsData } = useFetch(
     () => portalApi.get<{ data: PaymentInstructions }>('/api/portal/payment-instructions'),
-    [],
-  );
-  // STK availability: the pay card renders only when the backend says the
-  // PayHero channel is configured AND the tenant record has a phone number.
-  const { data: stkConfigData } = useFetch(
-    () => portalApi.get<{ data: { enabled: boolean; reason: string | null; targetPhone: string | null } }>('/api/portal/pay-rent/config'),
     [],
   );
 
@@ -63,23 +56,16 @@ export default function PortalPayments() {
   };
 
   // --- Payment status timeline ---
-  // Recent M-Pesa payments with their pipeline stage. While a push is
-  // awaiting confirmation (or a CONFIRMING row exists) poll every 5s so the
-  // timeline advances live; otherwise it rides the normal mount refresh.
+  // Recent M-Pesa payments with their pipeline stage. While a CONFIRMING row
+  // exists poll every 5s so the timeline advances live; otherwise it rides
+  // the normal mount refresh.
   const { data: statusData, refresh: refreshStatus } = useFetch(
     () => portalApi.get<{ data: PaymentStatusRow[] }>('/api/portal/payment-status'),
     [],
   );
   const timelineRows = statusData?.data ?? [];
 
-  // --- Pay with M-Pesa (STK push) state machine lives in useStkPush ---
-  const stk = useStkPush({
-    rentBalance: instructionsData?.data.rentBalance,
-    refreshBalances: refreshInstructions,
-    refreshTimeline: refreshStatus,
-  });
-  const stkConfig = stkConfigData?.data ?? null;
-  const hasLiveRow = stk.awaitingConfirmation || timelineRows.some((r) => r.stage === 'CONFIRMING');
+  const hasLiveRow = timelineRows.some((r) => r.stage === 'CONFIRMING');
   useEffect(() => {
     if (!hasLiveRow) return;
     const poll = window.setInterval(() => refreshStatus(), 5_000);
@@ -90,55 +76,6 @@ export default function PortalPayments() {
   return (
     <div className="space-y-6">
       <PageHeader title="Payments" subtitle="Pay rent and review everything you have paid" />
-
-      {stkConfig?.enabled && (
-        <div className="rounded-xl border border-ash bg-white p-4">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-            <Smartphone className="h-4 w-4 text-brand-500" /> Pay with M-Pesa
-          </h3>
-          <p className="mt-1 text-sm text-gray-600">
-            Enter the amount and we'll send an M-Pesa request to your phone ({stkConfig.targetPhone}). Enter your PIN to complete the payment — your balance updates automatically.
-          </p>
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-            <input
-              type="number"
-              min="1"
-              step="1"
-              inputMode="numeric"
-              value={stk.amount}
-              onChange={(e) => stk.updateAmount(e.target.value)}
-              placeholder="Amount to pay"
-              aria-label="Amount to pay"
-              className="w-full rounded-lg border border-ash bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-silver focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-300 sm:max-w-xs"
-            />
-            <button
-              type="button"
-              onClick={stk.startPush}
-              disabled={stk.pushing || stk.awaitingConfirmation || !Number(stk.amount)}
-              className="press inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {stk.pushing ? 'Sending request…' : 'Send M-Pesa request'}
-            </button>
-          </div>
-          {stk.pushError && <p className="mt-2 text-sm text-red-700">{stk.pushError}</p>}
-          {stk.pushResult && (
-            <div className="mt-3 rounded-lg border border-ash bg-white p-3 text-sm">
-              {stk.awaitingConfirmation ? (
-                <p className="text-gray-700">
-                  <span className="font-medium">Request sent to {stk.pushResult.phone}.</span> Check your phone and enter your M-Pesa PIN. This page refreshes your balance automatically for a few minutes while M-Pesa confirms.
-                </p>
-              ) : (
-                <p className="text-gray-700">
-                  Request sent to {stk.pushResult.phone}. If you haven't completed it, you can send another request — the payment posts once M-Pesa confirms.
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-      {stkConfig && !stkConfig.enabled && stkConfig.reason && (
-        <p className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500">{stkConfig.reason}</p>
-      )}
 
       {instructionsData?.data.number && (
         <div className="rounded-xl border border-ash bg-white p-4">
