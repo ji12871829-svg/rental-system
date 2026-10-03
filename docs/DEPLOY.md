@@ -119,8 +119,10 @@ npx tsx -e "import {pool} from './src/config/db'; pool.query('select count(*) fr
    Before the API boots, a **predeploy gate** (`backend/scripts/predeploy-check.mjs`,
    wired into `npm start`) verifies `DATABASE_URL`/`JWT_SECRET` are set, the
    database is reachable **and has the schema** (`npm run db:setup` was run —
-   §1a), and warns about unfilled `BUSINESS_*` identity vars. A failed gate
-   marks the deploy bad and keeps the previous release serving.
+   §1a), executes `database/schema.sql` and every unapplied migration inside a
+   **rolled-back transaction** (a SQL syntax error fails the gate instead of
+   aborting the boot), and warns about unfilled `BUSINESS_*` identity vars. A
+   failed gate marks the deploy bad and keeps the previous release serving.
 
 ## 3. Verify
 

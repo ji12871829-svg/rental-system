@@ -47,6 +47,17 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
+      # SQL syntax gate: executes database/schema.sql and every migration
+      # against this job's fresh postgres inside a ROLLED-BACK transaction —
+      # catches Postgres-invalid SQL (e.g. the // comments in migration 009
+      # that killed every 7edb843+ deploy) at CI time instead of at boot on
+      # Render, where a failed start aborts the whole deploy. Fresh DB means
+      # the full schema + ALL migrations are validated on every push.
+      - name: SQL syntax gate (schema + migrations, rolled back)
+        env:
+          DATABASE_URL: postgres://rms_user:rms_password@localhost:5432/rpms
+          JWT_SECRET: ci-sql-gate-not-for-production
+        run: npm run predeploy:check
       - run: npx tsc --noEmit
       # Teed so a failure's jest output lands in the job summary — visible on
       # the run page without auth, no log download needed to triage a red
