@@ -2,16 +2,17 @@ import { poolExec, query, queryOne, type SqlExec } from '../config/db';
 import { paginate } from './paginate';
 import { env, isTest } from '../config/env';
 import { MONTH_NAMES, type Pagination } from '../types';
-import { balanceDue, combinedReceiptMessage, monthlyBalanceDueMessage, overdueNoticeMessage, rentReceiptMessage, waterReceiptMessage, whatsappBalanceDueMessage, whatsappOverdueMessage } from '../utils/businessRules';
+import { combinedReceiptMessage, monthlyBalanceDueMessage, overdueNoticeMessage, rentReceiptMessage, waterReceiptMessage, whatsappBalanceDueMessage, whatsappOverdueMessage } from '../utils/businessRules';
 import { badRequest, notFound } from '../utils/httpError';
 import { logAudit } from './auditService';
-import { toNumber, round2 } from '../utils/money';
+import { toNumber } from '../utils/money';
 import { getBusinessIdentity, getPaybillInstructions, type BusinessIdentity } from './brandingService';
 import { getSettings } from './settingsService';
 import { composeRentStatementEmail } from '../utils/emailTemplates';
 import { queueReminderEmail } from './emailService';
 import { getCustomTemplate } from './templateService';
 import { renderMergeFields } from '../utils/mergeFields';
+import { tenantBalances } from './tenantLedger';
 import {
   africasTalkingBalance,
   evaluateBalance,
@@ -269,48 +270,18 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
   const month = new Date().getUTCMonth() + 1;
   const monthName = MONTH_NAMES[month - 1];
 
-  // Move-in-aware expected rent YTD — mirrors tenantService.getTenant (spec §46).
-  const rentExpectedYtd = toNumber((await queryOne<{ v: string }>(
-    `SELECT COALESCE(SUM(u.monthly_rent * occ.months), 0)::text AS v
-     FROM tenants t
-     JOIN units u ON u.id = t.unit_id
-     JOIN LATERAL (
-       SELECT COUNT(*)::int AS months
-       FROM generate_series(1, $3::int) AS mm
-       WHERE t.move_in_date <= (DATE ($2::text || '-01-01') + mm * INTERVAL '1 month' - INTERVAL '1 day')
-         AND (t.move_out_date IS NULL OR t.move_out_date >= (DATE ($2::text || '-01-01') + (mm - 1) * INTERVAL '1 month'))
-     ) occ ON TRUE
-     WHERE t.id = $1`,
-    [tenantId, year, month],
-  ))?.v);
-  // This month's expected rent alone (for the statement's Current Rent line).
-  const currentRent = toNumber((await queryOne<{ v: string }>(
-    `SELECT COALESCE(u.monthly_rent, 0)::text AS v
-     FROM tenants t LEFT JOIN units u ON u.id = t.unit_id WHERE t.id = $1`,
-    [tenantId],
-  ))?.v);
-  const rentPaid = toNumber((await queryOne<{ v: string }>(
-    `SELECT COALESCE(SUM(amount), 0)::text AS v FROM rent_payments WHERE tenant_id = $1 AND billing_year = $2`,
-    [tenantId, year],
-  ))?.v);
-  const waterBilled = toNumber((await queryOne<{ v: string }>(
-    `SELECT COALESCE(SUM(wmr.water_bill), 0)::text AS v
-     FROM water_meter_readings wmr JOIN tenants t ON t.unit_id = wmr.unit_id
-     WHERE t.id = $1 AND wmr.billing_year = $2`,
-    [tenantId, year],
-  ))?.v);
-  const waterPaid = toNumber((await queryOne<{ v: string }>(
-    `SELECT COALESCE(SUM(amount), 0)::text AS v FROM water_payments WHERE tenant_id = $1 AND billing_year = $2`,
-    [tenantId, year],
-  ))?.v);
-
-  const rentBalance = balanceDue(rentExpectedYtd, rentPaid);
-  const waterBalance = balanceDue(waterBilled, waterPaid);
-  const combinedBalance = round2(rentBalance + waterBalance);
+  // Ledger figures via the Tenant Ledger module — the single source the
+  // tenant card, dashboard, ledger page and arrears view read, so a reminder
+  // can never quote a balance the ledger disagrees with. (spec §46)
+  const ledger = await tenantBalances(tenantId, year, month);
+  const currentRent = ledger.currentRent;
+  const rentBalance = ledger.rentBalance;
+  const waterBalance = ledger.waterBalance;
+  const combinedBalance = ledger.combinedBalance;
   // Previous balance = everything before this month: YTD expected minus this
   // month's rent, minus payments (floored at 0 — an overpaid tenant has no
   // "previous balance" to show).
-  const previousRentBalance = Math.max(round2(rentBalance - Math.min(currentRent, rentBalance)), 0);
+  const previousRentBalance = ledger.previousRentBalance;
 
   const identity = await getBusinessIdentity();
   // Payment channel line: the reconciled paybill number when branding has

@@ -10,6 +10,7 @@ import { createReceipt } from './receiptService';
 import { autoSendEnabled, dispatchAutoSend, prepareForReceipt } from './smsService';
 import { dispatchAutoEmail, emailAutoSendEnabled } from './emailService';
 import { getSettings } from './settingsService';
+import { occupancyRows } from './tenantLedger';
 
 export interface RentPaymentInput {
   tenantId: number;
@@ -295,67 +296,63 @@ export interface RentMonthlySummaryRow {
 export async function monthlyRentSummary(year: number): Promise<RentMonthlySummaryRow[]> {
   const settings = await getSettings();
   const targetYear = year ?? settings.reporting_year;
-  const rows = await query<{
-    month: number; expected: string; collected: string;
-    occupied_units: string;
-  }>(
-    `WITH months AS (
-       SELECT generate_series(1, 12) AS m
-     ),
-     month_bounds AS (
-       SELECT m, (DATE ($1::text || '-01-01') + (m - 1) * INTERVAL '1 month') AS month_start,
-              (DATE ($1::text || '-01-01') + m * INTERVAL '1 month' - INTERVAL '1 day') AS month_end
-       FROM months
-     ),
-     occupied_units AS (
-       SELECT DISTINCT u.id, u.monthly_rent, mb.m
-       FROM units u
-       JOIN tenants t ON t.unit_id = u.id AND t.status = 'ACTIVE'
-       CROSS JOIN month_bounds mb
-       WHERE t.move_in_date <= mb.month_end
-         AND (t.move_out_date IS NULL OR t.move_out_date >= mb.month_start)
-     ),
-     collected AS (
-       SELECT billing_month AS m, COALESCE(SUM(amount), 0) AS paid
+
+  // Occupancy truth via the Tenant Ledger module: one query replaces the
+  // occupied_units CTE AND the per-month status loop's window predicate
+  // (13 queries → 3, all reading the one tenancy-window implementation).
+  const [occupancy, collectedRows, paidRows] = await Promise.all([
+    occupancyRows(targetYear, 12),
+    query<{ m: number; paid: string }>(
+      `SELECT billing_month AS m, COALESCE(SUM(amount), 0)::text AS paid
        FROM rent_payments
        WHERE billing_year = $1::int
-       GROUP BY billing_month
-     )
-     SELECT mb.m AS month,
-            COALESCE((SELECT SUM(monthly_rent) FROM occupied_units WHERE m = mb.m), 0) AS expected,
-            COALESCE(c.paid, 0) AS collected,
-            (SELECT COUNT(*) FROM occupied_units WHERE m = mb.m) AS occupied_units
-     FROM month_bounds mb
-     LEFT JOIN collected c ON c.m = mb.m
-     ORDER BY mb.m`,
-    [targetYear]
-  );
+       GROUP BY billing_month`,
+      [targetYear]
+    ),
+    query<{ tenant_id: number; m: number; paid: string }>(
+      `SELECT tenant_id, billing_month AS m, COALESCE(SUM(amount), 0)::text AS paid
+       FROM rent_payments
+       WHERE billing_year = $1::int
+       GROUP BY tenant_id, billing_month`,
+      [targetYear]
+    ),
+  ]);
+
+  // Per-month expected rent and occupied units — DISTINCT by unit, matching
+  // the former occupied_units CTE.
+  const perMonth = new Map<number, { expected: number; units: Set<number> }>();
+  for (const o of occupancy) {
+    let m = perMonth.get(o.month);
+    if (!m) {
+      m = { expected: 0, units: new Set() };
+      perMonth.set(o.month, m);
+    }
+    if (!m.units.has(o.unitId)) {
+      m.units.add(o.unitId);
+      m.expected += o.monthlyRent;
+    }
+  }
+  const collectedByMonth = new Map(collectedRows.map((r) => [r.m, toNumber(r.paid)]));
+  const paidByTenantMonth = new Map(paidRows.map((r) => [`${r.tenant_id}:${r.m}`, toNumber(r.paid)]));
 
   const totalUnits = await queryOne<{ count: string }>('SELECT COUNT(*)::text AS count FROM units');
   const unitCount = Number(totalUnits?.count ?? 0);
 
-  return Promise.all(rows.map(async (r) => {
-    const expected = toNumber(r.expected);
-    const collected = toNumber(r.collected);
-    const occupied = Number(r.occupied_units);
+  return Promise.all(Array.from({ length: 12 }, (_, i) => i + 1).map(async (month) => {
+    const m = perMonth.get(month);
+    const expected = m ? round2(m.expected) : 0;
+    const occupied = m ? m.units.size : 0;
+    const collected = collectedByMonth.get(month) ?? 0;
 
-    // Per-tenant status counts for the month.
-    const statuses = await query<{ full_name: string; expected: string; paid: string }>(
-      `SELECT t.full_name,
-              u.monthly_rent AS expected,
-              COALESCE((SELECT SUM(amount) FROM rent_payments rp
-                        WHERE rp.tenant_id = t.id AND rp.billing_month = $1::int AND rp.billing_year = $2::int), 0) AS paid
-       FROM tenants t
-       JOIN units u ON u.id = t.unit_id AND t.status = 'ACTIVE'
-       WHERE t.move_in_date <= (DATE ($2::text || '-01-01') + $1 * INTERVAL '1 month' - INTERVAL '1 day')
-         AND (t.move_out_date IS NULL OR t.move_out_date >= (DATE ($2::text || '-01-01') + ($1 - 1) * INTERVAL '1 month'))`,
-      [r.month, targetYear]
-    );
+    // Per-tenant status counts for the month (from the same occupancy rows).
+    const statuses = occupancy
+      .filter((o) => o.month === month)
+      .map((o) => ({ expected: o.monthlyRent, paid: paidByTenantMonth.get(`${o.tenantId}:${month}`) ?? 0 }));
     let paidTenants = 0;
     let partialTenants = 0;
     let unpaidTenants = 0;
     for (const s of statuses) {
-      const st = paymentStatus(toNumber(s.expected), toNumber(s.paid));
+      const st = paymentStatus(s.expected, s.paid);
       if (st === 'PAID' || st === 'OVERPAID') paidTenants += 1;
       else if (st === 'PARTIAL') partialTenants += 1;
       else unpaidTenants += 1;
@@ -363,8 +360,8 @@ export async function monthlyRentSummary(year: number): Promise<RentMonthlySumma
 
     const percentage = expected > 0 ? round2((collected / expected) * 100) : 0;
     return {
-      month: r.month,
-      monthName: MONTH_NAMES[r.month - 1],
+      month,
+      monthName: MONTH_NAMES[month - 1],
       expectedRent: expected,
       rentCollected: collected,
       rentOutstanding: balanceDue(expected, collected),

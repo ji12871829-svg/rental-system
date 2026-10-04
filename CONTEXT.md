@@ -19,6 +19,12 @@ a concept worth keeping.
 - **Unit** — a rentable property unit. **Reading** — a monthly water meter
   reading for a unit. **Receipt** — proof of a recorded payment (RENT, WATER
   or COMBINED), rendered as a printable PDF.
+- **Tenant Ledger module** — `services/tenantLedger.ts`. The single home for
+  the move-in-aware tenancy-window math (which months a tenant owed rent,
+  expected vs paid, per-tenant balances, and the portfolio occupancy view).
+  Every surface that shows a balance — tenant card, dashboard, ledger page,
+  arrears, reminders, statement PDFs, M-Pesa allocation — reads through it,
+  so no two figures can disagree.
 - **Statement** — a tenant's full-year billing/payment summary PDF.
 - **Monthly Financial Report** — the operator's one-page year-to-date PDF.
 - **Business identity** — the single `business_branding` record (legal name,
