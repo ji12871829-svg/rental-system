@@ -13,7 +13,8 @@ import {
   exportTenantPersonalDataCsv,
 } from '../services/privacyService';
 import { prepareForDataRequestLetter, prepareForPortalCredentials, sendEmailNotification } from '../services/emailService';
-import { autoSendEnabled, dispatchAutoSend, prepareReminder } from '../services/smsService';
+import { autoSendEnabled, dispatchAutoSend } from '../services/smsService';
+import { prepareReminder } from '../services/reminderService';
 import { renderDataLetterEmail, renderDataLetterPdf, dataEnclosureName, dataLetterPdfName } from '../utils/dataRequestLetter';
 
 const router = Router();

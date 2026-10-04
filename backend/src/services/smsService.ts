@@ -1,18 +1,15 @@
 import { poolExec, query, queryOne, type SqlExec } from '../config/db';
 import { paginate } from './paginate';
-import { env, isTest } from '../config/env';
+import { env } from '../config/env';
 import { MONTH_NAMES, type Pagination } from '../types';
-import { combinedReceiptMessage, monthlyBalanceDueMessage, overdueNoticeMessage, rentReceiptMessage, waterReceiptMessage, whatsappBalanceDueMessage, whatsappOverdueMessage } from '../utils/businessRules';
+import { combinedReceiptMessage, rentReceiptMessage, waterReceiptMessage } from '../utils/businessRules';
 import { badRequest, notFound } from '../utils/httpError';
 import { logAudit } from './auditService';
 import { toNumber } from '../utils/money';
-import { getBusinessIdentity, getPaybillInstructions, type BusinessIdentity } from './brandingService';
-import { getSettings } from './settingsService';
-import { composeRentStatementEmail } from '../utils/emailTemplates';
-import { queueReminderEmail } from './emailService';
+import { getBusinessIdentity, type BusinessIdentity } from './brandingService';
 import { getCustomTemplate } from './templateService';
 import { renderMergeFields } from '../utils/mergeFields';
-import { tenantBalances } from './tenantLedger';
+import { autoSendEnabled as channelAutoSendEnabled, dispatchAfterCommit } from './outboundMessage';
 import {
   africasTalkingBalance,
   evaluateBalance,
@@ -152,6 +149,27 @@ async function resolveReceiptTemplate(
   return renderMergeFields(custom.body, fullVars);
 }
 
+// The ONE persist point for SMS: creates a PENDING sms_notifications row and
+// returns its id. Every caller that queues an SMS — receipt notifications,
+// the Tenant reminder module — funnels through here. Pass the enclosing
+// transaction's `exec` to queue inside a payment transaction.
+export interface QueueSmsInput {
+  tenantId: number;
+  phoneNumber: string;
+  message: string;
+  receiptId?: number | null;
+}
+
+export async function queueSms(input: QueueSmsInput, exec: SqlExec = poolExec): Promise<number | null> {
+  const inserted = await exec.query(
+    `INSERT INTO sms_notifications (receipt_id, tenant_id, phone_number, message, status)
+     VALUES ($1, $2, $3, $4, 'PENDING')
+     RETURNING id`,
+    [input.receiptId ?? null, input.tenantId, input.phoneNumber, input.message]
+  );
+  return inserted.rows[0]?.id ?? null;
+}
+
 // Creates a PENDING sms_notifications row for a receipt (called inside the
 // payment transaction via the injected `exec`). Returns the new row's id so
 // the caller can auto-dispatch it after commit, or null when there is nothing
@@ -187,347 +205,32 @@ export async function prepareForReceipt(
     identity,
     template,
   });
-  const inserted = await exec.query(
-    `INSERT INTO sms_notifications (receipt_id, tenant_id, phone_number, message, status)
-     VALUES ($1, $2, $3, $4, 'PENDING')
-     RETURNING id`,
-    [receipt.id, receipt.tenant_id, row.phone_number, message]
+  return queueSms(
+    { tenantId: receipt.tenant_id, phoneNumber: row.phone_number, message, receiptId: receipt.id },
+    exec
   );
-  return inserted.rows[0]?.id ?? null;
 }
 
-// Auto-dispatch a freshly prepared notification AFTER its payment transaction
-// commits. Fire-and-forget by design: a provider outage must never fail a
-// recorded payment, and a slow provider must never hold the HTTP response.
-// A failed auto-send leaves the row FAILED (reason recorded) for retry from
-// the SMS history page. Disabled by SMS_AUTO_SEND=false; the test environment
-// always opts out so integration tests exercise the manual send explicitly.
+// The SMS channel's entry point into the Outbound Message module's seam (one
+// implementation shared with email): auto-dispatch a freshly prepared
+// notification AFTER its payment transaction commits. A failed auto-send
+// leaves the row FAILED (reason recorded) for retry from the SMS history page.
+// Disabled by SMS_AUTO_SEND=false; the test environment always opts out so
+// integration tests exercise the manual send explicitly.
 export function dispatchAutoSend(
   smsId: number | null | undefined,
   sender: (id: number) => Promise<unknown> = sendSmsNotification
 ): void {
-  if (!smsId || isTest || !env.smsAutoSend) return;
-  setTimeout(() => {
-    sender(smsId).catch((err) => {
-      console.error(`[sms] auto-send failed for notification ${smsId}: ${(err as Error).message}`);
-    });
-  }, 0);
+  if (!smsId) return; // no phone → nothing was prepared
+  dispatchAfterCommit({ channel: 'SMS', what: `notification ${smsId}`, run: () => sender(smsId) });
 }
 
 // Whether a freshly prepared notification will actually be dispatched —
 // lets payment responses tell the UI honestly what happened to the receipt
-// SMS (queued-but-manual vs auto-sent vs not queued at all).
+// SMS (queued-but-manual vs auto-sent vs not queued at all). The channel gate
+// itself lives in the Outbound Message module.
 export function autoSendEnabled(): boolean {
-  return env.smsAutoSend && !isTest;
-}
-
-// --- Staff reminder SMS (statement / overdue notice) -------------------------
-// Composes the reminder templates (businessRules) from the tenant's LIVE
-// ledger figures — the same move-in-aware expected-rent math the tenant
-// detail view uses — and queues a PENDING sms_notifications row for the
-// manual send from the SMS history page (or auto-send when enabled).
-// Reminder templates reference a paybill/account line when branding has one.
-// The shared figures every reminder channel composes from. previousRent
-// (YTD expected minus THIS month's expected) drives the statement's
-// "Previous Balance" line; currentRent is this month's rent.
-interface ReminderFigures {
-  tenantName: string;
-  phoneNumber: string | null;
-  email: string | null;
-  unitNumber: string;
-  monthName: string;
-  year: number;
-  currency: string;
-  currentRent: number;
-  previousRentBalance: number;
-  waterBalance: number;
-  rentBalance: number;
-  combinedBalance: number;
-  paymentMethod: string;
-  accountNumber: string;
-  identityName: string | null;
-}
-
-async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures> {
-  const tenant = await queryOne<{
-    full_name: string;
-    phone_number: string | null;
-    email: string | null;
-    unit_number: string | null;
-    move_in_date: string;
-    move_out_date: string | null;
-  }>(
-    `SELECT t.full_name, t.phone_number, t.email, u.unit_number, t.move_in_date, t.move_out_date
-     FROM tenants t
-     LEFT JOIN units u ON u.id = t.unit_id
-     WHERE t.id = $1`,
-    [tenantId],
-  );
-  if (!tenant) throw notFound('Tenant not found.');
-
-  const settings = await getSettings();
-  const year = settings.reporting_year;
-  const month = new Date().getUTCMonth() + 1;
-  const monthName = MONTH_NAMES[month - 1];
-
-  // Ledger figures via the Tenant Ledger module — the single source the
-  // tenant card, dashboard, ledger page and arrears view read, so a reminder
-  // can never quote a balance the ledger disagrees with. (spec §46)
-  const ledger = await tenantBalances(tenantId, year, month);
-  const currentRent = ledger.currentRent;
-  const rentBalance = ledger.rentBalance;
-  const waterBalance = ledger.waterBalance;
-  const combinedBalance = ledger.combinedBalance;
-  // Previous balance = everything before this month: YTD expected minus this
-  // month's rent, minus payments (floored at 0 — an overpaid tenant has no
-  // "previous balance" to show).
-  const previousRentBalance = ledger.previousRentBalance;
-
-  const identity = await getBusinessIdentity();
-  // Payment channel line: the reconciled paybill number when branding has
-  // one, otherwise a generic instruction.
-  const paybill = await getPaybillInstructions();
-  const paymentMethod = paybill.enabled && paybill.number
-    ? `M-Pesa PayBill ${paybill.number}`
-    : 'M-Pesa or at the office';
-  const accountNumber = `Unit ${tenant.unit_number ?? tenantId}`;
-
-  return {
-    tenantName: tenant.full_name,
-    phoneNumber: tenant.phone_number,
-    email: tenant.email,
-    unitNumber: tenant.unit_number ?? String(tenantId),
-    monthName,
-    year,
-    currency: settings.currency,
-    currentRent,
-    previousRentBalance,
-    waterBalance,
-    rentBalance,
-    combinedBalance,
-    paymentMethod,
-    accountNumber,
-    identityName: identity.name,
-  };
-}
-
-export type ReminderKind = 'BALANCE_DUE' | 'OVERDUE';
-export type ReminderChannel = 'SMS' | 'WHATSAPP' | 'EMAIL';
-export interface ReminderResult {
-  message: string;
-  smsId: number | null;
-  emailId: number | null;
-  /** WhatsApp click-to-chat URL (wa.me) the operator opens — not queued. */
-  whatsappUrl: string | null;
-}
-
-// Queue/compose a tenant reminder on the chosen channel. Each channel has
-// its own helper below; this dispatcher resolves the shared figures once and
-// delegates. Returns null (SMS/EMAIL) when the tenant lacks the channel's
-// contact point.
-export async function prepareReminder(
-  tenantId: number,
-  kind: ReminderKind,
-  channel: ReminderChannel,
-  opts: { userId?: number | null } = {},
-): Promise<ReminderResult | null> {
-  const f = await gatherReminderFigures(tenantId);
-  if (channel === 'WHATSAPP') return whatsappReminder(f, kind, tenantId, opts.userId ?? null);
-  if (channel === 'EMAIL') return emailReminder(f, kind, tenantId, opts.userId ?? null);
-  // SMS (default)
-  return smsReminder(f, kind, tenantId, opts.userId ?? null);
-}
-
-// WHATSAPP — nothing is queued or sent: returns a wa.me click-to-chat URL
-// The exact "chat with support" sentence whatsappOverdueMessage appends,
-// factored out so the customized WHATSAPP_OVERDUE template's {{support_link}}
-// merge field expands to identical text.
-function whatsappSupportLink(phone: string | null): string {
-  return phone
-    ? ` Click here to chat with support if you have any questions: https://wa.me/${phone.replace(/\D/g, '')}.`
-    : '';
-}
-
-// with the text pre-filled. The operator reviews it in WhatsApp before
-// pressing send; there is no provider cost and no unreviewed outbound.
-async function whatsappReminder(
-  f: ReminderFigures,
-  kind: ReminderKind,
-  tenantId: number,
-  userId: number | null,
-): Promise<ReminderResult | null> {
-  // A customized Message Templates row (WHATSAPP_BALANCE_DUE /
-  // WHATSAPP_OVERDUE) overrides the pre-filled wording. {{support_link}}
-  // expands to the same "chat with support" sentence whatsappOverdueMessage
-  // appends, or to nothing when no support phone is configured.
-  const custom = await getCustomTemplate(kind === 'BALANCE_DUE' ? 'WHATSAPP_BALANCE_DUE' : 'WHATSAPP_OVERDUE');
-  const text = custom
-    ? renderMergeFields(
-        custom.body,
-        kind === 'BALANCE_DUE'
-          ? {
-              name: f.tenantName,
-              unit: f.unitNumber,
-              month: f.monthName,
-              year: f.year,
-              current_rent: f.currentRent,
-              previous_balance: f.previousRentBalance,
-              total_due: Math.max(f.combinedBalance, 0),
-              account: f.accountNumber,
-              payment_method: f.paymentMethod,
-              currency: f.currency,
-            }
-          : {
-              name: f.tenantName,
-              unit: f.unitNumber,
-              amount_due: Math.max(f.rentBalance, 0),
-              support_link: whatsappSupportLink((await getBusinessIdentity()).phone),
-              currency: f.currency,
-            },
-      )
-    : kind === 'BALANCE_DUE'
-    ? whatsappBalanceDueMessage({
-        tenantName: f.tenantName,
-        unitNumber: f.unitNumber,
-        monthName: f.monthName,
-        year: f.year,
-        currentRent: f.currentRent,
-        previousBalance: f.previousRentBalance,
-        totalDue: Math.max(f.combinedBalance, 0),
-        accountNumber: f.accountNumber,
-        paymentMethod: f.paymentMethod,
-        currency: f.currency,
-      })
-    : whatsappOverdueMessage({
-        tenantName: f.tenantName,
-        unitNumber: f.unitNumber,
-        amountDue: Math.max(f.rentBalance, 0),
-        supportPhone: (await getBusinessIdentity()).phone,
-        currency: f.currency,
-      });
-  if (!f.phoneNumber) return null;
-  const digits = f.phoneNumber.replace(/\D/g, '');
-  // Kenya numbers stored as 07… normalize to 2547… for wa.me.
-  const intl = digits.startsWith('0') ? `254${digits.slice(1)}` : digits;
-  await logAudit({
-    userId,
-    action: 'REMINDER_WHATSAPP_COMPOSED',
-    entity: 'tenant',
-    entityId: tenantId,
-    newValue: { kind },
-  });
-  return { message: text, smsId: null, emailId: null, whatsappUrl: `https://wa.me/${intl}?text=${encodeURIComponent(text)}` };
-}
-
-// EMAIL — PENDING email_notifications row (formal statement breakdown).
-async function emailReminder(
-  f: ReminderFigures,
-  kind: ReminderKind,
-  tenantId: number,
-  userId: number | null,
-): Promise<ReminderResult | null> {
-  if (!f.email) return null;
-  const identity = { name: f.identityName, regNo: null };
-  const composed = composeRentStatementEmail({
-    tenantName: f.tenantName,
-    unitNumber: f.unitNumber,
-    monthName: f.monthName,
-    year: f.year,
-    previousBalance: f.previousRentBalance,
-    currentRent: f.currentRent,
-    utilitiesAmount: Math.max(f.waterBalance, 0),
-    totalDue: Math.max(f.combinedBalance, 0),
-    currency: f.currency,
-    accountNumber: f.accountNumber,
-    paymentMethod: f.paymentMethod,
-    identity,
-  });
-  const emailRow = await queueReminderEmail({
-    to: f.email,
-    subject: composed.subject,
-    html: composed.html,
-    text: composed.text,
-    tenantId,
-  });
-  await logAudit({
-    userId,
-    action: 'REMINDER_EMAIL_QUEUED',
-    entity: 'tenant',
-    entityId: tenantId,
-    newValue: { kind, emailId: emailRow.id },
-  });
-  return { message: composed.text, smsId: null, emailId: emailRow.id, whatsappUrl: null };
-}
-
-// SMS — PENDING sms_notifications row (manual send or auto-send).
-async function smsReminder(
-  f: ReminderFigures,
-  kind: ReminderKind,
-  tenantId: number,
-  userId: number | null,
-): Promise<ReminderResult | null> {
-  if (!f.phoneNumber) return null;
-  // A customized Message Templates row (SMS_BALANCE_DUE / SMS_OVERDUE)
-  // overrides the hardcoded wording; merge fields resolve per tenant.
-  const custom = await getCustomTemplate(kind === 'BALANCE_DUE' ? 'SMS_BALANCE_DUE' : 'SMS_OVERDUE');
-  const baseVars = {
-    name: f.tenantName,
-    unit: f.unitNumber,
-    month: f.monthName,
-    year: f.year,
-    currency: f.currency,
-    business: f.identityName ?? '',
-  };
-  const message = custom
-    ? renderMergeFields(
-        custom.body,
-        kind === 'BALANCE_DUE'
-          ? {
-              ...baseVars,
-              total_due: Math.max(f.combinedBalance, 0),
-              account: f.accountNumber,
-              payment_method: f.paymentMethod,
-            }
-          : {
-              ...baseVars,
-              amount_due: Math.max(f.rentBalance, 0),
-              total_due: Math.max(f.combinedBalance, 0),
-            },
-      )
-    : kind === 'BALANCE_DUE'
-    ? monthlyBalanceDueMessage({
-        tenantName: f.tenantName,
-        unitNumber: f.unitNumber,
-        monthName: f.monthName,
-        year: f.year,
-        totalDue: Math.max(f.combinedBalance, 0),
-        accountNumber: f.accountNumber,
-        paymentMethod: f.paymentMethod,
-        currency: f.currency,
-        businessIdentity: f.identityName ?? undefined,
-      })
-    : overdueNoticeMessage({
-        tenantName: f.tenantName,
-        unitNumber: f.unitNumber,
-        amountDue: Math.max(f.rentBalance, 0),
-        totalBalance: Math.max(f.combinedBalance, 0),
-        currency: f.currency,
-        businessIdentity: f.identityName ?? undefined,
-      });
-  const inserted = await queryOne<{ id: number }>(
-    `INSERT INTO sms_notifications (tenant_id, phone_number, message, status)
-     VALUES ($1, $2, $3, 'PENDING')
-     RETURNING id`,
-    [tenantId, f.phoneNumber, message],
-  );
-  await logAudit({
-    userId,
-    action: 'SMS_REMINDER_QUEUED',
-    entity: 'tenant',
-    entityId: tenantId,
-    newValue: { kind, smsId: inserted?.id ?? null },
-  });
-  return { message, smsId: inserted?.id ?? null, emailId: null, whatsappUrl: null };
+  return channelAutoSendEnabled('SMS');
 }
 
 export interface SmsFilters {
