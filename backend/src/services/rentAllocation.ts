@@ -2,10 +2,10 @@
 //
 // "The tenant just sends money" path: money that arrives without the operator
 // touching anything should land on what the tenant actually owes, oldest
-// month first, exactly the way the ledger page says they owe it. The
-// expected-rent SQL below is the tenant ledger's move-in-aware query verbatim
-// (financeService.tenantLedger), so allocation can never disagree with what
-// the ledger shows.
+// month first, exactly the way the ledger page says they owe it. The arrears
+// view below reads the Tenant Ledger module's rent spine — the one
+// tenancy-window implementation the ledger page itself uses — so allocation
+// can never disagree with what the ledger shows.
 //
 // The manual review path (mpesaReviewService.resolveMpesaReviewTransaction)
 // deliberately books through the same engine, so a payment resolved by hand
@@ -17,8 +17,9 @@
 //   * tests/integration   (assert the arrears view against pipeline fixtures)
 import { query } from '../config/db';
 import { createRentPayment } from './rentService';
-import { toNumber, round2 } from '../utils/money';
+import { round2 } from '../utils/money';
 import { MONTH_NAMES } from '../types';
+import { rentMonths } from './tenantLedger';
 
 export interface RentArrearsMonth {
   month: number;
@@ -41,45 +42,16 @@ export interface RentArrearsMonth {
  * @public
  */
 export async function rentArrearsForYear(tenantId: number, year: number): Promise<RentArrearsMonth[]> {
-  const rows = await query<{
-    month: number; monthly_rent: string | null; paid: string;
-  }>(
-    `WITH months AS (SELECT generate_series(1, 12) AS m),
-     tn AS (SELECT unit_id, move_in_date, move_out_date FROM tenants WHERE id = $1),
-     rent AS (
-       SELECT billing_month AS m, SUM(amount) AS paid
-       FROM rent_payments WHERE tenant_id = $1 AND billing_year = $2::int
-       GROUP BY billing_month
-     )
-     SELECT ms.m AS month,
-            CASE WHEN tn.unit_id IS NULL THEN NULL
-                 WHEN tn.move_in_date IS NOT NULL
-                      AND tn.move_in_date <= (DATE ($2::text || '-01-01') + ms.m * INTERVAL '1 month' - INTERVAL '1 day')
-                      AND (tn.move_out_date IS NULL OR tn.move_out_date >= (DATE ($2::text || '-01-01') + (ms.m - 1) * INTERVAL '1 month'))
-                 THEN u.monthly_rent
-                 ELSE NULL END AS monthly_rent,
-            COALESCE(rp.paid, 0) AS paid
-     FROM months ms
-     LEFT JOIN rent rp ON rp.m = ms.m
-     CROSS JOIN tn
-     LEFT JOIN units u ON u.id = tn.unit_id
-     ORDER BY ms.m`,
-    [tenantId, year]
-  );
-
-  return rows
-    .map((row) => {
-      const expectedRent = row.monthly_rent === null ? 0 : toNumber(row.monthly_rent);
-      const rentPaid = toNumber(row.paid);
-      return {
-        month: row.month,
-        monthName: MONTH_NAMES[row.month - 1],
-        year,
-        expectedRent,
-        rentPaid,
-        balance: round2(expectedRent - rentPaid),
-      };
-    })
+  const months = await rentMonths(tenantId, year, 12);
+  return months
+    .map((m) => ({
+      month: m.month,
+      monthName: MONTH_NAMES[m.month - 1],
+      year,
+      expectedRent: m.inTenancy ? m.expectedRent : 0,
+      rentPaid: m.rentPaid,
+      balance: round2((m.inTenancy ? m.expectedRent : 0) - m.rentPaid),
+    }))
     .filter((m) => m.expectedRent > 0 && m.balance > 0);
 }
 
