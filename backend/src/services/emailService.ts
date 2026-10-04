@@ -15,12 +15,14 @@
 //
 // The email_notification record is a faithful copy of what was sent
 // (accountability principle) — see CONTEXT.md, "Outbound Email module" and
-// "Email notification record". SMS mirrors this lifecycle in smsService.ts.
+// "Email notification record". The post-commit dispatch seam and its
+// auto-send gate are shared with SMS in the Outbound Message module.
 import { pool, query, queryOne } from '../config/db';
 import { paginate } from './paginate';
 import type { Pagination } from '../types';
 import { getBusinessIdentity, type BusinessIdentity } from './brandingService';
-import { env, isTest } from '../config/env';
+import { env } from '../config/env';
+import { autoSendEnabled as channelAutoSendEnabled, dispatchAfterCommit } from './outboundMessage';
 import { getEmailConfig, isValidEmail, sendEmail, type EmailPayload } from './emailProvider';
 import { logAudit } from './auditService';
 import { monthlyReportPdf, tenantStatementPdf } from './financeService';
@@ -245,21 +247,23 @@ export async function sendEmailNotification(id: number): Promise<EmailRow> {
 }
 
 // Whether a freshly recorded payment will actually dispatch its receipt
-// email — mirrors autoSendEnabled() on the SMS side so the payment response
-// can tell the truth about what happens post-commit.
+// email — the payment response uses this to tell the truth about what happens
+// post-commit. The channel gate itself lives in the Outbound Message module,
+// shared with autoSendEnabled() on the SMS side.
 export function emailAutoSendEnabled(): boolean {
-  return env.emailAutoSend && !isTest;
+  return channelAutoSendEnabled('EMAIL');
 }
 
-// Queue and send a receipt email only after the payment transaction commits.
-// A missing tenant email or provider outage must never undo a recorded payment.
+// Queue and send a receipt email only after the payment transaction commits —
+// the email channel's entry point into the Outbound Message module's seam. A
+// missing tenant email or provider outage must never undo a recorded payment.
 export function dispatchAutoEmail(receiptId: number | null | undefined): void {
-  if (!receiptId || isTest || !env.emailAutoSend) return;
-  setTimeout(() => {
-    prepareForReceipt(receiptId)
-      .then((pending) => sendEmailNotification(pending.id))
-      .catch((err) => console.error(`[email] auto-send failed for receipt ${receiptId}: ${(err as Error).message}`));
-  }, 0);
+  if (!receiptId) return; // nothing to notify
+  dispatchAfterCommit({
+    channel: 'EMAIL',
+    what: `receipt ${receiptId}`,
+    run: () => prepareForReceipt(receiptId).then((pending) => sendEmailNotification(pending.id)),
+  });
 }
 
 // --- Kind adapters ---------------------------------------------------------------
@@ -707,10 +711,11 @@ export async function listEmails(filters: EmailFilters): Promise<{ rows: EmailRo
 
 
 
-// Narrow public bridge for cross-service queueing (the reminder flow in
-// smsService composes the formal statement and queues it here). Same
-// validation + persistence path as every kind adapter — just exported so a
-// sibling service can reach it without duplicating queue logic.
-export async function queueReminderEmail(input: QueueEmailInput): Promise<EmailRow> {
+// The queue primitive cross-module callers use (the Tenant reminder module
+// composes a statement and queues it here; the owner-remittance route queues
+// its report the same way). Same validation + persistence path as every kind
+// adapter — exported so a sibling module can reach the one persist point
+// without duplicating queue logic.
+export async function queuePreparedEmail(input: QueueEmailInput): Promise<EmailRow> {
   return queueEmail(input);
 }

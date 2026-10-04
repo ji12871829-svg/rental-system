@@ -33,16 +33,31 @@ a concept worth keeping.
 
 ## Messaging
 
+- **Outbound Message module** — `services/outboundMessage.ts`. The single home
+  for the channel-agnostic half of sending: the auto-send gate
+  (`autoSendEnabled`) and the post-commit dispatch seam
+  (`dispatchAfterCommit`) that email and SMS both enter through. A provider
+  outage or a disabled flag can never fail the request that queued a message.
 - **Outbound Email module** — `emailService.ts` plus the pure compositions in
   `utils/emailTemplates.ts`. Owns the email lifecycle exactly once; callers
-  compose content and delegate.
+  compose content and delegate. Cross-module callers queue through
+  `queuePreparedEmail`, the one persist point.
 - **Email notification record** — one row in `email_notifications`: a faithful
   copy (subject, html, text, attachments) of what was sent, kept for the
   accountability principle. History pages render these rows; they are records,
   not a queue API.
-- **Queue/send lifecycle** — `PENDING` (queued by `queueEmail`, the single
-  persist point) → provider → `SENT` (with message id) or `FAILED` (with the
-  provider's reason). SMS mirrors the same lifecycle in `smsService.ts`.
+- **Queue/send lifecycle** — `PENDING` (queued by the channel's single persist
+  point — `queueEmail` for email, `queueSms` for SMS) → provider → `SENT`
+  (with message id) or `FAILED` (with the provider's reason). Send transitions
+  stay per channel on purpose (email is PENDING-only and records a plain
+  failure; SMS counts attempts and schedules retries); the post-commit
+  dispatch seam is shared in the Outbound Message module.
+- **Tenant reminder module** — `services/reminderService.ts`. One home for
+  "tell this tenant what they owe": resolves the live ledger figures once,
+  then queues an SMS row, queues a statement email, or composes a WhatsApp
+  click-to-chat link the operator sends. Keeps smsService and emailService
+  channel-only — before it existed, smsService reached into emailService for
+  the reminder's email twin.
 - **Provider adapter** — the swappable sender behind the lifecycle
   (`emailProvider.ts`, `smsProvider.ts`): mock / SMTP / Brevo for email,
   mock / Africa's Talking / Twilio for SMS. Self-tests (`sendTestEmail`,

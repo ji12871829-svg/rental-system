@@ -8,7 +8,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { getSettings } from '../services/settingsService';
 import { getBusinessIdentity } from '../services/brandingService';
 import { composeOwnerRemittanceEmail, ownerRemittanceFigures, ownerRemittanceSms, ownerRemittanceWhatsapp } from '../services/ownerRemittanceService';
-import { queueReminderEmail } from '../services/emailService';
+import { queuePreparedEmail } from '../services/emailService';
 import { arrears, arrearsReportPdf, combinedMonthlySummary, dashboard, monthlyReportPdf, tenantLedger, tenantStatementPdf } from '../services/financeService';
 import { prepareForMonthlyReport, prepareForStatementEmail, sendEmailNotification } from '../services/emailService';
 import { monthlyRentSummary } from '../services/rentService';
@@ -222,7 +222,7 @@ router.post('/owner-remittance', managerOrAdmin, validateBody(ownerNotifySchema)
   const periodEnd = new Date(Date.UTC(settings.reporting_year, month, 0)).toISOString().slice(0, 10);
   const composed = composeOwnerRemittanceEmail(f, periodEnd);
   const { bytes } = await monthlyReportPdf(settings.reporting_year);
-  const pending = await queueReminderEmail({
+  const pending = await queuePreparedEmail({
     to: f.ownerEmail!,
     subject: composed.subject,
     html: composed.html,
