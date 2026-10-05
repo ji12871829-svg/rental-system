@@ -6,6 +6,7 @@ import { bootstrapIfEmpty } from './db/bootstrap';
 import { applyMigrations } from './db/migrations';
 import { getSmsConfig } from './services/smsProvider';
 import { startSmsRetryJob, stopSmsRetryJob } from './services/smsRetryJob';
+import { startEmailRetryJob, stopEmailRetryJob } from './services/emailRetryJob';
 import { startTenantRetentionJob, stopTenantRetentionJob } from './services/tenantRetentionJob';
 import { startStaleUnmatchedAlertJob, stopStaleUnmatchedAlertJob } from './services/staleUnmatchedAlertJob';
 
@@ -40,6 +41,7 @@ async function main() {
       // eslint-disable-next-line no-console
       console.log(`RPMS API listening on http://localhost:${env.port} (${env.nodeEnv})`);
       startSmsRetryJob();
+      startEmailRetryJob();
       startTenantRetentionJob();
       startStaleUnmatchedAlertJob();
       const sms = getSmsConfig();
@@ -70,6 +72,7 @@ async function main() {
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     stopSmsRetryJob();
+    stopEmailRetryJob();
     stopTenantRetentionJob();
     stopStaleUnmatchedAlertJob();
     process.exit(0);

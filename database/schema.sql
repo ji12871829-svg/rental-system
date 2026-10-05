@@ -388,10 +388,17 @@ CREATE TABLE IF NOT EXISTS email_notifications (
   body_html           TEXT NOT NULL,
   body_text           TEXT NOT NULL DEFAULT '',
   status              VARCHAR(20) NOT NULL DEFAULT 'PENDING'
-                        CHECK (status IN ('PENDING', 'SENT', 'FAILED')),
+                        CHECK (status IN ('PENDING', 'SENT', 'FAILED', 'ERRONEOUS')),
   provider_message_id VARCHAR(255),
   sent_at             TIMESTAMPTZ,
   failure_reason      TEXT,
+  -- Automatic retry bookkeeping (see emailRetryJob — the EMAIL twin of
+  -- smsRetryJob): every send attempt increments attempt_count. FAILED rows
+  -- with attempts left get a next_retry_at deadline for the sweep to honor;
+  -- ERRONEOUS (permanent rejection — bad address) rows get none, so
+  -- automation leaves them for the operator.
+  attempt_count       INTEGER NOT NULL DEFAULT 0,
+  next_retry_at       TIMESTAMPTZ,
   -- Faithful copy of any attachment sent with the email (the receipt PDF,
   -- or the JSON data file on a data-request response letter). NULL = none.
   attachment_name     VARCHAR(255),
@@ -409,6 +416,9 @@ CREATE TABLE IF NOT EXISTS email_notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_email_tenant ON email_notifications(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_email_status ON email_notifications(status);
+-- The retry sweep scans by deadline; only rows that carry one are candidates.
+CREATE INDEX IF NOT EXISTS idx_email_retry ON email_notifications(next_retry_at)
+  WHERE next_retry_at IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- settings — singleton row (id is always 1). Central source of truth for the
