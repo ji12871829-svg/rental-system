@@ -55,11 +55,13 @@ a concept worth keeping.
   copy (subject, html, text, attachments) of what was sent, kept for the
   accountability principle. History pages render these rows; they are records,
   not a queue API.
-- **Queue/send lifecycle** — `PENDING` (queued by the channel's single persist
-  point — `queueEmail` for email, `queueSms` for SMS) → provider → `SENT`
-  (with message id) or a failure carrying the retry decision. Both channels
-  count attempts and schedule exponential-backoff retries (`smsRetryJob` /
-  `emailRetryJob`): a transient `FAILED` row gets a `next_retry_at` deadline
+- **Retry sweep** — `services/retrySweep.ts`. The one parameterized sweep
+  behind both channels' automatic retries: it claims due rows (`FOR UPDATE
+  SKIP LOCKED`, batch 20), re-sends them through the channel's own send and
+  contains per-row errors by reverting to `FAILED` with the reason appended.
+  `smsRetryJob` binds it to `sms_notifications` claiming `FAILED`;
+  `emailRetryJob` binds it to `email_notifications` claiming `FAILED` +
+  `ERRONEOUS` — a transient `FAILED` row gets a `next_retry_at` deadline
   the sweep honors; a row that exhausts its budget keeps `FAILED` with no
   deadline — visibly "gave up", still sendable manually. Email adds the
   terminal `ERRONEOUS` outcome for a rejected ADDRESS (no mailbox, refused

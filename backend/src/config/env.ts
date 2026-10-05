@@ -48,8 +48,11 @@ export const env = {
   // Auto-send receipt SMS right after the payment commits (set false to keep
   // them PENDING for manual sending from the SMS history page).
   smsAutoSend: (process.env.SMS_AUTO_SEND || 'true').toLowerCase() !== 'false',
-  // Automatic retry of FAILED SMS (see smsRetryJob). Base delay is the first
-  // wait; each further attempt multiplies it (1m → 5m → 25m by default).
+  // Automatic retry of FAILED SMS and FAILED/ERRONEOUS email. One knob set
+  // drives BOTH channels' sweeps (shared history: it predates the email
+  // channel — see retrySweep.ts, consumed by smsRetryJob and emailRetryJob).
+  // Base delay is the first wait; each further attempt multiplies it
+  // (1m → 5m → 25m by default).
   smsRetryEnabled: (process.env.SMS_RETRY_ENABLED || 'true').toLowerCase() !== 'false',
   smsMaxSendAttempts: Number(process.env.SMS_MAX_SEND_ATTEMPTS) || 3,
   smsRetryBaseDelayMs: Number(process.env.SMS_RETRY_BASE_DELAY_MS) || 60_000,
