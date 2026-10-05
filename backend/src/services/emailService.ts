@@ -17,13 +17,13 @@
 // (accountability principle) — see CONTEXT.md, "Outbound Email module" and
 // "Email notification record". The post-commit dispatch seam and its
 // auto-send gate are shared with SMS in the Outbound Message module.
-import { pool, query, queryOne } from '../config/db';
+import { pool, query, queryOne, type SqlExec } from '../config/db';
 import { paginate } from './paginate';
 import type { Pagination } from '../types';
 import { getBusinessIdentity, type BusinessIdentity } from './brandingService';
 import { env } from '../config/env';
 import { autoSendEnabled as channelAutoSendEnabled, dispatchAfterCommit } from './outboundMessage';
-import { getEmailConfig, isValidEmail, sendEmail, type EmailPayload } from './emailProvider';
+import { getEmailConfig, isTerminalEmailFailure, isValidEmail, sendEmail, type EmailPayload } from './emailProvider';
 import { logAudit } from './auditService';
 import { monthlyReportPdf, tenantStatementPdf } from './financeService';
 import { badRequest, notFound } from '../utils/httpError';
@@ -56,13 +56,18 @@ export interface EmailRow {
   subject: string;
   body_html: string;
   body_text: string;
-  status: 'PENDING' | 'SENT' | 'FAILED';
+  status: 'PENDING' | 'SENT' | 'FAILED' | 'ERRONEOUS';
   provider_message_id: string | null;
   sent_at: string | null;
   failure_reason: string | null;
   attachment_name?: string | null;
   attachment_content?: string | null;
   attachment_content_type?: string | null;
+  attachment2_name?: string | null;
+  attachment2_content?: string | null;
+  attachment2_content_type?: string | null;
+  attempt_count?: number;
+  next_retry_at?: string | null;
   created_at: string;
 }
 
@@ -73,9 +78,10 @@ interface ReceiptWithEmail extends ReceiptDocument {
 }
 
 // Fetches the full receipt (with tenant contact + currency) needed to
-// compose the email.
-async function getReceiptForEmail(receiptId: number): Promise<ReceiptWithEmail> {
-  const row = await queryOne<ReceiptWithEmail>(
+// compose the email. `exec` matters when the receipt row is seconds old and
+// still uncommitted (post-payment dispatch) — a pool connection cannot see it.
+async function getReceiptForEmail(receiptId: number, exec: SqlExec = pool): Promise<ReceiptWithEmail> {
+  const res = await exec.query(
     `SELECT r.id, r.receipt_number, r.receipt_type, r.payment_date, r.billing_month, r.billing_year,
             r.rent_amount, r.water_amount, r.total_amount, r.balance, r.generated_at,
             t.id AS tenant_id, t.full_name AS tenant_name, t.email AS tenant_email,
@@ -89,6 +95,7 @@ async function getReceiptForEmail(receiptId: number): Promise<ReceiptWithEmail> 
      WHERE r.id = $1`,
     [receiptId]
   );
+  const row = res.rows[0] as ReceiptWithEmail | undefined;
   if (!row) throw notFound('Receipt not found.');
   return row;
 }
@@ -152,7 +159,11 @@ function attachmentsFromRow(row: {
 // Validates the recipient and creates the PENDING row. The single place where
 // an email enters the queue — kind adapters never write email_notifications
 // themselves.
-async function queueEmail(input: QueueEmailInput): Promise<EmailRow> {
+//
+// `exec` lets a caller inside an open transaction write the row on that same
+// connection (post-payment dispatch does, so the prepared row commits with
+// the payment); everyone else gets the pool.
+async function queueEmail(input: QueueEmailInput, exec: SqlExec = pool): Promise<EmailRow> {
   const to = input.to.trim();
   if (!to) {
     throw badRequest('This tenant has no email address on file. Provide one with the request.');
@@ -162,13 +173,19 @@ async function queueEmail(input: QueueEmailInput): Promise<EmailRow> {
   }
 
   const [a1, a2] = normalizeAttachments(input.attachments);
-  const { rows } = await pool.query<EmailRow>(
+  // Column list mirrors EmailRow: exec's row type is looser than the pool's,
+  // so `*` cannot be trusted to type the result on the transactional path.
+  const { rows } = await exec.query(
     `INSERT INTO email_notifications
        (receipt_id, tenant_id, email_address, subject, body_html, body_text, status,
         attachment_name, attachment_content, attachment_content_type,
         attachment2_name, attachment2_content, attachment2_content_type)
      VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', $7, $8, $9, $10, $11, $12)
-     RETURNING *`,
+     RETURNING id, receipt_id, tenant_id, email_address, subject, body_html, body_text,
+               status, provider_message_id, sent_at, failure_reason,
+               attachment_name, attachment_content, attachment_content_type,
+               attachment2_name, attachment2_content, attachment2_content_type,
+               attempt_count, next_retry_at, created_at`,
     [
       input.receiptId ?? null,
       input.tenantId ?? null,
@@ -184,16 +201,30 @@ async function queueEmail(input: QueueEmailInput): Promise<EmailRow> {
       a2?.contentType ?? null,
     ]
   );
-  return rows[0];
+  return rows[0] as EmailRow;
 }
 
 // --- Send transition ------------------------------------------------------------
 //
 // Sends a PENDING email via the configured provider (env EMAIL_PROVIDER —
 // mock by default, SMTP when configured) and records the outcome:
-// SENT + provider_message_id + sent_at, or FAILED + failure_reason.
-// Attachments decode from the row's stored slots; rows predating attachments
-// fall back to the .html copy.
+// SENT + provider_message_id + sent_at, or a failure carrying a retry
+// decision. Attachments decode from the row's stored slots; rows predating
+// attachments fall back to the .html copy.
+//
+// Failure classification (the EMAIL channel's version of the SMS DND
+// carve-out — see isTerminalEmailFailure):
+//
+//   FAILED     transient. attempt_count increments and next_retry_at gets an
+//              exponential-backoff deadline, so emailRetryJob replays the row
+//              until it succeeds or exhausts SMS_MAX_SEND_ATTEMPTS.
+//   ERRONEOUS  terminal — the address itself was rejected, so no number of
+//              retries can help. Recorded without a deadline so automation
+//              leaves it alone; still manually sendable once the address is
+//              corrected.
+//
+// Both statuses are replayable: the sweep claims rows in EITHER status that
+// carry a due deadline, and only a SENT row is genuinely final.
 export async function sendEmailNotification(id: number): Promise<EmailRow> {
   const row = await queryOne<EmailRow & {
     receipt_number: string | null;
@@ -211,8 +242,11 @@ export async function sendEmailNotification(id: number): Promise<EmailRow> {
     [id]
   );
   if (!row) throw notFound('Email notification not found.');
-  if (row.status !== 'PENDING') {
-    throw badRequest(`This email was already ${row.status.toLowerCase()} — only pending emails can be sent.`);
+  // A FAILED/ERRONEOUS row is re-sendable — that is the whole point of the
+  // retry sweep and of the manual "send again" action. Only a row that has
+  // already gone out is final, so only SENT is refused here.
+  if (row.status === 'SENT') {
+    throw badRequest('This email was already sent — only pending or failed emails can be sent.');
   }
 
   const attachments = attachmentsFromRow(row);
@@ -231,16 +265,37 @@ export async function sendEmailNotification(id: number): Promise<EmailRow> {
   if (result.ok) {
     await query(
       `UPDATE email_notifications
-       SET status = 'SENT', provider_message_id = $2, sent_at = NOW()
+       SET status = 'SENT', provider_message_id = $2, sent_at = NOW(), attempt_count = attempt_count + 1, next_retry_at = NULL
        WHERE id = $1`,
       [id, result.providerMessageId ?? null]
     );
   } else {
+    const reason = result.failureReason ?? 'Unknown provider error';
+    // A rejected address is never going to clear on its own; only a transient
+    // failure earns a retry deadline.
+    const terminal = isTerminalEmailFailure(reason);
+    const attempts = await queryOne<{ n: string }>(
+      'SELECT attempt_count::text AS n FROM email_notifications WHERE id = $1',
+      [id]
+    );
+    const attemptCount = Number(attempts?.n ?? 0) + 1;
+    // Reuse the SMS channel's retry budget so operators tune one set of knobs
+    // for both channels; the two sweeps share the same backoff curve.
+    const giveUp = attemptCount >= env.smsMaxSendAttempts;
+    const delayMs = env.smsRetryEnabled && !terminal && !giveUp
+      ? env.smsRetryBaseDelayMs * Math.pow(5, attemptCount - 1)
+      : null;
     await query(
       `UPDATE email_notifications
-       SET status = 'FAILED', failure_reason = $2
+       SET status = $2, failure_reason = $3, attempt_count = $4, next_retry_at = $5
        WHERE id = $1`,
-      [id, result.failureReason ?? 'Unknown provider error']
+      [
+        id,
+        terminal ? 'ERRONEOUS' : 'FAILED',
+        reason,
+        attemptCount,
+        delayMs === null ? null : new Date(Date.now() + delayMs),
+      ]
     );
   }
   return queryOne<EmailRow>('SELECT * FROM email_notifications WHERE id = $1', [id]) as Promise<EmailRow>;
@@ -277,9 +332,10 @@ export function dispatchAutoEmail(receiptId: number | null | undefined): void {
 // it must be a valid address — never guessed).
 export async function prepareForReceipt(
   receiptId: number,
-  opts: { toEmail?: string; userId?: number | null } = {}
+  opts: { toEmail?: string; userId?: number | null; exec?: SqlExec } = {}
 ): Promise<EmailRow> {
-  const receipt = await getReceiptForEmail(receiptId);
+  const exec = opts.exec ?? pool;
+  const receipt = await getReceiptForEmail(receiptId, exec);
   const identity = await getBusinessIdentity();
   const pdf = await receiptPdfBytes(receipt, identity);
 
@@ -293,7 +349,7 @@ export async function prepareForReceipt(
     attachments: [
       { filename: `${receipt.receipt_number}.pdf`, content: Buffer.from(pdf).toString('base64'), contentType: 'application/pdf' },
     ],
-  });
+  }, exec);
 }
 
 export interface PreparedPortalCredentialsEmail {
@@ -336,7 +392,7 @@ export interface PreparedDataLetterEmail {
   id: number;
   email_address: string;
   subject: string;
-  status: 'PENDING' | 'SENT' | 'FAILED';
+  status: EmailRow['status'];
 }
 
 // Creates a PENDING email carrying the formal data-request response letter
@@ -379,7 +435,7 @@ export interface PreparedReportEmail {
   id: number;
   email_address: string;
   subject: string;
-  status: 'PENDING' | 'SENT' | 'FAILED';
+  status: EmailRow['status'];
 }
 
 // Creates a PENDING email carrying the one-page monthly financial report PDF
@@ -420,7 +476,7 @@ export interface PreparedStaffRequestEmail {
   id: number;
   email_address: string;
   subject: string;
-  status: 'PENDING' | 'SENT' | 'FAILED';
+  status: EmailRow['status'];
 }
 
 // The operator-mail pattern shared by prepareForUnmatchedPayment,

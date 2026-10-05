@@ -8,8 +8,9 @@ import { toNumber, round2 } from '../utils/money';
 import { csvCell } from '../utils/csv';
 import { logAudit } from './auditService';
 import { createReceipt } from './receiptService';
-import { autoSendEnabled, dispatchAutoSend, prepareForReceipt } from './smsService';
+import { autoSendEnabled } from './smsService';
 import { getSettings } from './settingsService';
+import { notifyPaymentRecorded, type PreparedNotifications } from './postPaymentDispatch';
 
 // ---------------------------------------------------------------------------
 // Meter readings
@@ -342,10 +343,10 @@ export async function createWaterPayment(input: WaterPaymentInput, userId: numbe
 
   const settings = await getSettings();
 
-  // The prepared notification's id escapes the transaction closure so the
-  // dispatch can happen strictly after commit.
+  // The prepared SMS id escapes the transaction closure so the response can
+  // report delivery facts.
   let preparedSmsId: number | null = null;
-  const result = await withTransaction(async (client) => {
+  const { result, dispatch: dispatchNotifications } = await withTransaction(async (client) => {
     const inserted = await client.query(
       `INSERT INTO water_payments
          (tenant_id, unit_id, payment_date, billing_month, billing_year, amount, payment_method, notes)
@@ -387,7 +388,11 @@ export async function createWaterPayment(input: WaterPaymentInput, userId: numbe
       client
     );
     await client.query('UPDATE water_payments SET receipt_number = $1 WHERE id = $2', [receipt.receipt_number, payment.id]);
-    preparedSmsId = await prepareForReceipt(receipt, client);
+    // Both notification rows are prepared ON this transaction (a pool
+    // connection cannot see the receipt yet); the returned closure fires the
+    // actual send only after the commit below.
+    const prepared: PreparedNotifications = await notifyPaymentRecorded(receipt, client);
+    preparedSmsId = prepared.smsId;
 
     await logAudit({
       userId,
@@ -398,21 +403,28 @@ export async function createWaterPayment(input: WaterPaymentInput, userId: numbe
     });
 
     return {
-      payment,
-      receipt: receipt.receipt_number,
-      waterBill: bill,
-      totalWaterPaid: round2(paid),
-      waterBalance: balance,
-      status: paymentStatus(bill, paid),
-      tenant: { id: tenant.id, fullName: tenant.full_name },
-      currency: settings.currency,
-      monthName: MONTH_NAMES[input.billingMonth - 1],
+      result: {
+        payment,
+        receipt: receipt.receipt_number,
+        waterBill: bill,
+        totalWaterPaid: round2(paid),
+        waterBalance: balance,
+        status: paymentStatus(bill, paid),
+        tenant: { id: tenant.id, fullName: tenant.full_name },
+        currency: settings.currency,
+        monthName: MONTH_NAMES[input.billingMonth - 1],
+      },
+      // The dispatch closure rides out of the transaction with the result,
+      // so the post-commit send cannot be forgotten.
+      dispatch: prepared.dispatch,
     };
   });
 
-  // Auto-send the receipt SMS now that the payment transaction has committed
-  // (fire-and-forget — see dispatchAutoSend).
-  dispatchAutoSend(preparedSmsId);
+  // Auto-send the receipt SMS (and, when water+rent combine into a COMBINED
+  // receipt, the email) now that the payment transaction has committed —
+  // fire-and-forget: the response never waits on a provider, and a provider
+  // outage can never fail a recorded payment.
+  dispatchNotifications();
   return { ...result, sms: { queued: preparedSmsId != null, autoSend: autoSendEnabled() } };
 }
 

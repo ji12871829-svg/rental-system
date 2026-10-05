@@ -4,22 +4,25 @@ import { createApp } from '../../src/app';
 import { pool } from '../../src/config/db';
 import { runRetentionSweep } from '../../src/services/tenantRetentionJob';
 import * as smsServiceModule from '../../src/services/smsService';
-import * as emailServiceModule from '../../src/services/emailService';
+import * as outboundMessageModule from '../../src/services/outboundMessage';
 
 // ---------------------------------------------------------------------------
 // Receipt auto-dispatch wiring (the production auto-send contract)
 //
-// The test environment disables the REAL auto-send (isTest opts out of
-// dispatchAutoSend / dispatchAutoEmail) so integration tests can drive the
-// manual-send flow deterministically. These tests therefore SPY on the two
-// dispatch hooks (transparent — the real functions still run and early-return
-// in the test env) and pin the contract: recording a rent or water payment
-// manually must hand the freshly prepared notification/receipt ids to the
-// auto-dispatch hooks the moment the payment transaction commits.
+// The test environment disables the REAL auto-send (isTest opts out of the
+// post-commit dispatch seam) so integration tests can drive the manual-send
+// flow deterministically. These tests therefore SPY on the seam (transparent
+// — the real functions still run and early-return in the test env) and pin
+// the contract: recording a rent or water payment manually must, the moment
+// the payment transaction commits, dispatch the freshly prepared SMS through
+// dispatchAutoSend and route the email through the shared post-commit seam
+// (run: sendEmailNotification — the Post-payment dispatch module owns this
+// orchestration; see services/postPaymentDispatch.ts).
 // Combined with tests/unit/dispatchAutoSend.test.ts (hook → provider when
-// enabled) and the PENDING-row assertions below (manual path), the full
-// chain "staff enters payment → it is processed → messages go out
-// automatically" is proven end to end.
+// enabled), tests/unit/postPaymentDispatch.test.ts (the prepare-inside /
+// dispatch-after-commit split), and the PENDING-row assertions below (manual
+// path), the full chain "staff enters payment → it is processed → messages
+// go out automatically" is proven end to end.
 // (Plain jest.spyOn on the module namespace, NOT jest.mock factories:
 // requireActual-based factories can mint a second module record here, and
 // the spy ends up watching an instance the service never calls.)
@@ -28,9 +31,9 @@ const dispatchAutoSendSpy = jest.spyOn(
   smsServiceModule as unknown as { dispatchAutoSend: (...args: unknown[]) => unknown },
   'dispatchAutoSend',
 );
-const dispatchAutoEmailSpy = jest.spyOn(
-  emailServiceModule as unknown as { dispatchAutoEmail: (...args: unknown[]) => unknown },
-  'dispatchAutoEmail',
+const dispatchAfterCommitSpy = jest.spyOn(
+  outboundMessageModule as unknown as { dispatchAfterCommit: (...args: unknown[]) => unknown },
+  'dispatchAfterCommit',
 );
 
 const WATER_AUTODISPATCH_MARKER = 'autodispatch-wiring-test';
@@ -262,7 +265,7 @@ describe('Rent collection', () => {
       // the hooks) — clear the counters so the assertions below count ONLY
       // this payment's dispatches.
       dispatchAutoSendSpy.mockClear();
-      dispatchAutoEmailSpy.mockClear();
+      dispatchAfterCommitSpy.mockClear();
       const res = await request(app)
         .post('/api/rent/payments')
         .set(auth(staffToken))
@@ -300,15 +303,22 @@ describe('Rent collection', () => {
       // prepare-with-PDF behavior it performs in production).
       expect((await pool.query('SELECT id FROM email_notifications WHERE receipt_id = $1', [rentReceiptId])).rows).toHaveLength(0);
 
-      // THE CONTRACT: post-commit, the service handed BOTH fresh ids to the
-      // auto-dispatch hooks (spied here; the hooks' send behavior when
-      // enabled is proven by tests/unit/dispatchAutoSend.test.ts). In
-      // production the email hook prepares the PENDING email with the PDF
-      // attachment and sends it — no user action involved.
+      // THE CONTRACT: post-commit, the payment dispatched its prepared SMS
+      // row through dispatchAutoSend, which rides the SAME shared post-commit
+      // seam the email channel uses. The email side differs in one respect:
+      // its auto-send gate is consulted at PREPARE time (postPaymentDispatch),
+      // so with the test env's gate off no email row is prepared and no EMAIL
+      // dispatch is routed at all — production (gate on) prepares the row
+      // in-transaction and dispatches run: sendEmailNotification, the split
+      // pinned by tests/unit/postPaymentDispatch.test.ts.
       expect(dispatchAutoSendSpy).toHaveBeenCalledTimes(1);
       expect(dispatchAutoSendSpy).toHaveBeenCalledWith(smsRows[0].id);
-      expect(dispatchAutoEmailSpy).toHaveBeenCalledTimes(1);
-      expect(dispatchAutoEmailSpy).toHaveBeenCalledWith(rentReceiptId);
+      expect(dispatchAfterCommitSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ channel: 'SMS', what: `notification ${smsRows[0].id}` }),
+      );
+      expect(dispatchAfterCommitSpy).not.toHaveBeenCalledWith(
+        expect.objectContaining({ channel: 'EMAIL' }),
+      );
 
       // The audit trail agrees with the response about delivery.
       const audit = await request(app)
@@ -323,7 +333,7 @@ describe('Rent collection', () => {
     } finally {
       await cleanupAutoDispatchFixtures([reference]);
       dispatchAutoSendSpy.mockClear();
-      dispatchAutoEmailSpy.mockClear();
+      dispatchAfterCommitSpy.mockClear();
     }
   });
 
@@ -697,7 +707,7 @@ describe('Receipt auto-dispatch wiring (manual entry)', () => {
   it('auto-dispatches the receipt SMS (SMS-only) the moment a manual water entry commits', async () => {
     try {
       dispatchAutoSendSpy.mockClear();
-      dispatchAutoEmailSpy.mockClear();
+      dispatchAfterCommitSpy.mockClear();
       const res = await request(app)
         .post('/api/water/payments')
         .set(auth(staffToken))
@@ -720,15 +730,18 @@ describe('Receipt auto-dispatch wiring (manual entry)', () => {
       expect(smsRows[0].status).toBe('PENDING');
       expect(smsRows[0].message).toContain(receiptNumber);
 
-      // SMS-only pipeline: the SMS hook fired, the email hook did not.
+      // SMS-only pipeline: the SMS hook fired; no EMAIL dispatch was routed
+      // (a WATER receipt never prepares one — see postPaymentDispatch).
       expect(dispatchAutoSendSpy).toHaveBeenCalledTimes(1);
       expect(dispatchAutoSendSpy).toHaveBeenCalledWith(smsRows[0].id);
-      expect(dispatchAutoEmailSpy).not.toHaveBeenCalled();
+      expect(dispatchAfterCommitSpy).not.toHaveBeenCalledWith(
+        expect.objectContaining({ channel: 'EMAIL' }),
+      );
       expect((await pool.query('SELECT id FROM email_notifications WHERE receipt_id = $1', [receiptId])).rows).toHaveLength(0);
     } finally {
       await cleanupAutoDispatchFixtures([]);
       dispatchAutoSendSpy.mockClear();
-      dispatchAutoEmailSpy.mockClear();
+      dispatchAfterCommitSpy.mockClear();
     }
   });
 });
