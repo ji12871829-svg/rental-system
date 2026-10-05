@@ -257,7 +257,10 @@ export default function Settings() {
 
   // --- Logo upload -----------------------------------------------------------
   const LOGO_MAX_BYTES = 512 * 1024;
-  const LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']);
+  // Raster only — the server rejects anything else. SVG is not offered because
+  // it is served back from this origin and can carry <script>; a transparent
+  // PNG achieves the same result safely. See brandingService.parseLogoPayload.
+  const LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
   function toDataUrl(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -271,7 +274,7 @@ export default function Settings() {
   async function handleLogoFile(file: File) {
     setLogoError(null);
     if (!LOGO_TYPES.has(file.type)) {
-      setLogoError('Please choose a PNG, JPEG, GIF, WebP or SVG image.');
+      setLogoError('Please choose a PNG, JPEG, GIF or WebP image.');
       return;
     }
     if (file.size > LOGO_MAX_BYTES) {
@@ -435,7 +438,9 @@ export default function Settings() {
           <h2 className="text-base font-semibold text-gray-900">Business logo</h2>
           <p className="mt-1 mb-4 text-sm text-gray-500">
             Shown in the app header, the tenant portal and on every printed or emailed receipt and report.
-            PNG, JPEG, GIF, WebP or SVG — up to 512 KB. A transparent PNG or SVG looks best on receipts.
+            PNG, JPEG, GIF or WebP — up to 512 KB. A transparent PNG looks best on receipts.
+            SVG is not accepted: it is served from this origin and can carry
+            scripts, so only raster images are allowed.
           </p>
           <div className="flex flex-wrap items-center gap-4">
             <BrandLogo
@@ -446,7 +451,7 @@ export default function Settings() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                accept="image/png,image/jpeg,image/gif,image/webp"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
