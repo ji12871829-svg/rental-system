@@ -220,7 +220,7 @@ the first real tenant.
 
 | Task | How |
 |---|---|
-| Deploy an update | push to the default branch — Render auto-deploys (`autoDeploy: true`) |
+| Deploy an update | push to `main` — Render auto-deploys (`autoDeploy: true`). Status checks are enforced: every push/PR runs the 8 required checks (`backend`, `frontend`, `lint`, `knip`, `secrets-scan`, `dependency-audit`, `render-build`, `verify-live`) under branch protection (`strict: true`, required PR, `enforce_admins`), so Render's GitHub App will only build commits whose checks pass. Use the dashboard **Redeploy this commit** button to re-promote a commit whose checks were manually approved or to roll back a broken release. |
 | Watch a deploy | `RENDER_API_KEY=rnd_… node scripts/render-deploy.mjs wait <sha>` — real status from Render's API (also `list`, `status`, `deploys`). Keyless alternative: `node scripts/render-deploy.mjs gh <services \| status \| deploys \| wait <sha>>` reads GitHub's deployments feed — no API key needed (60 req/h per IP; `GITHUB_TOKEN` raises it to 5,000/h). Exit codes: 0 live/success, 1 failed, 3 pending, 2 timeout. GitHub environments are named like `main - rpms` — quote them. |
 | Roll back | Render dashboard → the bad deploy → **Roll back** |
 | See API logs | Render dashboard → Logs tab (stdout/stderr) |

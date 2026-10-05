@@ -25,13 +25,15 @@ services:
     buildCommand: npm run build --prefix shared && cd frontend && npm ci --include=dev && npm run build && cd ../backend && npm ci --include=dev && npm run build
     startCommand: npm run start --prefix backend
     healthCheckPath: /api/health
-    # Auto-deploy is disabled: the repo bypasses the 6 required status
-    # checks on push, and Render's GitHub App will not build a commit that
-    # has no passing checks (the deploy aborts and the service never takes
-    # over the new code). Use the Render dashboard 'Redeploy this commit'
-    # button to promote the latest commit. Re-enable (autoDeploy: true) once
-    # the status gate is no longer bypassed.
-    autoDeploy: false
+    # Auto-deploy is enabled: every push to main and every pull request
+    # runs the 8 required status checks (backend, frontend, lint, knip,
+    # secrets-scan, dependency-audit, render-build, verify-live), and Render's
+    # GitHub App will not build a commit while any of them is red. The CI
+    # workflow already bails on failure — status checks are enforced and
+    # unskipped, so autoDeploy: true is safe to rely on. Use the Render
+    # dashboard 'Redeploy this commit' button only to re-promote a commit
+    # whose checks were manually approved or to roll back a broken release.
+    autoDeploy: true
     envVars:
       # Pin Node to the version used in local development (v26.3.0). Render
       # otherwise defaults to 24.14.1 for services created 2026-04-21+.
@@ -57,4 +59,4 @@ services:
       - key: MPESA_CALLBACK_TOKEN
         sync: false # paste a 64-hex token; then append ?token=<same> to the Daraja callback URLs
       # Same-origin deploy: Express serves frontend/dist, CORS never fires.
-      # Add CORS_ORIGIN only if you later split the frontend to its own host.
+    # Add CORS_ORIGIN only if you later split the frontend to its own host.

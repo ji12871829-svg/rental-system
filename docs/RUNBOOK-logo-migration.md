@@ -30,8 +30,20 @@ ALTER TABLE business_branding
 Column definitions match `database/schema.sql` exactly (logo block, ~line
 457). `logo_data` holds the image as base64 text (≤ 512 KB per the app's
 upload guard, ≈ 683 KB as base64); `logo_mime_type` is `image/png`, `image/jpeg`,
-`image/gif`, `image/webp` or `image/svg+xml`; `logo_updated_at` stamps uploads
+`image/gif` or `image/webp`; `logo_updated_at` stamps uploads
 and doubles as the cache-buster version for `/api/branding/logo`.
+
+**`image/svg+xml` is not a valid `logo_mime_type`.** SVG is deliberately
+rejected on upload (`parseLogoPayload` in `backend/src/services/brandingService.ts`,
+covered by `backend/tests/unit/brandingLogoPayload.test.ts`) because the logo
+is served back from the app origin with its own `Content-Type`, and SVG can
+carry `<script>` — a stored XSS vector. Raster formats cannot execute script.
+If a row predates that fix, clear it and re-upload as a raster image:
+
+```sql
+UPDATE business_branding SET logo_data = NULL, logo_mime_type = NULL
+WHERE logo_mime_type = 'image/svg+xml';
+```
 
 ## Applying it from the Render dashboard
 
