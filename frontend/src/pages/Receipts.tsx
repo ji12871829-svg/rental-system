@@ -41,7 +41,7 @@ interface EmailNotification {
   receipt_id: number | null;
   email_address: string;
   subject: string;
-  status: 'PENDING' | 'SENT' | 'FAILED';
+  status: 'PENDING' | 'SENT' | 'FAILED' | 'ERRONEOUS';
   failure_reason: string | null;
   created_at: string;
   tenant_name: string;

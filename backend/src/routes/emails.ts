@@ -10,7 +10,10 @@ const router = Router();
 router.use(requireAuth);
 
 const listQuerySchema = baseListQuerySchema.extend({
-  status: z.enum(['PENDING', 'SENT', 'FAILED']).optional(),
+  // ERRONEOUS = permanent rejection (undeliverable address) — the email
+  // channel's terminal outcome alongside the transient FAILED; see
+  // sendEmailNotification and the emailRetryJob sweep.
+  status: z.enum(['PENDING', 'SENT', 'FAILED', 'ERRONEOUS']).optional(),
   tenantId: z.coerce.number().int().positive().optional(),
   q: z.string().optional(),
 });

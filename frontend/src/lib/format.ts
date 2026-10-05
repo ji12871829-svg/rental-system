@@ -65,6 +65,10 @@ const statusClasses: Record<string, string> = {
   PENDING: 'bg-amber-100 text-amber-800',
   SENT: 'bg-emerald-100 text-emerald-800',
   FAILED: 'bg-red-100 text-red-800',
+  // Email channel's terminal outcome — a permanent rejection (undeliverable
+  // address) that automation will never retry. Gray keeps it visibly distinct
+  // from a red transient FAILED, which still carries a retry deadline.
+  ERRONEOUS: 'bg-gray-200 text-gray-700',
   // SMS delivery-report outcomes (beyond the send lifecycle).
   DELIVERED: 'bg-emerald-600 text-white',
   FAILED_ON_NETWORK: 'bg-red-600 text-white',
