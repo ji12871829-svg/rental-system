@@ -1,7 +1,10 @@
 // The post-payment dispatch seam: both notification rows are prepared ON the
 // caller's transaction (a pool connection cannot see the seconds-old receipt),
 // and dispatch happens strictly after commit via the returned closure. These
-// tests pin that split — the exact bug class this seam exists to prevent.
+// tests pin that split — the exact bug class this seam exists to prevent —
+// plus the delivery facts it returns: the audit trail and the API response
+// report these objects verbatim, so they can never drift from what was
+// actually prepared.
 jest.mock('../../src/config/db', () => ({
   pool: { query: jest.fn() },
   query: jest.fn(),
@@ -22,15 +25,15 @@ jest.mock('../../src/config/env', () => {
   return { ...actual, isTest: false };
 });
 
-import { autoSendEnabled as smsAutoSendEnabled, dispatchAutoSend, prepareForReceipt as prepareSms } from '../../src/services/smsService';
+import { dispatchAutoSend, prepareForReceipt as prepareSms } from '../../src/services/smsService';
 import { prepareForReceipt as prepareEmail } from '../../src/services/emailService';
-import { dispatchAfterCommit } from '../../src/services/outboundMessage';
+import { autoSendEnabled as channelGate, dispatchAfterCommit } from '../../src/services/outboundMessage';
 import { notifyPaymentRecorded } from '../../src/services/postPaymentDispatch';
 import { HttpError } from '../../src/utils/httpError';
 import type { ReceiptLike } from '../../src/services/smsService';
 
 jest.mock('../../src/services/outboundMessage', () => ({
-  autoSendEnabled: jest.fn((channel: string) => (channel === 'SMS' ? true : true)),
+  autoSendEnabled: jest.fn(() => true),
   dispatchAfterCommit: jest.fn(),
 }));
 
@@ -38,6 +41,7 @@ const prepareSmsMock = prepareSms as jest.Mock;
 const prepareEmailMock = prepareEmail as jest.Mock;
 const dispatchAutoSendMock = dispatchAutoSend as jest.Mock;
 const dispatchAfterCommitMock = dispatchAfterCommit as jest.Mock;
+const channelGateMock = channelGate as jest.Mock;
 
 const receipt = (): ReceiptLike => ({
   id: 7,
@@ -56,42 +60,67 @@ const client = { query: jest.fn() };
 
 beforeEach(() => {
   jest.clearAllMocks();
-  (smsAutoSendEnabled as jest.Mock).mockReturnValue(true);
+  channelGateMock.mockImplementation(() => true);
   prepareSmsMock.mockResolvedValue(11);
+  // The seam reads the email recipient-availability fact on the caller's
+  // transaction; by default this tenant has an address on file.
+  client.query.mockResolvedValue({ rows: [{ email: 'grace@example.com' }] });
 });
 
 describe('notifyPaymentRecorded — inside the transaction', () => {
   it('prepares the SMS row on the caller’s transaction executor, not the pool', async () => {
-    prepareEmailMock.mockRejectedValue(new HttpError(400, 'BAD_REQUEST', 'no email'));
-    const { smsId, dispatch } = await notifyPaymentRecorded(receipt(), client as never);
-    expect(smsId).toBe(11);
+    prepareEmailMock.mockRejectedValue(new HttpError(400, 'BAD_REQUEST', '"grace@example.com" is not a valid email address.'));
+    const prepared = await notifyPaymentRecorded(receipt(), client as never);
+    expect(prepared.sms).toEqual({ queued: true, autoSend: true });
     expect(prepareSmsMock).toHaveBeenCalledWith(receipt(), client);
     // The closure exists even when only SMS was prepared — dispatch is the
     // caller's responsibility, after commit.
-    expect(() => dispatch()).not.toThrow();
+    expect(() => prepared.dispatch()).not.toThrow();
   });
 
   it('prepares the email row on the same transaction for RENT receipts', async () => {
     prepareEmailMock.mockResolvedValue({ id: 22 });
     const prepared = await notifyPaymentRecorded(receipt(), client as never);
-    expect(prepared.emailId).toBe(22);
+    expect(prepared.email).toEqual({ queued: true, autoSend: true, reason: null });
     expect(prepareEmailMock).toHaveBeenCalledWith(7, { exec: client });
+    // The availability fact comes from the same transaction, so it is
+    // exactly what queueEmail would see.
+    expect(client.query).toHaveBeenCalledWith('SELECT email FROM tenants WHERE id = $1', [3]);
   });
 
   it('skips email preparation for WATER receipts', async () => {
     prepareEmailMock.mockResolvedValue({ id: 22 });
     const prepared = await notifyPaymentRecorded({ ...receipt(), receipt_type: 'WATER' }, client as never);
-    expect(prepared.emailId).toBeNull();
+    // Nothing was skipped, so there is no reason to report.
+    expect(prepared.email).toEqual({ queued: false, autoSend: true, reason: null });
+    expect(prepareEmailMock).not.toHaveBeenCalled();
+    expect(client.query).not.toHaveBeenCalled();
+    expect(dispatchAfterCommitMock).not.toHaveBeenCalled();
+  });
+
+  it('reports "no email on file" without attempting preparation', async () => {
+    // A blank recipient is a fact about the tenant, known before composing —
+    // no template or PDF is rendered just to be refused by queueEmail.
+    client.query.mockResolvedValue({ rows: [{ email: null }] });
+    const prepared = await notifyPaymentRecorded(receipt(), client as never);
+    expect(prepared.email).toEqual({ queued: false, autoSend: true, reason: 'no email on file' });
     expect(prepareEmailMock).not.toHaveBeenCalled();
     expect(dispatchAfterCommitMock).not.toHaveBeenCalled();
   });
 
-  it('degrades a missing/invalid email address to "nothing queued" without failing the payment', async () => {
-    // queueEmail rejects a blank recipient with a 400 — inside the payment
-    // transaction that MUST NOT roll the payment back.
-    prepareEmailMock.mockRejectedValue(new HttpError(400, 'BAD_REQUEST', 'no email on file'));
+  it('treats auto-send off with an address on file as a config choice, not a gap', async () => {
+    channelGateMock.mockImplementation((channel: string) => (channel === 'EMAIL' ? false : true));
     const prepared = await notifyPaymentRecorded(receipt(), client as never);
-    expect(prepared.emailId).toBeNull();
+    expect(prepared.email).toEqual({ queued: false, autoSend: false, reason: null });
+    expect(prepareEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('surfaces queueEmail’s refusal verbatim as the fact’s reason', async () => {
+    // The 400 is an unusable recipient — a fact about the address, never a
+    // payment failure. The audit trail records the real rejection.
+    prepareEmailMock.mockRejectedValue(new HttpError(400, 'BAD_REQUEST', '"nope" is not a valid email address.'));
+    const prepared = await notifyPaymentRecorded(receipt(), client as never);
+    expect(prepared.email).toEqual({ queued: false, autoSend: true, reason: '"nope" is not a valid email address.' });
     expect(prepared.dispatch()).toBeUndefined();
     expect(dispatchAfterCommitMock).not.toHaveBeenCalled();
   });
@@ -119,17 +148,18 @@ describe('notifyPaymentRecorded — after the commit', () => {
   });
 
   it('dispatches only the channels that were prepared', async () => {
-    prepareEmailMock.mockRejectedValue(new HttpError(400, 'BAD_REQUEST', 'no email'));
+    prepareEmailMock.mockRejectedValue(new HttpError(400, 'BAD_REQUEST', '"nope" is not a valid email address.'));
     const prepared = await notifyPaymentRecorded(receipt(), client as never);
     prepared.dispatch();
     expect(dispatchAutoSendMock).toHaveBeenCalledTimes(1);
     expect(dispatchAfterCommitMock).not.toHaveBeenCalled();
   });
 
-  it('honors the SMS auto-send gate inside the closure', async () => {
-    (smsAutoSendEnabled as jest.Mock).mockReturnValue(false);
+  it('reports the SMS auto-send gate in the fact without bypassing it in the closure', async () => {
+    channelGateMock.mockImplementation((channel: string) => (channel === 'SMS' ? false : true));
     prepareEmailMock.mockResolvedValue({ id: 22 });
     const prepared = await notifyPaymentRecorded(receipt(), client as never);
+    expect(prepared.sms).toEqual({ queued: true, autoSend: false });
     prepared.dispatch();
     // dispatchAutoSend consults the gate itself; the seam does not bypass it.
     expect(dispatchAutoSendMock).toHaveBeenCalledTimes(1);

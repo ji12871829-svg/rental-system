@@ -8,7 +8,6 @@ import { toNumber, round2 } from '../utils/money';
 import { csvCell } from '../utils/csv';
 import { logAudit } from './auditService';
 import { createReceipt } from './receiptService';
-import { autoSendEnabled } from './smsService';
 import { getSettings } from './settingsService';
 import { notifyPaymentRecorded, type PreparedNotifications } from './postPaymentDispatch';
 
@@ -343,10 +342,10 @@ export async function createWaterPayment(input: WaterPaymentInput, userId: numbe
 
   const settings = await getSettings();
 
-  // The prepared SMS id escapes the transaction closure so the response can
-  // report delivery facts.
-  let preparedSmsId: number | null = null;
-  const { result, dispatch: dispatchNotifications } = await withTransaction(async (client) => {
+  // The delivery fact and dispatch closure escape the transaction together:
+  // the response and the audit entry report the seam's fact verbatim, so
+  // neither can drift from what was really prepared.
+  const { result, dispatch: dispatchNotifications, sms } = await withTransaction(async (client) => {
     const inserted = await client.query(
       `INSERT INTO water_payments
          (tenant_id, unit_id, payment_date, billing_month, billing_year, amount, payment_method, notes)
@@ -392,14 +391,21 @@ export async function createWaterPayment(input: WaterPaymentInput, userId: numbe
     // connection cannot see the receipt yet); the returned closure fires the
     // actual send only after the commit below.
     const prepared: PreparedNotifications = await notifyPaymentRecorded(receipt, client);
-    preparedSmsId = prepared.smsId;
 
     await logAudit({
       userId,
       action: 'WATER_PAYMENT_CREATED',
       entity: 'water_payments',
       entityId: payment.id,
-      newValue: { tenantId: input.tenantId, month: input.billingMonth, year: input.billingYear, amount: input.amount },
+      // The seam's delivery fact, verbatim — same shape as the response's
+      // sms field, so the audit trail cannot disagree with the response.
+      newValue: {
+        tenantId: input.tenantId,
+        month: input.billingMonth,
+        year: input.billingYear,
+        amount: input.amount,
+        delivery: { sms: prepared.sms },
+      },
     });
 
     return {
@@ -415,8 +421,10 @@ export async function createWaterPayment(input: WaterPaymentInput, userId: numbe
         monthName: MONTH_NAMES[input.billingMonth - 1],
       },
       // The dispatch closure rides out of the transaction with the result,
-      // so the post-commit send cannot be forgotten.
+      // so the post-commit send cannot be forgotten; the delivery fact rides
+      // out with it for the response below.
       dispatch: prepared.dispatch,
+      sms: prepared.sms,
     };
   });
 
@@ -425,7 +433,7 @@ export async function createWaterPayment(input: WaterPaymentInput, userId: numbe
   // fire-and-forget: the response never waits on a provider, and a provider
   // outage can never fail a recorded payment.
   dispatchNotifications();
-  return { ...result, sms: { queued: preparedSmsId != null, autoSend: autoSendEnabled() } };
+  return { ...result, sms };
 }
 
 export async function deleteWaterPayment(id: number, userId: number): Promise<void> {

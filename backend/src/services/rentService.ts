@@ -7,8 +7,6 @@ import { csvCell } from '../utils/csv';
 import { toNumber, round2 } from '../utils/money';
 import { logAudit } from './auditService';
 import { createReceipt } from './receiptService';
-import { autoSendEnabled } from './smsService';
-import { emailAutoSendEnabled } from './emailService';
 import { getSettings } from './settingsService';
 import { occupancyRows } from './tenantLedger';
 import { notifyPaymentRecorded, type PreparedNotifications } from './postPaymentDispatch';
@@ -120,26 +118,10 @@ export async function createRentPayment(input: RentPaymentInput, userId: number 
   if (!unit) throw notFound('Unit not found.');
   const expectedRent = toNumber(unit.monthly_rent);
 
-  // The prepared notifications' ids escape the transaction closure so the
-  // response and audit entry can report delivery facts.
-  let preparedSmsId: number | null = null;
-  let preparedEmailId: number | null = null;
-  // Receipt-delivery facts, evaluated lazily and reported identically in BOTH
-  // the audit entry (inside the transaction) and the API response (after it)
-  // — the two records can never disagree about what was deliverable.
-  const emailOnFile = Boolean(tenant.email?.trim());
-  const deliveryFacts = () => ({
-    sms: { queued: preparedSmsId != null, autoSend: autoSendEnabled() },
-    email: {
-      // An email row exists only when postPaymentDispatch prepared one —
-      // auto-send on AND a recipient on file. `queued` must never imply a
-      // delivery that cannot happen.
-      queued: preparedEmailId != null,
-      autoSend: emailAutoSendEnabled(),
-      reason: (emailOnFile ? null : 'no email on file') as string | null,
-    },
-  });
-  const { result, dispatch: dispatchNotifications } = await withTransaction(async (client) => {
+  // The delivery facts and dispatch closure escape the transaction together:
+  // the response and the audit entry report the seam's facts verbatim, so
+  // neither can drift from what was really prepared.
+  const { result, dispatch: dispatchNotifications, sms, email } = await withTransaction(async (client) => {
     const inserted = await client.query(
       `INSERT INTO rent_payments
          (payment_reference, tenant_id, unit_id, payment_date, billing_month, billing_year,
@@ -181,8 +163,6 @@ export async function createRentPayment(input: RentPaymentInput, userId: number 
     // connection cannot see the receipt yet); the returned closure fires the
     // actual sends only after the commit below.
     const prepared: PreparedNotifications = await notifyPaymentRecorded(receipt, client);
-    preparedSmsId = prepared.smsId;
-    preparedEmailId = prepared.emailId;
 
     const settings = await getSettings();
     await logAudit({
@@ -198,11 +178,10 @@ export async function createRentPayment(input: RentPaymentInput, userId: number 
         method: input.paymentMethod,
         status: paymentStatus(expectedRent, paid),
         balance,
-        // Delivery facts at the moment of recording: makes "this receipt
-        // could not be delivered (and why)" traceable in the audit trail,
-        // not just in the ephemeral API response. Same shapes as the
-        // response's sms/email fields — see deliveryFacts above.
-        delivery: deliveryFacts(),
+        // The seam's delivery facts, verbatim: makes "this receipt could not
+        // be delivered (and why)" traceable in the audit trail, not just in
+        // the ephemeral API response — and the two records cannot disagree.
+        delivery: { sms: prepared.sms, email: prepared.email },
       },
     });
 
@@ -220,18 +199,20 @@ export async function createRentPayment(input: RentPaymentInput, userId: number 
         monthName: MONTH_NAMES[input.billingMonth - 1],
       },
       // The dispatch closure rides out of the transaction with the result,
-      // so the post-commit send cannot be forgotten.
+      // so the post-commit send cannot be forgotten; the delivery facts ride
+      // out with it for the response below.
       dispatch: prepared.dispatch,
+      sms: prepared.sms,
+      email: prepared.email,
     };
   });
 
   // Auto-send the receipt SMS/email now that the payment transaction has
   // committed (fire-and-forget — the response never waits on a provider).
-  // A receipt exists in the DB either way; null just means "no phone / no
-  // email on file" — the response reports that honestly so the UI can warn
-  // instead of implying a message went out.
+  // The delivery facts say honestly what was queued and what was not (and
+  // why), so the UI can warn instead of implying a message went out.
   dispatchNotifications();
-  return { ...result, ...deliveryFacts() };
+  return { ...result, sms, email };
 }
 
 export async function deleteRentPayment(id: number, userId: number): Promise<void> {

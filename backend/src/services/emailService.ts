@@ -22,7 +22,7 @@ import { paginate } from './paginate';
 import type { Pagination } from '../types';
 import { getBusinessIdentity, type BusinessIdentity } from './brandingService';
 import { env } from '../config/env';
-import { autoSendEnabled as channelAutoSendEnabled, dispatchAfterCommit } from './outboundMessage';
+import { dispatchAfterCommit } from './outboundMessage';
 import { getEmailConfig, isTerminalEmailFailure, isValidEmail, sendEmail, type EmailPayload } from './emailProvider';
 import { logAudit } from './auditService';
 import { monthlyReportPdf, tenantStatementPdf } from './financeService';
@@ -299,14 +299,6 @@ export async function sendEmailNotification(id: number): Promise<EmailRow> {
     );
   }
   return queryOne<EmailRow>('SELECT * FROM email_notifications WHERE id = $1', [id]) as Promise<EmailRow>;
-}
-
-// Whether a freshly recorded payment will actually dispatch its receipt
-// email — the payment response uses this to tell the truth about what happens
-// post-commit. The channel gate itself lives in the Outbound Message module,
-// shared with autoSendEnabled() on the SMS side.
-export function emailAutoSendEnabled(): boolean {
-  return channelAutoSendEnabled('EMAIL');
 }
 
 // Queue and send a receipt email only after the payment transaction commits —

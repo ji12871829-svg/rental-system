@@ -43,10 +43,14 @@ a concept worth keeping.
   that reuse them) uses to tell a tenant about a recorded payment:
   `notifyPaymentRecorded` prepares the SMS and email rows ON the payment's
   transaction (a pool connection cannot yet see the seconds-old receipt),
-  returns what was prepared for the audit trail, and hands back a `dispatch()`
-  closure the flow calls strictly after commit. A missing phone or email on
-  file degrades to "nothing queued", never an error; a provider failure
-  leaves a retryable row and never touches the payment.
+  returns the two channels' delivery facts — `{ queued, autoSend }` for SMS,
+  `{ queued, autoSend, reason }` for email — computed from what it actually
+  did, and hands back a `dispatch()` closure the flow calls strictly after
+  commit. The flows report those fact objects verbatim in both the audit
+  entry and the API response, so no record can drift from what was really
+  prepared. A missing phone or email on file degrades to "nothing queued"
+  (email carries the canonical `reason: 'no email on file'`), never an error;
+  a provider failure leaves a retryable row and never touches the payment.
 - **Outbound Email module** — `emailService.ts` plus the pure compositions in
   `utils/emailTemplates.ts`. Owns the email lifecycle exactly once; callers
   compose content and delegate. Cross-module callers queue through
