@@ -39,6 +39,7 @@ const PREFETCH_BY_PATH: Record<string, keyof typeof routeChunks> = {
   '/expenses': 'expenses',
   '/arrears': 'arrears',
   '/sms': 'sms',
+  '/emails': 'emailHistory',
   '/email-campaign': 'emailCampaign',
   '/message-templates': 'messageTemplates',
   '/mpesa-review': 'mpesaReview',
@@ -105,6 +106,7 @@ const NAV_SECTIONS: NavSection[] = [
     icon: Smartphone,
     items: [
       { to: '/sms', label: 'SMS Notifications', icon: Smartphone },
+      { to: '/emails', label: 'Email History', icon: Mail },
       { to: '/email-campaign', label: 'Tenant Email', icon: Mail, managerOnly: true },
       { to: '/message-templates', label: 'Message Templates', icon: MessageSquareText, managerOnly: true },
       { to: '/mpesa-review', label: 'M-Pesa Review', icon: ClipboardCheck, managerOnly: true },

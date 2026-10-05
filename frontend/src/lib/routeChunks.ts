@@ -28,6 +28,7 @@ export const routeChunks = {
   arrears: () => import('../pages/Arrears'),
   receipts: () => import('../pages/Receipts'),
   sms: () => import('../pages/SmsNotifications'),
+  emailHistory: () => import('../pages/EmailHistory'),
   emailCampaign: () => import('../pages/EmailCampaign'),
   messageTemplates: () => import('../pages/MessageTemplates'),
   users: () => import('../pages/Users'),
