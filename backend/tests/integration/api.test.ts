@@ -1874,9 +1874,7 @@ describe('Tenant statement PDF & email', () => {
     expect(stored.rows[0].tenant_id).toBe(3); // tenant mail — linked for history
     expect(stored.rows[0].attachment_name).toBe('tenant-statement-3-2026.pdf');
     expect(stored.rows[0].attachment_content_type).toBe('application/pdf');
-  });
-
-  it('guards the statement email (validation, roles, unknown tenant)', async () => {
+  });  it('guards the statement email (validation, roles, unknown tenant)', async () => {
     const noEmail = await request(app)
       .post('/api/reports/tenant/999999/statement/email?year=2026')
       .set(auth(adminToken))
@@ -1889,7 +1887,8 @@ describe('Tenant statement PDF & email', () => {
       .send({ toEmail: 't@e.com' });
     expect(staff.status).toBe(403);
 
-    const anon = await request(app).post('/api/reports/tenant/3/statement/email?year=2026').send({});
+    const anon = await request(app)
+      .post('/api/reports/tenant/3/statement/email?year=2026').send({});
     expect(anon.status).toBe(401);
 
     const badYear = await request(app)
@@ -1897,5 +1896,324 @@ describe('Tenant statement PDF & email', () => {
       .set(auth(adminToken))
       .send({ toEmail: 't@e.com' });
     expect(badYear.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Email delivery history: status filters, search, pagination, send-again lifecycle
+// ---------------------------------------------------------------------------
+describe('Email delivery history & send-again', () => {
+  // Owned fixture rows so the suite is independent of the seed and of other suites.
+  // Each seedStatusRows() call produces a fresh, unique receipt_number so parallel
+  // tests in this suite never collide on the unique receipts.receipt_number_key.
+  const STUCK_INTEGRATION_EMAIL_PREFIX = 'INTEG-EMAIl-';
+
+  /** Direct INSERTs that mirror what prepareForReceipt / queueEmail persist, so the
+   * history and send-again endpoints see normal rows (tenant context, valid address). */
+  async function seedStatusRows(): Promise<{
+    pendingId: number;
+    failedId: number;
+    erroneousId: number;
+    sentId: number;
+    receiptNumber: string;
+    pendingMarker: string;
+    failedMarker: string;
+    erroneousMarker: string;
+    searchToken: string;
+  }> {
+    const suffix = Math.random().toString(36).slice(2, 10);
+    const receiptNumber = `${STUCK_INTEGRATION_EMAIL_PREFIX}${suffix}`;
+
+    // A real receipt + tenant email address so tenant filtering and search by name work.
+    const receipt = await pool.query(
+      `INSERT INTO receipts (receipt_number, receipt_type, payment_date, billing_month, billing_year,
+                            rent_amount, water_amount, total_amount, balance, generated_at, tenant_id, unit_id)
+       SELECT $1, 'RENT', DATE '2026-09-01', 9, 2026, 4000, 0, 4000, 0, NOW(), t.id, t.unit_id
+       FROM tenants t WHERE t.full_name = 'Peter Otieno'
+       RETURNING id, receipt_number`,
+      [receiptNumber]
+    );
+    const receiptId = receipt.rows[0].id as number;
+
+    const pendingMarker = `INTEG-PENDING-${suffix}`;
+    const failedMarker = `INTEG-FAILED-${suffix}`;
+    const erroneousMarker = `INTEG-ERRONEOUS-${suffix}`;
+    const searchToken = pendingMarker;
+
+    // PENDING — the shape a queued email lands in before any send attempt.
+    const pending = await pool.query(
+      `INSERT INTO email_notifications
+         (receipt_id, tenant_id, email_address, subject, body_html, body_text, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'PENDING')
+       RETURNING id`,
+      [receiptId, 1, 'peter.otieno@example.com', `Pending ${pendingMarker}`, '<p>pending</p>', 'pending']
+    );
+    const pendingId = pending.rows[0].id as number;
+
+    // FAILED — transient; a retry deadline would normally be present but isn't required for the history contract.
+    const failed = await pool.query(
+      `INSERT INTO email_notifications
+         (receipt_id, tenant_id, email_address, subject, body_html, body_text, status, failure_reason, attempt_count, next_retry_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'FAILED', $7, 1, NOW() - INTERVAL '5 minutes')
+       RETURNING id`,
+      [receiptId, 1, 'peter.otieno@example.com', `Failed ${failedMarker}`, '<p>failed</p>', 'failed', 'simulated provider timeout']
+    );
+    const failedId = failed.rows[0].id as number;
+
+    // ERRONEOUS — terminal address rejection; no retry deadline (the sweep leaves it alone).
+    const erroneous = await pool.query(
+      `INSERT INTO email_notifications
+         (receipt_id, tenant_id, email_address, subject, body_html, body_text, status, failure_reason, attempt_count)
+       VALUES ($1, $2, $3, $4, $5, $6, 'ERRONEOUS', $7, 1)
+       RETURNING id`,
+      [receiptId, 1, 'peter.otieno@example.com', `Erroneous ${erroneousMarker}`, '<p>erroneous</p>', 'erroneous', '550 5.1.1 <peter.otieno@example.com>: Recipient address rejected: user unknown']
+    );
+    const erroneousId = erroneous.rows[0].id as number;
+
+    // SENT — the final state, so send-again must refuse it.
+    await pool.query(
+      `INSERT INTO email_notifications
+         (receipt_id, tenant_id, email_address, subject, body_html, body_text, status, provider_message_id, sent_at, attempt_count)
+       VALUES ($1, $2, $3, $4, $5, $6, 'SENT', 'MOCK-sent-ref', NOW(), 1)`,
+      [receiptId, 1, 'peter.otieno@example.com', `Sent ${receiptNumber}`, '<p>sent</p>', 'sent']
+    );
+    const sent = await pool.query(
+      `SELECT id FROM email_notifications WHERE receipt_id = $1 AND status = 'SENT' ORDER BY id DESC LIMIT 1`,
+      [receiptId]
+    );
+    const sentId = sent.rows[0].id as number;
+
+    return { pendingId, failedId, erroneousId, sentId, receiptNumber, pendingMarker, failedMarker, erroneousMarker, searchToken };
+  }
+
+  afterAll(async () => {
+    // Best-effort cleanup so later runs in the same worker start from a cleaner slate.
+    // (WorkerDbEnvironment.teardown drops the whole DB at the end of the worker anyway.)
+    try {
+      await pool.query(`DELETE FROM email_notifications WHERE receipt_id IN (SELECT id FROM receipts WHERE receipt_number LIKE $1)`, [`${STUCK_INTEGRATION_EMAIL_PREFIX}%`]);
+      await pool.query(`DELETE FROM receipts WHERE receipt_number LIKE $1`, [`${STUCK_INTEGRATION_EMAIL_PREFIX}%`]);
+    } catch { /* already dropped / worker teardown */ }
+  });
+
+  it('filters history by each status independently', async () => {
+    const { pendingId, failedId, erroneousId, sentId } = await seedStatusRows();
+
+    const all = await request(app).get('/api/emails/history?limit=100').set(auth(adminToken));
+    expect(all.status).toBe(200);
+    // The four owned rows plus anything the seed produced.
+    const owned = all.body.data.filter((r: any) => [pendingId, failedId, erroneousId, sentId].includes(r.id));
+    expect(owned).toHaveLength(4);
+
+    const pending = await request(app).get(`/api/emails/history?status=PENDING&limit=100`).set(auth(adminToken));
+    expect(pending.status).toBe(200);
+    expect(pending.body.data.every((r: any) => r.status === 'PENDING')).toBe(true);
+    expect(pending.body.data.some((r: any) => r.id === pendingId)).toBe(true);
+
+    const failed = await request(app).get(`/api/emails/history?status=FAILED&limit=100`).set(auth(adminToken));
+    expect(failed.status).toBe(200);
+    expect(failed.body.data.every((r: any) => r.status === 'FAILED')).toBe(true);
+    expect(failed.body.data.some((r: any) => r.id === failedId)).toBe(true);
+
+    const erroneous = await request(app).get(`/api/emails/history?status=ERRONEOUS&limit=100`).set(auth(adminToken));
+    expect(erroneous.status).toBe(200);
+    expect(erroneous.body.data.every((r: any) => r.status === 'ERRONEOUS')).toBe(true);
+    expect(erroneous.body.data.some((r: any) => r.id === erroneousId)).toBe(true);
+
+    const sent = await request(app).get(`/api/emails/history?status=SENT&limit=100`).set(auth(adminToken));
+    expect(sent.status).toBe(200);
+    expect(sent.body.data.every((r: any) => r.status === 'SENT')).toBe(true);
+    expect(sent.body.data.some((r: any) => r.id === sentId)).toBe(true);
+  });
+
+  it('applies tenantId and search filters on top of status', async () => {
+    const { pendingId, failedId, searchToken } = await seedStatusRows();
+
+    const byTenant = await request(app).get(`/api/emails/history?tenantId=1&limit=100`).set(auth(adminToken));
+    expect(byTenant.status).toBe(200);
+    expect(byTenant.body.data.every((r: any) => r.tenant_id === 1)).toBe(true);
+    expect(byTenant.body.data.some((r: any) => r.id === pendingId)).toBe(true);
+    expect(byTenant.body.data.some((r: any) => r.id === failedId)).toBe(true);
+
+    const bySearch = await request(app)
+      .get(`/api/emails/history?q=${encodeURIComponent(searchToken)}&limit=100`)
+      .set(auth(adminToken));
+    expect(bySearch.status).toBe(200);
+    expect(bySearch.body.data.some((r: any) => r.id === pendingId)).toBe(true);
+  });
+
+  it('paginates and returns pagination metadata', async () => {
+    const all = await request(app).get('/api/emails/history?limit=1&page=1').set(auth(adminToken));
+    expect(all.status).toBe(200);
+    expect(all.body.data.length).toBeLessThanOrEqual(1);
+    expect(all.body.pagination).toBeDefined();
+    expect(all.body.pagination.page).toBe(1);
+    expect(all.body.pagination.limit).toBe(1);
+    expect(all.body.pagination.total).toBeGreaterThanOrEqual(1);
+  });
+
+  it('sends a PENDING row again and records SENT via the mock provider', async () => {
+    const { pendingId } = await seedStatusRows();
+
+    const res = await request(app).post(`/api/emails/${pendingId}/send`).set(auth(adminToken));
+    expect(res.status).toBe(200);
+    expect(res.body.data.id).toBe(pendingId);
+    expect(res.body.data.status).toBe('SENT');
+    expect(res.body.data.provider_message_id).toMatch(/^MOCK-/);
+    expect(res.body.data.sent_at).toBeTruthy();
+    expect(res.body.data.failure_reason).toBeNull();
+
+    // The row is now visible under SENT, no longer under PENDING.
+    const sent = await request(app).get(`/api/emails/history?status=SENT&limit=100`).set(auth(adminToken));
+    expect(sent.body.data.some((r: any) => r.id === pendingId)).toBe(true);
+    const stillPending = await request(app).get(`/api/emails/history?status=PENDING&limit=100`).set(auth(adminToken));
+    expect(stillPending.body.data.some((r: any) => r.id === pendingId)).toBe(false);
+  });
+
+  it('re-sends a FAILED row and clears the failure on mock success', async () => {
+    const { failedId } = await seedStatusRows();
+
+    const before = await pool.query('SELECT status, failure_reason, attempt_count, next_retry_at FROM email_notifications WHERE id = $1', [failedId]);
+    expect(before.rows[0].status).toBe('FAILED');
+    expect(before.rows[0].failure_reason).toBeTruthy();
+
+    const res = await request(app).post(`/api/emails/${failedId}/send`).set(auth(adminToken));
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('SENT');
+    expect(res.body.data.failure_reason).toBeNull();
+    expect(res.body.data.provider_message_id).toMatch(/^MOCK-/);
+    expect(res.body.data.sent_at).toBeTruthy();
+
+    // attempt_count incremented once more.
+    const after = await pool.query('SELECT attempt_count FROM email_notifications WHERE id = $1', [failedId]);
+    expect(Number(after.rows[0].attempt_count)).toBeGreaterThanOrEqual(2);
+  });
+
+  it('re-sends an ERRONEOUS row and records SENT once the address is reachable', async () => {
+    // ERRONEOUS is terminal for the ADDRESS as stored, not for the row — the operator
+    // corrects the address and sends again. The test row keeps its permanent-rejection reason
+    // until a send succeeds (mock provider always succeeds), demonstrating the row is still
+    // replayable even from ERRONEOUS.
+    const { erroneousId } = await seedStatusRows();
+
+    const res = await request(app).post(`/api/emails/${erroneousId}/send`).set(auth(adminToken));
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('SENT');
+    expect(res.body.data.failure_reason).toBeNull();
+    expect(res.body.data.provider_message_id).toMatch(/^MOCK-/);
+    expect(res.body.data.sent_at).toBeTruthy();
+  });
+
+  it('refuses to send a row that is already SENT', async () => {
+    const { sentId } = await seedStatusRows();
+
+    const res = await request(app).post(`/api/emails/${sentId}/send`).set(auth(adminToken));
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/already sent/i);
+
+    // The row is unchanged.
+    const row = await pool.query('SELECT status, provider_message_id, sent_at FROM email_notifications WHERE id = $1', [sentId]);
+    expect(row.rows[0].status).toBe('SENT');
+    expect(row.rows[0].provider_message_id).toBeTruthy();
+
+    // A corrected address in the body does not resurrect a SENT row either.
+    const resurrect = await request(app).post(`/api/emails/${sentId}/send`).set(auth(adminToken)).send({ email: 'different@example.com' });
+    expect(resurrect.status).toBe(400);
+    expect(resurrect.body.message).toMatch(/already sent/i);
+  });
+
+  it('404s on an unknown email id', async () => {
+    const res = await request(app).post('/api/emails/999999/send').set(auth(adminToken));
+    expect(res.status).toBe(404);
+  });
+
+  it('re-sends an ERRONEOUS row to a corrected address and records the fix', async () => {
+    // The ERRONEOUS story end-to-end: the address was rejected, the operator
+    // fixes the typo in the send-again dialog, and the row goes out to the
+    // corrected address — updated in place, not duplicated.
+    const { erroneousId } = await seedStatusRows();
+    const correctedAddress = 'peter.fixed@example.com';
+
+    const res = await request(app).post(`/api/emails/${erroneousId}/send`).set(auth(adminToken)).send({ email: correctedAddress });
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('SENT');
+    expect(res.body.data.email_address).toBe(correctedAddress);
+    expect(res.body.data.failure_reason).toBeNull();
+    expect(res.body.data.provider_message_id).toMatch(/^MOCK-/);
+    expect(res.body.data.sent_at).toBeTruthy();
+
+    // The row itself carries the corrected address (searchable by recipient).
+    const byRecipient = await request(app).get(`/api/emails/history?q=${encodeURIComponent(correctedAddress)}&limit=100`).set(auth(adminToken));
+    expect(byRecipient.status).toBe(200);
+    expect(byRecipient.body.data.some((r: any) => r.id === erroneousId)).toBe(true);
+    const row = await pool.query('SELECT email_address, status FROM email_notifications WHERE id = $1', [erroneousId]);
+    expect(row.rows[0].email_address).toBe(correctedAddress);
+    expect(row.rows[0].status).toBe('SENT');
+  });
+
+  it('rejects an invalid corrected address and leaves the row untouched', async () => {
+    const { erroneousId } = await seedStatusRows();
+
+    const res = await request(app).post(`/api/emails/${erroneousId}/send`).set(auth(adminToken)).send({ email: 'not-an-email' });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/validation/i);
+
+    const row = await pool.query('SELECT status, email_address, failure_reason FROM email_notifications WHERE id = $1', [erroneousId]);
+    expect(row.rows[0].status).toBe('ERRONEOUS');
+    expect(row.rows[0].email_address).toBe('peter.otieno@example.com');
+    expect(row.rows[0].failure_reason).toBeTruthy();
+  });
+
+  it('rejects anonymous requests on the history and send-again endpoints', async () => {
+    const history = await request(app).get('/api/emails/history');
+    expect(history.status).toBe(401);
+
+    const send = await request(app).post('/api/emails/1/send');
+    expect(send.status).toBe(401);
+  });
+
+  it('reports stuck PENDING + failed/ERRONEOUS counts on the operator dashboard endpoint', async () => {
+    // Seed a couple of stuck rows explicitly so the dashboard payload is non-zero and
+    // channel-separated (SMS-only rows must not roll up into the email counts).
+    await pool.query(
+      `INSERT INTO sms_notifications (receipt_id, tenant_id, phone_number, message, status, failure_reason, attempt_count, next_retry_at)
+       VALUES (NULL, 1, '+254700111222', 'INTEG-stuck-sms-pending', 'PENDING', NULL, 0, NULL)
+       RETURNING id`
+    );
+    await pool.query(
+      `INSERT INTO sms_notifications (receipt_id, tenant_id, phone_number, message, status, failure_reason, attempt_count, next_retry_at)
+       VALUES (NULL, 1, '+254700111222', 'INTEG-stuck-sms-failed', 'FAILED', 'simulated timeout', 2, NOW() - INTERVAL '1 minute')
+       RETURNING id`
+    );
+    await pool.query(
+      `INSERT INTO email_notifications (receipt_id, tenant_id, email_address, subject, body_html, body_text, status, failure_reason, attempt_count, next_retry_at)
+       VALUES (NULL, 1, 'stuck@example.com', 'INTEG-stuck-email-pending', '<p>pending</p>', 'pending', 'PENDING', NULL, 0, NULL)`
+    );
+    await pool.query(
+      `INSERT INTO email_notifications (receipt_id, tenant_id, email_address, subject, body_html, body_text, status, failure_reason, attempt_count, next_retry_at)
+       VALUES (NULL, 1, 'stuck@example.com', 'INTEG-stuck-email-failed', '<p>failed</p>', 'failed', 'FAILED', 'timeout', 2, NOW() - INTERVAL '1 minute')`
+    );
+    await pool.query(
+      `INSERT INTO email_notifications (receipt_id, tenant_id, email_address, subject, body_html, body_text, status, failure_reason, attempt_count)
+       VALUES (NULL, 1, 'bad@example.com', 'INTEG-stuck-email-erroneous', '<p>erroneous</p>', 'erroneous', 'ERRONEOUS', '550 5.1.1 bad', 1)`
+    );
+
+    const res = await request(app).get('/api/reports/notification-stuck').set(auth(adminToken));
+    expect(res.status).toBe(200);
+    const body = res.body.data;
+    // SMS counts come from sms_notifications only.
+    expect(body.sms.pending).toBeGreaterThanOrEqual(1);
+    expect(body.sms.failed).toBeGreaterThanOrEqual(1);
+    expect(body.sms.erroneous).toBe(0);
+    // Email counts come from email_notifications only, and ERRONEOUS is an email concept.
+    expect(body.email.pending).toBeGreaterThanOrEqual(1);
+    expect(body.email.failed).toBeGreaterThanOrEqual(1);
+    expect(body.email.erroneous).toBeGreaterThanOrEqual(1);
+    // lastFailure is populated when there is a month-old-ish failure.
+    expect(body.email.lastFailure).toBeTruthy();
+    expect(body.email.lastFailure.at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    // Cleanup.
+    await pool.query(`DELETE FROM email_notifications WHERE subject LIKE 'INTEG-stuck-email-%'`);
+    await pool.query(`DELETE FROM sms_notifications WHERE message LIKE 'INTEG-stuck-sms-%'`);
   });
 });

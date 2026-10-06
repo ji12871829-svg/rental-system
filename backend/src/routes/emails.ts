@@ -62,8 +62,17 @@ router.post('/test', managerOrAdmin, validateBody(testEmailSchema), asyncHandler
 
 const paramsSchema = z.object({ id: z.coerce.number().int().positive() });
 
-router.post('/:id/send', validateParams(paramsSchema), asyncHandler(async (req, res) => {
-  const row = await sendEmailNotification(Number(req.params.id));
+// An optional corrected recipient address: an ERRONEOUS row is stuck because
+// the address itself was rejected, so the operator fixes the typo in place
+// and the re-send goes to the corrected address. Omitted body = re-send to
+// the stored address (the normal retry path).
+const sendAgainSchema = z.object({
+  email: z.string().trim().email().max(255).optional(),
+});
+
+router.post('/:id/send', validateParams(paramsSchema), validateBody(sendAgainSchema.optional()), asyncHandler(async (req, res) => {
+  const { email } = (req.body ?? {}) as { email?: string };
+  const row = await sendEmailNotification(Number(req.params.id), { email });
   res.json({ data: row });
 }));
 

@@ -225,7 +225,7 @@ async function queueEmail(input: QueueEmailInput, exec: SqlExec = pool): Promise
 //
 // Both statuses are replayable: the sweep claims rows in EITHER status that
 // carry a due deadline, and only a SENT row is genuinely final.
-export async function sendEmailNotification(id: number): Promise<EmailRow> {
+export async function sendEmailNotification(id: number, opts: { email?: string } = {}): Promise<EmailRow> {
   const row = await queryOne<EmailRow & {
     receipt_number: string | null;
     attachment_name: string | null;
@@ -249,13 +249,22 @@ export async function sendEmailNotification(id: number): Promise<EmailRow> {
     throw badRequest('This email was already sent — only pending or failed emails can be sent.');
   }
 
+  // An operator-supplied corrected recipient (typo fix on a stuck ERRONEOUS
+  // row) is persisted before the attempt, so the history row records exactly
+  // the address the send went to — and a second rejection is attributed to
+  // the corrected address, not the old one.
+  const sendTo = opts.email ? opts.email : row.email_address;
+  if (opts.email && opts.email !== row.email_address) {
+    await query('UPDATE email_notifications SET email_address = $2 WHERE id = $1', [id, opts.email]);
+  }
+
   const attachments = attachmentsFromRow(row);
   if (attachments.length === 0 && row.receipt_number) {
     attachments.push({ filename: `${row.receipt_number}.html`, content: row.body_html, contentType: 'text/html' });
   }
 
   const result = await sendEmail({
-    to: row.email_address,
+    to: sendTo,
     subject: row.subject,
     text: row.body_text,
     html: row.body_html,
@@ -265,7 +274,7 @@ export async function sendEmailNotification(id: number): Promise<EmailRow> {
   if (result.ok) {
     await query(
       `UPDATE email_notifications
-       SET status = 'SENT', provider_message_id = $2, sent_at = NOW(), attempt_count = attempt_count + 1, next_retry_at = NULL
+       SET status = 'SENT', provider_message_id = $2, sent_at = NOW(), failure_reason = NULL, attempt_count = attempt_count + 1, next_retry_at = NULL
        WHERE id = $1`,
       [id, result.providerMessageId ?? null]
     );

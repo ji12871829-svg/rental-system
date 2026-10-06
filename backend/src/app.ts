@@ -27,6 +27,7 @@ import receiptRoutes from './routes/receipts';
 import rentRoutes from './routes/rent';
 import mpesaRoutes from './routes/mpesa';
 import mpesaReviewRoutes from './routes/mpesaReview';
+import notificationStuckRoutes from './routes/notificationStuck';
 import reportRoutes from './routes/reports';
 import settingsRoutes from './routes/settings';
 import smsRoutes from './routes/sms';
@@ -35,6 +36,14 @@ import tenantPortalRoutes from './routes/tenantPortal';
 import unitRoutes from './routes/units';
 import userRoutes from './routes/users';
 import waterRoutes from './routes/water';
+import vendorRoutes from './routes/vendors';
+import maintenanceRoutes from './routes/maintenance';
+import expenseApprovalRoutes from './routes/expenseApprovals';
+import recurringExpenseRoutes from './routes/recurringExpenses';
+import penaltyRoutes from './routes/penalties';
+import documentRoutes from './routes/documents';
+import vacancyRoutes from './routes/vacancies';
+import vacanciesPublicRoutes from './routes/vacanciesPublic';
 
 export function createApp() {
   const app = express();
@@ -159,20 +168,29 @@ export function createApp() {
   // Tenant self-service portal — separate cookie + JWT audience from staff
   // auth (see middleware/portalAuth.ts). Mounted before the /api 404 guard.
   app.use('/api/portal', tenantPortalRoutes);
-  // Public marketing endpoints (landing price list + demo requests). No
-  // requireAuth — the landing page renders for signed-out visitors.
+  // Public marketing endpoints (landing price list + demo requests + the
+  // vacancy board). No requireAuth — visitors are signed out by definition.
   app.use('/api/public', publicRoutes);
+  app.use('/api/public', vacanciesPublicRoutes);
   app.use('/api/rent', rentRoutes);
   app.use('/api/mpesa', mpesaRoutes);
   app.use('/api/mpesa/review', mpesaReviewRoutes);
   app.use('/api/water', waterRoutes);
   app.use('/api/expenses', expenseRoutes);
+  app.use('/api/vendors', vendorRoutes);
+  app.use('/api/maintenance', maintenanceRoutes);
+  app.use('/api/expense-approvals', expenseApprovalRoutes);
+  app.use('/api/recurring-expenses', recurringExpenseRoutes);
+  app.use('/api/penalties', penaltyRoutes);
+  app.use('/api/documents', documentRoutes);
+  app.use('/api/vacancies', vacancyRoutes);
   app.use('/api/receipts', receiptRoutes);
   app.use('/api/sms', smsRoutes);
   app.use('/api/emails', emailRoutes);
   app.use('/api/templates', templateRoutes);
   app.use('/api/privacy-requests', privacyRequestRoutes);
   app.use('/api/reports', reportRoutes);
+app.use('/api/reports', notificationStuckRoutes);
   app.use('/api/audit', auditRoutes);
 
   // Unknown API routes → 404 in the standard error shape.

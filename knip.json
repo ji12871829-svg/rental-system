@@ -4,7 +4,8 @@
   "ignoreDependencies": ["jest-environment-node", "@jest/environment"],
   "workspaces": {
     ".": {
-      "entry": ["scripts/*.mjs"]
+      "entry": ["scripts/*.mjs"],
+      "ignoreDependencies": ["pg"]
     },
     "backend": {},
     "frontend": {

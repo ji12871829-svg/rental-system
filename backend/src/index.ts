@@ -9,6 +9,7 @@ import { startSmsRetryJob, stopSmsRetryJob } from './services/smsRetryJob';
 import { startEmailRetryJob, stopEmailRetryJob } from './services/emailRetryJob';
 import { startTenantRetentionJob, stopTenantRetentionJob } from './services/tenantRetentionJob';
 import { startStaleUnmatchedAlertJob, stopStaleUnmatchedAlertJob } from './services/staleUnmatchedAlertJob';
+import { startRecurringExpenseJob, stopRecurringExpenseJob } from './services/recurringExpenseJob';
 
 const app = createApp();
 
@@ -44,6 +45,7 @@ async function main() {
       startEmailRetryJob();
       startTenantRetentionJob();
       startStaleUnmatchedAlertJob();
+      startRecurringExpenseJob();
       const sms = getSmsConfig();
       if (sms.provider === 'mock') {
         // eslint-disable-next-line no-console
@@ -75,6 +77,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     stopEmailRetryJob();
     stopTenantRetentionJob();
     stopStaleUnmatchedAlertJob();
+    stopRecurringExpenseJob();
     process.exit(0);
   });
 }

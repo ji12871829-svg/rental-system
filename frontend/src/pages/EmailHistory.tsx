@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Info } from 'lucide-react';
-import { Button, EmptyState, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
+import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { api, qs } from '../lib/api';
 import { formatDate } from '../lib/format';
 
@@ -49,6 +49,11 @@ export default function EmailHistory() {
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [viewEmail, setViewEmail] = useState<Email | null>(null);
+  // The fix-recipient-and-resend dialog: an ERRONEOUS row is stuck because the
+  // address itself was rejected, so the operator corrects the typo in place.
+  const [resendEmail, setResendEmail] = useState<Email | null>(null);
+  const [resendAddress, setResendAddress] = useState('');
+  const [sending, setSending] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   // api.get resolves with the response body { data: ... } — unwrap to the
@@ -64,23 +69,50 @@ export default function EmailHistory() {
 
   const refresh = () => setRefreshKey((k) => k + 1);
 
-  async function send(e: Email) {
+  // An optional corrected address makes the backend re-send to it (and record
+  // it on the row); omitted = the stored address, the normal retry path.
+  async function send(e: Email, address?: string): Promise<boolean> {
     try {
-      const res = await api.post<{ data: Email }>(`/api/emails/${e.id}/send`);
+      const corrected = address?.trim();
+      const body = corrected && corrected.toLowerCase() !== e.email_address.toLowerCase() ? { email: corrected } : undefined;
+      const res = await api.post<{ data: Email }>(`/api/emails/${e.id}/send`, body);
       if (res.data.status === 'SENT') {
         toast(
           'success',
           liveMode
-            ? `Email sent to ${e.email_address}.`
-            : `Email to ${e.email_address} recorded as sent (simulated mode — no provider configured).`
+            ? `Email sent to ${res.data.email_address}.`
+            : `Email to ${res.data.email_address} recorded as sent (simulated mode — no provider configured).`
         );
       } else {
         toast('error', `Send failed: ${res.data.failure_reason ?? 'unknown provider error'}`);
       }
       refresh();
+      return res.data.status === 'SENT';
     } catch (err) {
       toast('error', (err as Error).message);
       refresh();
+      return false;
+    }
+  }
+
+  function openResend(e: Email) {
+    setResendAddress(e.email_address);
+    setResendEmail(e);
+  }
+
+  async function confirmResend() {
+    if (!resendEmail || sending) return;
+    const corrected = resendAddress.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(corrected)) {
+      toast('error', 'Enter a valid email address.');
+      return;
+    }
+    setSending(true);
+    try {
+      const sent = await send(resendEmail, corrected);
+      if (sent) setResendEmail(null); // keep the dialog open on a fresh failure so the address can be adjusted again
+    } finally {
+      setSending(false);
     }
   }
 
@@ -182,7 +214,13 @@ export default function EmailHistory() {
                           <Button variant="ghost" className="!px-2 !py-1 text-xs text-emerald-700" onClick={() => send(e)}>Send</Button>
                         )}
                         {(e.status === 'FAILED' || e.status === 'ERRONEOUS') && (
-                          <Button variant="ghost" className="!px-2 !py-1 text-xs text-emerald-700" onClick={() => send(e)}>Send again</Button>
+                          <Button
+                            variant="ghost"
+                            className="!px-2 !py-1 text-xs text-emerald-700"
+                            onClick={() => (e.status === 'ERRONEOUS' ? openResend(e) : send(e))}
+                          >
+                            Send again
+                          </Button>
                         )}
                       </div>
                     </td>
@@ -229,11 +267,43 @@ export default function EmailHistory() {
             )}
             {viewEmail.status !== 'SENT' && (
               <div className="flex justify-end">
-                <Button onClick={() => { setViewEmail(null); send(viewEmail); }}>
+                <Button
+                  onClick={() => {
+                    const target = viewEmail;
+                    setViewEmail(null);
+                    if (target.status === 'ERRONEOUS') openResend(target);
+                    else send(target);
+                  }}
+                >
                   {viewEmail.status === 'PENDING' ? 'Send Now' : 'Send Again'}
                 </Button>
               </div>
             )}
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={resendEmail !== null} title="Fix recipient & send again" onClose={() => setResendEmail(null)}>
+        {resendEmail && (
+          <div className="space-y-3 text-sm">
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+              <strong>Permanent rejection:</strong> {resendEmail.failure_reason ?? 'the address was rejected by the provider.'}
+              <div className="mt-1 text-red-600">
+                Correct the address below — the email goes to the fixed address and this history row is updated in place.
+              </div>
+            </div>
+            <Field label="Recipient address" hint="Subject and content stay unchanged; only the recipient is corrected.">
+              <TextInput
+                value={resendAddress}
+                onChange={(e) => setResendAddress(e.target.value)}
+                placeholder="name@example.com"
+                type="email"
+              />
+            </Field>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setResendEmail(null)}>Cancel</Button>
+              <Button loading={sending} onClick={confirmResend}>Send Again</Button>
+            </div>
           </div>
         )}
       </Modal>
