@@ -11,6 +11,7 @@ import { ChartGrid } from '../components/dashboard/ChartGrid';
 import { HealthCards } from '../components/dashboard/HealthCards';
 import { ClerkSignupsStats } from '../components/dashboard/ClerkSignupsStats';
 import { SecurityAnomaliesStats } from '../components/dashboard/SecurityAnomaliesStats';
+import { StuckNotificationAlerts } from '../components/dashboard/StuckNotificationAlerts';
 import type { DashboardData } from '@rpms/shared';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
@@ -94,6 +95,7 @@ export default function Dashboard() {
       </div>
       <div className="rise-in" style={{ animationDelay: '90ms' }}>
         <HealthCards data={data} />
+        <StuckNotificationAlerts />
       </div>
       {/* Admin-only, and self-gating: renders nothing unless refused Clerk
           sign-ups / session anomalies are actually pending. */}
