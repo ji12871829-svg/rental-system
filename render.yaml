@@ -22,7 +22,7 @@ services:
     # Build shared/ first explicitly: its file: deps run `prepare` on install,
     # but a guaranteed pre-build keeps the type contract independent of the
     # installing npm version's prepare behavior.
-    buildCommand: npm run build --prefix shared && cd frontend && npm ci --include=dev && npm run build && cd ../backend && npm ci --include=dev && npm run build
+    buildCommand: npm run build --prefix shared && cd frontend && npm ci --include=dev && npm run build && cd ../backend && NODE_ENV=development npm ci --include=dev && cd ../backend && npm run build
     startCommand: npm run start --prefix backend
     healthCheckPath: /api/health
     # Auto-deploy is enabled: every push to main and every pull request

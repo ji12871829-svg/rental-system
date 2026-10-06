@@ -4,7 +4,8 @@ import { Suspense } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import {
   AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, BookUser, Building2, CalendarDays, ChevronDown, Droplets, FileText, LayoutDashboard, Loader2, LogOut, Mail, Menu, MessageSquareText, ReceiptText, Settings,
-  Smartphone, Ticket, UserCog, Users as UsersIcon, Wallet, X, ClipboardCheck, Zap,
+  Smartphone, Ticket, UserCog, Users as UsersIcon, Wallet, X, ClipboardCheck, Zap, Wrench, Truck, BadgeCheck, Repeat,
+  Percent, FolderLock, Megaphone,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { branding } from '../lib/branding';
@@ -99,6 +100,19 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/monthly', label: 'Monthly Summary', icon: CalendarDays },
       { to: '/expenses', label: 'Expenses', icon: ReceiptText },
       { to: '/arrears', label: 'Arrears', icon: AlertTriangle },
+    ],
+  },
+  {
+    title: 'Operations',
+    icon: Wrench,
+    items: [
+      { to: '/maintenance', label: 'Maintenance', icon: Wrench },
+      { to: '/vendors', label: 'Vendors', icon: Truck, managerOnly: true },
+      { to: '/expense-approvals', label: 'Expense Approvals', icon: BadgeCheck },
+      { to: '/recurring-expenses', label: 'Recurring Expenses', icon: Repeat, managerOnly: true },
+      { to: '/penalties', label: 'Late Fees', icon: Percent, managerOnly: true },
+      { to: '/documents', label: 'Document Vault', icon: FolderLock },
+      { to: '/vacancies', label: 'Vacancy Listings', icon: Megaphone, managerOnly: true },
     ],
   },
   {

@@ -42,6 +42,15 @@ const AuditLogs = lazy(routeChunks.audit);
 const ClerkSignups = lazy(routeChunks.clerkSignups);
 const PrivacyRegister = lazy(routeChunks.privacyRegister);
 const MpesaReview = lazy(routeChunks.mpesaReview);
+const Maintenance = lazy(routeChunks.maintenance);
+const Vendors = lazy(routeChunks.vendors);
+const ExpenseApprovals = lazy(routeChunks.expenseApprovals);
+const RecurringExpenses = lazy(routeChunks.recurringExpenses);
+const Penalties = lazy(routeChunks.penalties);
+const Documents = lazy(routeChunks.documents);
+const Vacancies = lazy(routeChunks.vacancies);
+// Public vacancy board — outside the staff auth tree, like the legal pages.
+const PublicVacancies = lazy(routeChunks.publicVacancies);
 
 // Tenant portal — a separate, public-facing app shell with its own auth
 // context; entirely outside the staff RequireAuth tree.
@@ -175,6 +184,8 @@ export default function App() {
           />
           {/* Legal pages are public — they must be readable before signing in. */}
           <Route path="/privacy" element={<Privacy />} />
+          {/* Public vacancy board — marketing surface, no session required. */}
+          <Route path="/public-vacancies" element={<PublicVacancies />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/cookies" element={<Cookies />} />
           <Route path="/refunds" element={<Refund />} />
@@ -209,6 +220,13 @@ export default function App() {
             <Route path="/email-campaign" element={<EmailCampaign />} />
           <Route path="/message-templates" element={<MessageTemplates />} />
             <Route path="/mpesa-review" element={<MpesaReview />} />
+            <Route path="/maintenance" element={<Maintenance />} />
+            <Route path="/vendors" element={<Vendors />} />
+            <Route path="/expense-approvals" element={<ExpenseApprovals />} />
+            <Route path="/recurring-expenses" element={<RecurringExpenses />} />
+            <Route path="/penalties" element={<Penalties />} />
+            <Route path="/documents" element={<Documents />} />
+            <Route path="/vacancies" element={<Vacancies />} />
             <Route
               path="/users"
               element={

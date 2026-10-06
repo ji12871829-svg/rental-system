@@ -38,6 +38,17 @@ interface RentRow {
   collectionPercentage: number;
 }
 
+interface CashflowRow {
+  month: number;
+  monthName: string;
+  rentIn: number;
+  waterIn: number;
+  totalIn: number;
+  expensesOut: number;
+  net: number;
+  cumulativeNet: number;
+}
+
 interface WaterRow {
   month: number;
   monthName: string;
@@ -53,7 +64,7 @@ const shortMonth = (m: number) => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Ju
 export default function MonthlySummary() {
   const now = new Date();
   const [year, setYear] = useState<string>(String(now.getFullYear()));
-  const [view, setView] = useState<'COMBINED' | 'RENT' | 'WATER'>('COMBINED');
+  const [view, setView] = useState<'COMBINED' | 'RENT' | 'WATER' | 'CASHFLOW'>('COMBINED');
   // ?month=9 (e.g. from the Dashboard's "due this month" stat) narrows the
   // table to one month; charts and year totals stay year-wide. The shared
   // hook syncs the filter both ways with the URL.
@@ -73,6 +84,12 @@ export default function MonthlySummary() {
     () => view === 'WATER'
       ? api.get<{ data: WaterRow[] }>(`/api/reports/monthly/water?year=${year}`).then((r) => r.data)
       : Promise.resolve(null as unknown as WaterRow[]),
+    [year, view]
+  );
+  const { data: cashflowRows } = useFetch<CashflowRow[]>(
+    () => view === 'CASHFLOW'
+      ? api.get<{ data: CashflowRow[] }>(`/api/reports/cashflow?year=${year}`).then((r) => r.data)
+      : Promise.resolve(null as unknown as CashflowRow[]),
     [year, view]
   );
 
@@ -194,6 +211,7 @@ export default function MonthlySummary() {
           <option value="COMBINED">Rent + Water (combined)</option>
           <option value="RENT">Rent only</option>
           <option value="WATER">Water only</option>
+          <option value="CASHFLOW">Cashflow (in vs expenses)</option>
         </Select>
         <Select value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)} className="w-40">
           <option value="">All months</option>
@@ -236,6 +254,61 @@ export default function MonthlySummary() {
         <KpiCard label={`Total outstanding ${monthFilter ? `${MONTHS[Number(monthFilter) - 1]} ` : ''}${year}`} value={money(totals.outstanding)} tone={totals.outstanding > 0 ? 'bad' : 'good'} />
       </div>
 
+      {view === 'CASHFLOW' ? (
+        <>
+          <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <h2 className="mb-3 text-sm font-semibold text-gray-700">Money in vs expenses by month</h2>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={cashflowRows ?? []}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey={(d: any) => shortMonth(d.month)} />
+                  <YAxis />
+                  <Tooltip formatter={(v: any) => money(v)} />
+                  <Legend />
+                  <Bar dataKey="totalIn" fill="#10b981" name="Collected" />
+                  <Bar dataKey="expensesOut" fill="#ef4444" name="Expenses" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <h2 className="mb-3 text-sm font-semibold text-gray-700">Net cashflow (cumulative)</h2>
+              <ResponsiveContainer width="100%" height={260}>
+                <LineChart data={cashflowRows ?? []}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey={(d: any) => shortMonth(d.month)} />
+                  <YAxis />
+                  <Tooltip formatter={(v: any) => money(v)} />
+                  <Legend />
+                  <Line type="monotone" dataKey="net" stroke="#11a8ff" name="Net this month" />
+                  <Line type="monotone" dataKey="cumulativeNet" stroke="#8b5cf6" name="Cumulative" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr><th>Month</th><th>Rent in</th><th>Water in</th><th>Total in</th><th>Expenses out</th><th>Net</th><th>Cumulative</th></tr>
+              </thead>
+              <tbody>
+                {(cashflowRows ?? []).map((c) => (
+                  <tr key={c.month} className={c.net < 0 ? 'bg-red-50/60' : undefined}>
+                    <td className="text-xs font-medium">{c.monthName}</td>
+                    <td className="text-xs tabular-nums">{c.rentIn.toLocaleString()}</td>
+                    <td className="text-xs tabular-nums">{c.waterIn.toLocaleString()}</td>
+                    <td className="text-xs tabular-nums">{c.totalIn.toLocaleString()}</td>
+                    <td className="text-xs tabular-nums text-red-600">{c.expensesOut.toLocaleString()}</td>
+                    <td className={`text-xs tabular-nums font-semibold ${c.net < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{c.net.toLocaleString()}</td>
+                    <td className="text-xs tabular-nums">{c.cumulativeNet.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+      <>
       {/* Charts */}
       <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -368,6 +441,8 @@ export default function MonthlySummary() {
           </div>
         )}
       </Modal>
+      </>
+      )}
     </div>
   );
 }

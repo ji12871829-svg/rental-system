@@ -569,3 +569,209 @@ CREATE TABLE IF NOT EXISTS message_templates (
 DROP TRIGGER IF EXISTS trg_message_templates_updated_at ON message_templates;
 CREATE TRIGGER trg_message_templates_updated_at BEFORE UPDATE ON message_templates
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+-- Round 2 (legacy parity): penalty engine, document vault, vacancy listings.
+-- Conventions as 011: SERIAL ids, CHECK-guarded enums, TIMESTAMPTZ stamps,
+-- ON DELETE SET NULL so history survives reference deletion.
+--
+-- Penalty reversals ride the rent ledger as NEGATIVE rent_payments rows (the
+-- 'PENALTY' reversal the Record-Payment form already accepts). The table-level
+-- CHECK (amount > 0) therefore widens to amount <> 0 — manual entries stay
+-- positive through the API's z.number().positive() guard, unchanged.
+ALTER TABLE rent_payments DROP CONSTRAINT IF EXISTS rent_payments_amount_check;
+ALTER TABLE rent_payments ADD CONSTRAINT rent_payments_amount_check CHECK (amount <> 0);
+
+-- --- Late-fee (penalty) engine ----------------------------------------------
+-- A rule says what to charge; penalty_log records what WAS charged (with the
+-- balance snapshot at apply time). Applied penalties are real ledger rows, so
+-- every existing balance view (arrears, ledger, statement, portal) accounts
+-- for them with zero special-casing.
+CREATE TABLE IF NOT EXISTS penalty_rules (
+  id          SERIAL PRIMARY KEY,
+  name        VARCHAR(100) NOT NULL,
+  rule_type   VARCHAR(20)  NOT NULL DEFAULT 'FIXED'
+                CHECK (rule_type IN ('FIXED', 'PERCENTAGE')),
+  amount      NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (amount >= 0),
+  percentage  NUMERIC(5,2)  NOT NULL DEFAULT 0 CHECK (percentage >= 0),
+  grace_days  INTEGER      NOT NULL DEFAULT 0 CHECK (grace_days >= 0),
+  max_penalty NUMERIC(12,2),
+  applies_to  VARCHAR(20)  NOT NULL DEFAULT 'RENT'
+                CHECK (applies_to IN ('RENT', 'WATER')),
+  active      BOOLEAN      NOT NULL DEFAULT TRUE,
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS penalty_log (
+  id              SERIAL PRIMARY KEY,
+  rule_id         INTEGER      REFERENCES penalty_rules(id) ON DELETE SET NULL,
+  tenant_id       INTEGER      NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  month           INTEGER      NOT NULL CHECK (month BETWEEN 1 AND 12),
+  year            INTEGER      NOT NULL,
+  amount          NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+  balance_before  NUMERIC(12,2) NOT NULL DEFAULT 0,
+  description     TEXT,
+  payment_id      INTEGER      REFERENCES rent_payments(id) ON DELETE SET NULL,
+  applied_by      INTEGER      REFERENCES users(id) ON DELETE SET NULL,
+  applied_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  -- One penalty per tenant per (rule, month, year): re-running apply can
+  -- never double-charge the same month.
+  UNIQUE (rule_id, tenant_id, month, year)
+);
+CREATE INDEX IF NOT EXISTS idx_penalty_log_tenant ON penalty_log(tenant_id, year);
+
+-- --- Document vault ----------------------------------------------------------
+-- Entity links are nullable; the service requires at least one. Files live as
+-- bytea like the branding logo — single-service deployment, no shared disk.
+CREATE TABLE IF NOT EXISTS documents (
+  id            SERIAL PRIMARY KEY,
+  title         VARCHAR(200) NOT NULL,
+  doc_type      VARCHAR(40)  NOT NULL
+                  CHECK (doc_type IN ('LEASE_AGREEMENT', 'INVOICE', 'RECEIPT', 'ID_DOCUMENT',
+                                      'INSPECTION_REPORT', 'PHOTO', 'INSURANCE', 'OTHER')),
+  tenant_id     INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
+  unit_id       INTEGER REFERENCES units(id) ON DELETE SET NULL,
+  file_data     BYTEA        NOT NULL,
+  file_name     VARCHAR(255) NOT NULL,
+  mime_type     VARCHAR(120) NOT NULL,
+  file_size     INTEGER      NOT NULL CHECK (file_size > 0),
+  uploaded_by   INTEGER      REFERENCES users(id) ON DELETE SET NULL,
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_documents_tenant ON documents(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_documents_unit ON documents(unit_id);
+
+-- --- Vacancy listings (public marketing board) -------------------------------
+-- One listing per unit. The public endpoint exposes ONLY marketing fields —
+-- never tenant identity.
+CREATE TABLE IF NOT EXISTS vacancy_listings (
+  id            SERIAL PRIMARY KEY,
+  unit_id       INTEGER     NOT NULL REFERENCES units(id) ON DELETE CASCADE,
+  title         VARCHAR(160) NOT NULL,
+  description   TEXT,
+  rent_amount   NUMERIC(12,2) NOT NULL,
+  deposit       NUMERIC(12,2),
+  photos        JSONB       NOT NULL DEFAULT '[]',
+  amenities     JSONB       NOT NULL DEFAULT '[]',
+  is_published  BOOLEAN     NOT NULL DEFAULT FALSE,
+  published_at  TIMESTAMPTZ,
+  views         INTEGER     NOT NULL DEFAULT 0,
+  inquiries     INTEGER     NOT NULL DEFAULT 0,
+  created_by    INTEGER     REFERENCES users(id) ON DELETE SET NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (unit_id)
+);
+CREATE INDEX IF NOT EXISTS idx_vacancy_published ON vacancy_listings(is_published);
+-- Ops essentials: the operational modules the legacy system had and this
+-- codebase lacked — a vendor directory feeding maintenance, maintenance
+-- requests with work orders, an expense approval gate, and recurring
+-- expenses that auto-generate their expense rows on schedule.
+--
+-- Conventions mirror the existing tables: SERIAL ids, TEXT enums guarded by
+-- CHECK constraints, TIMESTAMPTZ stamps, ON DELETE SET NULL so history
+-- survives the deletion of a referenced user/unit/vendor.
+
+-- --- Vendor directory -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS vendors (
+  id           SERIAL PRIMARY KEY,
+  name         TEXT        NOT NULL,
+  service      VARCHAR(40) NOT NULL
+                 CHECK (service IN ('PLUMBING', 'ELECTRICAL', 'CLEANING', 'SECURITY',
+                                    'CARPENTRY', 'PAINTING', 'LANDSCAPING', 'PEST_CONTROL',
+                                    'GENERAL_REPAIRS', 'OTHER')),
+  phone        VARCHAR(30),
+  email        VARCHAR(255),
+  rating       INTEGER     CHECK (rating BETWEEN 1 AND 5),
+  notes        TEXT,
+  active       BOOLEAN     NOT NULL DEFAULT TRUE,
+  created_by   INTEGER     REFERENCES users(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_vendors_active ON vendors(active);
+
+-- --- Maintenance requests ---------------------------------------------------
+CREATE TABLE IF NOT EXISTS maintenance_requests (
+  id           SERIAL PRIMARY KEY,
+  unit_id      INTEGER     REFERENCES units(id) ON DELETE SET NULL,
+  tenant_id    INTEGER     REFERENCES tenants(id) ON DELETE SET NULL,
+  title        TEXT        NOT NULL,
+  description  TEXT,
+  priority     VARCHAR(12) NOT NULL DEFAULT 'MEDIUM'
+                 CHECK (priority IN ('LOW', 'MEDIUM', 'HIGH', 'EMERGENCY')),
+  status       VARCHAR(12) NOT NULL DEFAULT 'OPEN'
+                 CHECK (status IN ('OPEN', 'IN_PROGRESS', 'RESOLVED', 'CANCELLED')),
+  reported_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  resolved_at  TIMESTAMPTZ,
+  created_by   INTEGER     REFERENCES users(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- A resolved request must carry its resolution timestamp.
+  CHECK ((status = 'RESOLVED') = (resolved_at IS NOT NULL) OR (status <> 'RESOLVED' AND resolved_at IS NULL))
+);
+CREATE INDEX IF NOT EXISTS idx_maintenance_status ON maintenance_requests(status);
+CREATE INDEX IF NOT EXISTS idx_maintenance_unit ON maintenance_requests(unit_id);
+
+-- --- Work orders (execution side of a maintenance request) -------------------
+CREATE TABLE IF NOT EXISTS work_orders (
+  id            SERIAL PRIMARY KEY,
+  request_id    INTEGER      NOT NULL REFERENCES maintenance_requests(id) ON DELETE CASCADE,
+  vendor_id     INTEGER      REFERENCES vendors(id) ON DELETE SET NULL,
+  assigned_to   TEXT,
+  cost          NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (cost >= 0),
+  status        VARCHAR(12)  NOT NULL DEFAULT 'ASSIGNED'
+                  CHECK (status IN ('ASSIGNED', 'IN_PROGRESS', 'DONE', 'CANCELLED')),
+  scheduled_for DATE,
+  completed_at  TIMESTAMPTZ,
+  notes         TEXT,
+  created_by    INTEGER      REFERENCES users(id) ON DELETE SET NULL,
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_work_orders_request ON work_orders(request_id);
+
+-- --- Expense approvals (gate before an expense row is recorded) --------------
+CREATE TABLE IF NOT EXISTS expense_approvals (
+  id               SERIAL PRIMARY KEY,
+  expense_date     DATE    NOT NULL,
+  description      TEXT    NOT NULL,
+  category         VARCHAR(30) NOT NULL
+                     CHECK (category IN ('WATER', 'REPAIRS', 'ELECTRICITY', 'MAINTENANCE',
+                                         'CLEANING', 'SECURITY', 'TRANSPORT', 'OTHER')),
+  amount           NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+  payment_method   VARCHAR(20) NOT NULL
+                     CHECK (payment_method IN ('CASH', 'M_PESA', 'BANK', 'OTHER')),
+  reference_number VARCHAR(100),
+  notes            TEXT,
+  status           VARCHAR(10) NOT NULL DEFAULT 'PENDING'
+                     CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
+  requested_by     INTEGER     REFERENCES users(id) ON DELETE SET NULL,
+  decided_by       INTEGER     REFERENCES users(id) ON DELETE SET NULL,
+  decided_at       TIMESTAMPTZ,
+  decision_note    TEXT,
+  expense_id       INTEGER     REFERENCES expenses(id) ON DELETE SET NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_expense_approvals_status ON expense_approvals(status);
+
+-- --- Recurring expenses (periodic costs that generate their expense row) -----
+CREATE TABLE IF NOT EXISTS recurring_expenses (
+  id                SERIAL PRIMARY KEY,
+  description       TEXT    NOT NULL,
+  category          VARCHAR(30) NOT NULL
+                      CHECK (category IN ('WATER', 'REPAIRS', 'ELECTRICITY', 'MAINTENANCE',
+                                          'CLEANING', 'SECURITY', 'TRANSPORT', 'OTHER')),
+  amount            NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+  payment_method    VARCHAR(20) NOT NULL DEFAULT 'CASH'
+                      CHECK (payment_method IN ('CASH', 'M_PESA', 'BANK', 'OTHER')),
+  frequency         VARCHAR(10) NOT NULL
+                      CHECK (frequency IN ('MONTHLY', 'QUARTERLY', 'YEARLY')),
+  next_due_date     DATE    NOT NULL,
+  active            BOOLEAN NOT NULL DEFAULT TRUE,
+  last_generated_at TIMESTAMPTZ,
+  last_expense_id   INTEGER REFERENCES expenses(id) ON DELETE SET NULL,
+  created_by        INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_recurring_due ON recurring_expenses(active, next_due_date);
+

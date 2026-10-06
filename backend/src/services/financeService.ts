@@ -417,6 +417,65 @@ export async function combinedMonthlySummary(year?: number): Promise<CombinedMon
     };
   });
 }
+
+// ---------------------------------------------------------------------------
+// Cashflow (ported from the legacy system's CashflowController): money in vs
+// money out per month, over the EXISTING ledger — collections from rent +
+// water payments, outflows from the expense ledger. Penalties ride the rent
+// ledger as negative rows and are excluded from collections (they are a
+// charge, not money in) but their effect shows up naturally in arrears.
+// ---------------------------------------------------------------------------
+export interface CashflowRow {
+  month: number;
+  monthName: string;
+  rentIn: number;
+  waterIn: number;
+  totalIn: number;
+  expensesOut: number;
+  net: number;
+  cumulativeNet: number;
+}
+
+export async function cashflow(year?: number): Promise<CashflowRow[]> {
+  const settings = await getSettings();
+  const targetYear = year ?? settings.reporting_year;
+
+  // Negative rent rows are penalties (charges), not collections — exclude them.
+  const rentIn = await query<{ month: number; total: string }>(
+    `SELECT billing_month AS month, COALESCE(SUM(amount), 0)::text AS total
+     FROM rent_payments WHERE billing_year = $1 AND amount > 0
+     GROUP BY billing_month`,
+    [targetYear]
+  );
+  const waterIn = await query<{ month: number; total: string }>(
+    `SELECT billing_month AS month, COALESCE(SUM(amount), 0)::text AS total
+     FROM water_payments WHERE billing_year = $1
+     GROUP BY billing_month`,
+    [targetYear]
+  );
+  const expensesOut = await query<{ month: number; total: string }>(
+    `SELECT EXTRACT(MONTH FROM expense_date)::int AS month, COALESCE(SUM(amount), 0)::text AS total
+     FROM expenses WHERE EXTRACT(YEAR FROM expense_date)::int = $1
+     GROUP BY 1`,
+    [targetYear]
+  );
+
+  const rentMap = new Map(rentIn.map((r) => [r.month, toNumber(r.total)]));
+  const waterMap = new Map(waterIn.map((r) => [r.month, toNumber(r.total)]));
+  const expenseMap = new Map(expensesOut.map((r) => [r.month, toNumber(r.total)]));
+
+  let cumulative = 0;
+  return MONTH_NAMES.map((monthName, i) => {
+    const month = i + 1;
+    const rIn = rentMap.get(month) ?? 0;
+    const wIn = waterMap.get(month) ?? 0;
+    const out = expenseMap.get(month) ?? 0;
+    const totalIn = round2(rIn + wIn);
+    const net = round2(totalIn - out);
+    cumulative = round2(cumulative + net);
+    return { month, monthName, rentIn: rIn, waterIn: wIn, totalIn, expensesOut: out, net, cumulativeNet: cumulative };
+  });
+}
 // Monthly financial report PDF — the combined monthly summary rendered as a
 // one-page landscape document with year totals and the business identity
 // footer. Reuses the same summary the Monthly Summary page displays.

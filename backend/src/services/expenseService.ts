@@ -56,7 +56,9 @@ export async function listExpenses(filters: ExpenseFilters): Promise<{ rows: unk
   });
 }
 
-export async function createExpense(input: ExpenseInput, userId: number): Promise<unknown> {
+// userId is null for system-generated rows (the recurring-expense sweep) —
+// the audit trail records the actor as "system" by omission.
+export async function createExpense(input: ExpenseInput, userId: number | null): Promise<unknown> {
   const inserted = await query(
     `INSERT INTO expenses
        (expense_date, description, category, amount, payment_method, reference_number, notes)

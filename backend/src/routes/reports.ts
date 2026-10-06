@@ -9,7 +9,7 @@ import { getSettings } from '../services/settingsService';
 import { getBusinessIdentity } from '../services/brandingService';
 import { composeOwnerRemittanceEmail, ownerRemittanceFigures, ownerRemittanceSms, ownerRemittanceWhatsapp } from '../services/ownerRemittanceService';
 import { queuePreparedEmail } from '../services/emailService';
-import { arrears, arrearsReportPdf, combinedMonthlySummary, dashboard, monthlyReportPdf, tenantLedger, tenantStatementPdf } from '../services/financeService';
+import { arrears, arrearsReportPdf, cashflow, combinedMonthlySummary, dashboard, monthlyReportPdf, tenantLedger, tenantStatementPdf } from '../services/financeService';
 import { prepareForMonthlyReport, prepareForStatementEmail, sendEmailNotification } from '../services/emailService';
 import { monthlyRentSummary } from '../services/rentService';
 import { monthlyWaterSummary, waterSummary } from '../services/waterService';
@@ -30,6 +30,14 @@ router.get('/arrears', asyncHandler(async (req, res) => {
   const q = yearQuery.parse(req.query);
   const settings = await getSettings();
   const data = await arrears(q.year ?? settings.reporting_year);
+  res.json({ data });
+}));
+
+// Cashflow: collections vs expenses per month (ported from the legacy system).
+router.get('/cashflow', asyncHandler(async (req, res) => {
+  const q = yearQuery.parse(req.query);
+  const settings = await getSettings();
+  const data = await cashflow(q.year ?? settings.reporting_year);
   res.json({ data });
 }));
 
