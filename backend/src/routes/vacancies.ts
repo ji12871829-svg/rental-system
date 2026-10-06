@@ -3,17 +3,11 @@ import { z } from 'zod';
 import { managerOrAdmin, requireAuth } from '../middleware/auth';
 import { validateBody, validateParams, listQuerySchema as baseListQuerySchema } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
-import { requestLimiter } from '../middleware/rateLimiter';
-import { logAudit } from '../services/auditService';
 import {
   createVacancyListing,
   deleteVacancyListing,
-  listPublicListings,
   listVacancyListings,
-  recordListingInquiry,
-  recordListingView,
   updateVacancyListing,
-  type InquiryInput,
   type VacancyInput,
 } from '../services/vacancyService';
 

@@ -1,6 +1,5 @@
 import { query, queryOne, withTransaction } from '../config/db';
 import { logAudit } from './auditService';
-import { createRentPayment } from './rentService';
 import { getSettings } from './settingsService';
 import { reportingThroughMonth } from './tenantLedger';
 import { round2 } from '../utils/money';

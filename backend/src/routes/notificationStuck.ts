@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { query } from '../config/db';
-import { managerOrAdmin } from '../middleware/auth';
+import { requireAuth, managerOrAdmin } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
@@ -13,7 +13,7 @@ function lastFailure(at: Date | null, reason: string | null): { at: string; reas
   };
 }
 
-router.get('/notification-stuck', managerOrAdmin, asyncHandler(async (_req, res) => {
+router.get('/notification-stuck', requireAuth, managerOrAdmin, asyncHandler(async (_req, res) => {
   const [smsRows, emailRows] = await Promise.all([
     query<{ pending: string; failed: string; erroneous: string; lastFailureAt: Date | null; lastFailureReason: string | null }>(
       `SELECT

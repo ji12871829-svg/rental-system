@@ -214,7 +214,7 @@ export default function Vacancies() {
             <div className="grid grid-cols-3 gap-2">
               {photoTarget.photos.map((p, i) => (
                 <div key={i} className="relative">
-                  <img src={p} alt={`${photoTarget.title} photo ${i + 1}`} className="h-24 w-full rounded-lg object-cover" />
+                  <img src={p} alt={photoTarget.title} className="h-24 w-full rounded-lg object-cover" />
                 </div>
               ))}
             </div>
