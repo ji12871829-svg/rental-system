@@ -45,6 +45,12 @@ import documentRoutes from './routes/documents';
 import vacancyRoutes from './routes/vacancies';
 import vacanciesPublicRoutes from './routes/vacanciesPublic';
 
+// One entry per route module mounted into the app — recorded by mountApi()
+// at mount time so /api/health can report the exact module set of the
+// running build (see docs/RUNBOOK-deploy-gap-checks.md). The name, not the
+// prefix, is the identity: two routers may share one prefix.
+type ApiModuleRef = { prefix: string; name: string };
+
 export function createApp() {
   const app = express();
 
@@ -101,6 +107,18 @@ export function createApp() {
     });
   }
 
+  // Mounted-API registry: mountApi() records every route module as it is
+  // mounted, so the health handler can report exactly what this build
+  // serves. Deploy-gap checks read this instead of inferring route presence
+  // from 401-vs-404 probes — those are ambiguous under router-level
+  // requireAuth (any /api/reports/* path 401s whether or not the subroute
+  // exists). See docs/RUNBOOK-deploy-gap-checks.md.
+  const apiModules: ApiModuleRef[] = [];
+  const mountApi = (prefix: string, router: express.Router, name: string): void => {
+    apiModules.push({ prefix, name });
+    app.use(prefix, router);
+  };
+
   // Liveness + configuration diagnosis. Never exposes secret values — only
   // which env knobs are unset, so a failed deploy can be debugged from the
   // outside (Render health checks and the browser).
@@ -143,6 +161,13 @@ export function createApp() {
         // endpoint, but this makes it visible in every health check too.
         mpesaCallbackTokenSet: Boolean(env.mpesaCallbackToken),
       },
+      // Deploy-gap fingerprint (docs/RUNBOOK-deploy-gap-checks.md):
+      // `commit` pins the exact revision Render deployed — Render injects
+      // RENDER_GIT_COMMIT at runtime; null anywhere else. `apiModules` is
+      // every route module mounted in THIS build. Neither leaks secrets:
+      // names/prefixes only, and everything sensitive is auth-gated.
+      commit: process.env.RENDER_GIT_COMMIT ?? null,
+      apiModules,
     });
     // Don't block the health response on the DB round-trip; report it after.
     pool
@@ -150,48 +175,48 @@ export function createApp() {
       .then(() => console.log('[health] db reachable'))
       .catch((err: Error) => console.error('[health] db unreachable:', err.message));
   });
-  app.use('/api/branding', brandingRoutes);
+  mountApi('/api/branding', brandingRoutes, 'branding');
 
-  app.use('/api/auth', authRoutes);
+  mountApi('/api/auth', authRoutes, 'auth');
   // Clerk → staff-session bridge (inert unless CLERK_SECRET_KEY is set —
   // the route itself 401s when Clerk is not configured).
-  app.use('/api/auth/clerk', clerkAuthRoutes);
+  mountApi('/api/auth/clerk', clerkAuthRoutes, 'clerkAuth');
   // Clerk webhooks (auto-mapping by verified email). The svix signature
   // covers the exact request bytes, which the shared JSON parser above
   // snapshots for this path via its `verify` hook. Inert (401) unless
   // CLERK_WEBHOOK_SIGNING_SECRET and CLERK_SECRET_KEY are set.
-  app.use('/api/webhooks/clerk', clerkWebhookRoutes);
-  app.use('/api/users', userRoutes);
-  app.use('/api/settings', settingsRoutes);
-  app.use('/api/units', unitRoutes);
-  app.use('/api/tenants', tenantRoutes);
+  mountApi('/api/webhooks/clerk', clerkWebhookRoutes, 'clerkWebhook');
+  mountApi('/api/users', userRoutes, 'users');
+  mountApi('/api/settings', settingsRoutes, 'settings');
+  mountApi('/api/units', unitRoutes, 'units');
+  mountApi('/api/tenants', tenantRoutes, 'tenants');
   // Tenant self-service portal — separate cookie + JWT audience from staff
   // auth (see middleware/portalAuth.ts). Mounted before the /api 404 guard.
-  app.use('/api/portal', tenantPortalRoutes);
+  mountApi('/api/portal', tenantPortalRoutes, 'tenantPortal');
   // Public marketing endpoints (landing price list + demo requests + the
   // vacancy board). No requireAuth — visitors are signed out by definition.
-  app.use('/api/public', publicRoutes);
-  app.use('/api/public', vacanciesPublicRoutes);
-  app.use('/api/rent', rentRoutes);
-  app.use('/api/mpesa', mpesaRoutes);
-  app.use('/api/mpesa/review', mpesaReviewRoutes);
-  app.use('/api/water', waterRoutes);
-  app.use('/api/expenses', expenseRoutes);
-  app.use('/api/vendors', vendorRoutes);
-  app.use('/api/maintenance', maintenanceRoutes);
-  app.use('/api/expense-approvals', expenseApprovalRoutes);
-  app.use('/api/recurring-expenses', recurringExpenseRoutes);
-  app.use('/api/penalties', penaltyRoutes);
-  app.use('/api/documents', documentRoutes);
-  app.use('/api/vacancies', vacancyRoutes);
-  app.use('/api/receipts', receiptRoutes);
-  app.use('/api/sms', smsRoutes);
-  app.use('/api/emails', emailRoutes);
-  app.use('/api/templates', templateRoutes);
-  app.use('/api/privacy-requests', privacyRequestRoutes);
-  app.use('/api/reports', reportRoutes);
-app.use('/api/reports', notificationStuckRoutes);
-  app.use('/api/audit', auditRoutes);
+  mountApi('/api/public', publicRoutes, 'public');
+  mountApi('/api/public', vacanciesPublicRoutes, 'vacanciesPublic');
+  mountApi('/api/rent', rentRoutes, 'rent');
+  mountApi('/api/mpesa', mpesaRoutes, 'mpesa');
+  mountApi('/api/mpesa/review', mpesaReviewRoutes, 'mpesaReview');
+  mountApi('/api/water', waterRoutes, 'water');
+  mountApi('/api/expenses', expenseRoutes, 'expenses');
+  mountApi('/api/vendors', vendorRoutes, 'vendors');
+  mountApi('/api/maintenance', maintenanceRoutes, 'maintenance');
+  mountApi('/api/expense-approvals', expenseApprovalRoutes, 'expenseApprovals');
+  mountApi('/api/recurring-expenses', recurringExpenseRoutes, 'recurringExpenses');
+  mountApi('/api/penalties', penaltyRoutes, 'penalties');
+  mountApi('/api/documents', documentRoutes, 'documents');
+  mountApi('/api/vacancies', vacancyRoutes, 'vacancies');
+  mountApi('/api/receipts', receiptRoutes, 'receipts');
+  mountApi('/api/sms', smsRoutes, 'sms');
+  mountApi('/api/emails', emailRoutes, 'emails');
+  mountApi('/api/templates', templateRoutes, 'templates');
+  mountApi('/api/privacy-requests', privacyRequestRoutes, 'privacyRequests');
+  mountApi('/api/reports', reportRoutes, 'reports');
+  mountApi('/api/reports', notificationStuckRoutes, 'notificationStuck');
+  mountApi('/api/audit', auditRoutes, 'audit');
 
   // Unknown API routes → 404 in the standard error shape.
   app.use('/api', (_req, res) => {
