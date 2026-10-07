@@ -8,6 +8,10 @@
 // first login, then set these to the real credentials):
 //   RPMS_BASE_URL=https://…  RPMS_ADMIN_EMAIL=…  RPMS_ADMIN_PASSWORD=…
 //   VERIFY_SKIP_AUTH=1 skips sign-in + authed checks (CI without credentials)
+//   VERIFY_TARGET_COMMIT=<sha> pins the revision the deploy-identity checks
+//     expect live (CI sets it to the pushed/PR-head SHA; local runs use HEAD)
+//   VERIFY_DEPLOY_WAIT_SECONDS=<n> bounds the wait for a mid-deploy catch-up
+//     when the live commit does not match yet (default: 600 in CI, 0 locally)
 //
 // Plain Node 18+ (global fetch, no deps) so it runs anywhere, including CI
 // or a cron job pinging the service after each deploy.
@@ -17,7 +21,13 @@
 // likely causes (password changed / seed users removed), both of which mean
 // the site itself is fine and only the script's credentials need updating.
 
+import fs from 'node:fs';
+import nodePath from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
 const BASE = (process.argv[2] || process.env.RPMS_BASE_URL || '').replace(/\/+$/, '');
+const REPO_ROOT = nodePath.resolve(nodePath.dirname(fileURLToPath(import.meta.url)), '..');
 const ADMIN_EMAIL = process.env.RPMS_ADMIN_EMAIL || 'admin@rpms.local';
 const ADMIN_PASSWORD = process.env.RPMS_ADMIN_PASSWORD || 'Admin@2026!';
 
@@ -78,6 +88,115 @@ try {
   }
 } catch (err) {
   record('GET /api/health', false, `request failed: ${err.message} (cold start? retry in ~60 s)`);
+}
+
+// ------------------------------------------- deploy identity (CI gate) ----
+// Asserts the LIVE deployment is the revision being verified, and that every
+// route module mounted in backend/src/app.ts shows up in the running build's
+// apiModules — the authoritative deploy-gap check (see
+// docs/RUNBOOK-deploy-gap-checks.md, Technique 1). Both are recorded as
+// SKIPs, not failures, on a build that predates the liveness fields (commit
+// null / apiModules absent): absence is an old build, not drift. A WRONG
+// commit, however, is a hard failure — after a bounded wait in CI, so a
+// push is not failed while Render is still mid-deploy.
+const TARGET_COMMIT = process.env.VERIFY_TARGET_COMMIT || null;
+const DEPLOY_WAIT_SECONDS = Number(
+  process.env.VERIFY_DEPLOY_WAIT_SECONDS ?? (process.env.CI ? 600 : 0)
+);
+function repoHeadCommit() {
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
+  } catch {
+    return null; // not a git checkout — caller reports it
+  }
+}
+// Same single source of truth as scripts/audit-deploy-drift.mjs — keep the
+// two parsers in lockstep.
+function parseBackendModuleNames() {
+  const appTs = fs.readFileSync(nodePath.join(REPO_ROOT, 'backend/src/app.ts'), 'utf8');
+  const names = new Set();
+  for (const m of appTs.matchAll(/mountApi\(\s*'([^']+)',\s*(\w+),\s*'([^']+)'\s*\)/g)) {
+    names.add(m[3]);
+  }
+  return [...names];
+}
+async function fetchHealthCommit() {
+  const res = await get('/api/health');
+  const body = await res.json().catch(() => null);
+  return { commit: typeof body?.commit === 'string' ? body.commit : null, body };
+}
+try {
+  const target = TARGET_COMMIT || repoHeadCommit();
+  const { commit: liveCommit } = await fetchHealthCommit();
+  if (!liveCommit) {
+    record(
+      'Deployed commit = verified revision → SKIPPED (old build)',
+      true,
+      'live /api/health reports no commit — the deployed build predates the liveness fields; ' +
+        'run scripts/audit-deploy-drift.mjs for the probe-based fallback'
+    );
+  } else if (!target) {
+    record(
+      'Deployed commit = verified revision',
+      false,
+      `live=${liveCommit.slice(0, 12)} but no target known (no VERIFY_TARGET_COMMIT and not a git checkout)`
+    );
+  } else if (liveCommit === target) {
+    record('Deployed commit = verified revision', true, `commit=${liveCommit.slice(0, 12)}`);
+  } else {
+    // Bounded catch-up wait: Render may still be deploying the pushed revision.
+    const deadline = Date.now() + DEPLOY_WAIT_SECONDS * 1000;
+    let current = liveCommit;
+    while (current !== target && Date.now() < deadline) {
+      console.log(
+        `  deployed ${current.slice(0, 12) || '(none)'} != target ${target.slice(0, 12)} — retrying in 30 s (bounded wait: ${DEPLOY_WAIT_SECONDS} s)`
+      );
+      await new Promise((r) => setTimeout(r, 30_000));
+      current = (await fetchHealthCommit()).commit ?? '';
+    }
+    record(
+      'Deployed commit = verified revision',
+      current === target,
+      current === target
+        ? `deployed build caught up to ${target.slice(0, 12)} during the wait`
+        : `live=${current ? current.slice(0, 12) : '(none)'} target=${target.slice(0, 12)} — the verified revision never went live: deploy failed, autoDeploy off for this branch, or still building`
+    );
+  }
+
+  // Module coverage against the build whose commit was just verified.
+  const { body: healthBody } = await fetchHealthCommit();
+  const liveModuleNames = Array.isArray(healthBody?.apiModules)
+    ? healthBody.apiModules.map((m) => m?.name).filter(Boolean)
+    : null;
+  if (!liveModuleNames) {
+    record(
+      'app.ts modules all live (apiModules coverage) → SKIPPED (old build)',
+      true,
+      'live /api/health reports no apiModules — the deployed build predates the liveness fields'
+    );
+  } else {
+    const expected = parseBackendModuleNames();
+    if (expected.length === 0) {
+      record(
+        'app.ts modules all live (apiModules coverage)',
+        false,
+        'no mountApi(...) calls found in backend/src/app.ts — parser or refactor drift; fix the parser before trusting this check'
+      );
+    } else {
+      const liveSet = new Set(liveModuleNames);
+      const missing = expected.filter((n) => !liveSet.has(n));
+      const extras = liveModuleNames.filter((n) => !expected.includes(n));
+      record(
+        `app.ts modules all live (apiModules coverage) → ${expected.length} expected`,
+        missing.length === 0,
+        missing.length === 0
+          ? `all mounted${extras.length ? `; live also reports names not parsed from app.ts: ${extras.join(', ')} — update the verify-live parser` : ''}`
+          : `missing from live apiModules: ${missing.join(', ')} — deployed backend predates them (drift) or their mount failed`
+      );
+    }
+  }
+} catch (err) {
+  record('Deploy identity checks (commit + apiModules)', false, err.message);
 }
 
 // ------------------------------------------------- static app + PWA files --
@@ -414,4 +533,8 @@ console.log(
   'Not covered here (do once in a real browser): PWA install prompt + offline reload, ' +
   'a full login through the UI, and the second-load service-worker registration.'
 );
-process.exit(failed > 0 ? 1 : 0);
+// exitCode (not process.exit): a forced exit while undici keep-alive sockets
+// and AbortSignal timers are still winding down crashes Node's libuv teardown
+// on Windows (uv_async assertion) and garbles the exit code. Setting exitCode
+// lets the loop drain and exit naturally with the right code on every OS.
+process.exitCode = failed > 0 ? 1 : 0;

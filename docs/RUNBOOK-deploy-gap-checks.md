@@ -202,11 +202,15 @@ Residual bypass paths, ranked:
    can only set `autoDeploy`. Verify both once after merging. Without them a
    direct push still runs CI and a red check still aborts the deploy — but
    visibly, not silently.
-3. **verify-live is not a post-deploy gate** — it probes whatever service is
-   CURRENTLY live, and Render deploys the new commit only after all 8 checks
-   pass. On a push to `main` it therefore green-lights the previous deploy,
-   not the new one. Treat it as a public-surface regression check; the
-   health `commit`/`apiModules` fields are the actual drift detector.
+3. **verify-live now asserts deploy identity (closed 2026-10-07)** — since
+   the health liveness fields, `scripts/verify-live.mjs` hard-fails when the
+   live `commit` does not equal the verified revision (bounded 10-minute
+   catch-up wait in CI so a push is not failed mid-deploy; instant fail
+   locally) and when any module mounted in `backend/src/app.ts` is missing
+   from the live `apiModules` (same parser as the audit script). Builds that
+   predate the fields SKIP both checks instead of failing, so CI stays green
+   against an old deployment. What remains dashboard-only: Render's
+   wait-for-CI toggle itself.
 4. **Node drift** — CI runs `node-version: 26` (latest 26.x) while Render is
    pinned to `26.3.0`; `render-build` mirrors the command but not the exact
    minor. Theoretical green-on-CI / fail-on-Render. Fix: pin `26.3.0` in

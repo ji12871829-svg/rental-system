@@ -151,6 +151,11 @@ jobs:
       - name: Verify live deployment
         env:
           VERIFY_SKIP_AUTH: '1'
+          # The revision the deploy-identity checks must find live (see
+          # scripts/verify-live.mjs). On pull_request, github.sha is a
+          # merge-preview commit Render never deploys — the PR branch head is
+          # what autoDeploy ships.
+          VERIFY_TARGET_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node scripts/verify-live.mjs "$BASE_URL"
 
   # Dead-code detector (knip): blocks on unused files, dependencies, exports
