@@ -44,11 +44,34 @@ positive.
 `db: "ok"` plus `frontendDistPresent: true` confirm the boot and static build
 succeeded.
 
-*Security note:* this makes the API's module names/prefixes publicly
-enumerable. That was accepted deliberately: names only (no parameter routes,
-no handler details), every sensitive module is auth-gated, and `/api/health`
-already disclosed provider names and config flags for deploy debugging. If
-the posture changes, gate `apiModules` behind an env flag before removing it.
+*Disclosure tradeoff (reviewed 2026-10-07, before the fields shipped; no env
+gate — deliberate):* the repo is PUBLIC
+(github.com/ji12871829-svg/rental-system, verified via the GitHub API), so
+`commit` lets anyone resolve the exact deployed source. That was accepted:
+
+- Any commit identifier leaks the same thing on a public repo (short SHA,
+  tag — all resolve), and the pin was already inferable from outside with
+  zero new fields: bundle-hash fingerprinting plus the rebuild technique in
+  Technique 4 pinned 23e3431 without the health field. The gate adds
+  attacker friction of one resolution step while blinding every defender.
+- `apiModules` is route names/prefixes only — no parameter routes, no
+  handler detail — and the same map is enumerable via the Technique 2
+  probes (the audit script's fallback mode does exactly that; it confirmed
+  15/31 modules from outside without credentials). Twin-mount identities
+  (`reports` vs `notificationStuck` behind one prefix) are the only thing
+  probes cannot recover, and that is code organization, not attack surface.
+- The consumers — Render health checks, CI verify-live, the one-GET audit —
+  are unauthenticated by design. A default-off flag would disable
+  authoritative deploy-gap checks in exactly the environment (production)
+  where drift matters; a default-on flag is a lever nobody pulls.
+- The most attack-relevant disclosures in this payload predate these fields:
+  the config booleans (`mpesaCallbackTokenSet`, `jwtSecretSet`) tell the
+  outside world which protections are unconfigured. Accepted earlier;
+  unchanged by this work.
+
+If the posture changes later: gate BOTH fields behind one env flag and
+accept the documented fallback — Technique 2 probes prove module presence,
+Technique 4 rebuild-pin recovers the exact revision.
 
 ## Technique 2 — route probing (fallback for builds without the health fields)
 

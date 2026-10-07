@@ -166,6 +166,9 @@ export function createApp() {
       // RENDER_GIT_COMMIT at runtime; null anywhere else. `apiModules` is
       // every route module mounted in THIS build. Neither leaks secrets:
       // names/prefixes only, and everything sensitive is auth-gated.
+      // Ungated deliberately (2026-10-07 review): on the public repo any
+      // commit identifier resolves to source, and the module map is already
+      // probe-enumerable — see the runbook's disclosure-tradeoff note.
       commit: process.env.RENDER_GIT_COMMIT ?? null,
       apiModules,
     });
