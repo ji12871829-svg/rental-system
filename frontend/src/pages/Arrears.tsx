@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download } from 'lucide-react';
-import { Button, EmptyState, KpiCard, PageHeader, Select, SkeletonTable, StatusBadge, useFetch, useToast } from '../components/ui';
+import { Download, AlertTriangle } from 'lucide-react';
+import { Button, EmptyState, MetricCardWithActions, PageHeader, Select, SkeletonTable, StatusBadge, useFetch, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { downloadBlob } from '../lib/download';
 import { money } from '../lib/format';
 import { useQueryParam } from '../lib/useQueryParam';
 
-interface ArrearRow {
+export interface ArrearRow {
   unitId: number;
   unitNumber: string;
   floor: string;
@@ -102,11 +102,62 @@ export default function Arrears() {
       />
 
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
-        <KpiCard label="Rent outstanding" value={money(totals.rent)} tone={totals.rent > 0 ? 'bad' : 'good'} />
-        <KpiCard label="Water outstanding" value={money(totals.water)} tone={totals.water > 0 ? 'bad' : 'good'} />
-        <KpiCard label="Total outstanding" value={money(totals.total)} tone={totals.total > 0 ? 'bad' : 'good'} />
-        <KpiCard label="Overdue / unpaid tenants" value={totals.overdues} tone={totals.overdues > 0 ? 'warn' : 'good'} />
-        <KpiCard label="Cleared tenants" value={totals.cleared} tone="good" />
+        <MetricCardWithActions
+          label="Rent outstanding"
+          value={money(totals.rent)}
+          sub="Unpaid rent across all units"
+          tone={totals.rent > 0 ? 'bad' : 'good'}
+          icon={<AlertTriangle size={16} strokeWidth={1.75} />}
+          iconVariant={totals.rent > 0 ? 'red' : 'green'}
+          actions={[
+            { label: 'View Details', to: '/arrears' },
+          ]}
+        />
+        <MetricCardWithActions
+          label="Water outstanding"
+          value={money(totals.water)}
+          sub="Unpaid water bills"
+          tone={totals.water > 0 ? 'bad' : 'good'}
+          icon={<AlertTriangle size={16} strokeWidth={1.75} />}
+          iconVariant={totals.water > 0 ? 'red' : 'green'}
+          actions={[
+            { label: 'View Details', to: '/arrears' },
+          ]}
+        />
+        <MetricCardWithActions
+          label="Total outstanding"
+          value={money(totals.total)}
+          sub="Rent + water"
+          tone={totals.total > 0 ? 'bad' : 'good'}
+          icon={<AlertTriangle size={16} strokeWidth={1.75} />}
+          iconVariant={totals.total > 0 ? 'red' : 'green'}
+          actions={[
+            { label: 'View Details', to: '/arrears' },
+            ...(totals.total > 0 ? [{ label: 'Send Reminders', to: '/sms?compose=arrears' }] : []),
+          ]}
+        />
+        <MetricCardWithActions
+          label="Overdue / unpaid tenants"
+          value={totals.overdues}
+          sub="Tenants past due date"
+          tone={totals.overdues > 0 ? 'warn' : 'good'}
+          icon={<AlertTriangle size={16} strokeWidth={1.75} />}
+          iconVariant={totals.overdues > 0 ? 'red' : 'green'}
+          actions={[
+            { label: 'View Details', to: '/arrears' },
+          ]}
+        />
+        <MetricCardWithActions
+          label="Cleared tenants"
+          value={totals.cleared}
+          sub="Fully paid or overpaid"
+          tone="good"
+          icon={<AlertTriangle size={16} strokeWidth={1.75} />}
+          iconVariant="green"
+          actions={[
+            { label: 'View Details', to: '/arrears' },
+          ]}
+        />
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">

@@ -77,9 +77,13 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 const paramsSchema = z.object({ id: z.coerce.number().int().positive() });
+const sendSmsSchema = z.object({
+  templateKind: z.string().optional(),
+});
 
-router.post('/:id/send', validateParams(paramsSchema), asyncHandler(async (req, res) => {
-  const row = await sendSmsNotification(Number(req.params.id));
+router.post('/:id/send', validateParams(paramsSchema), validateBody(sendSmsSchema.optional()), asyncHandler(async (req, res) => {
+  const { templateKind } = (req.body ?? {}) as { templateKind?: string };
+  const row = await sendSmsNotification(Number(req.params.id), { templateKind: templateKind ?? null });
   res.json({ data: row });
 }));
 

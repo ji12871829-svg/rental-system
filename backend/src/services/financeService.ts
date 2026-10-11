@@ -98,6 +98,8 @@ export async function dashboard(year?: number): Promise<DashboardData> {
     [targetYear]
   );
 
+  const cashflowRows = await cashflow(targetYear);
+
   const outstandingRentByUnit = unitOutstanding;
 
   const monthlyWater = await monthlyWaterSummary(targetYear);
@@ -149,6 +151,16 @@ export async function dashboard(year?: number): Promise<DashboardData> {
     charts: {
       expectedVsCollected: rentMonthlySummary.map((r) => ({
         month: r.month, expected: r.expectedRent, collected: r.rentCollected,
+      })),
+      cashflow: cashflowRows.map((r) => ({
+        month: r.month,
+        monthName: r.monthName,
+        rentIn: r.rentIn,
+        waterIn: r.waterIn,
+        totalIn: r.totalIn,
+        expensesOut: r.expensesOut,
+        net: r.net,
+        cumulativeNet: r.cumulativeNet,
       })),
       occupiedVsVacant: { occupied, vacant },
       rentByPaymentMethod: rentByMethod.map((r) => ({ method: r.method, total: toNumber(r.total) })),

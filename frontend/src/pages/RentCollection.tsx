@@ -216,7 +216,7 @@ export default function RentCollection() {
       <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Form */}
         <div ref={shakeRef} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-base font-semibold text-gray-900">Record Rent Payment</h2>
+          <h2 className="card-heading">Record Rent Payment</h2>
           <div className="space-y-3">
             <Field label="Tenant / Unit">
               <Select id="new-payment-tenant" value={tenantId} onChange={(e) => setTenantId(e.target.value === '' ? '' : Number(e.target.value))}>

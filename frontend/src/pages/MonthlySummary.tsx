@@ -3,7 +3,8 @@ import { Banknote, Download, Loader2, Mail, MessageSquare } from 'lucide-react';
 import {
   Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from '../components/charts';
-import { Button, KpiCard, Modal, PageHeader, Select, SkeletonTable, useFetch, useToast } from '../components/ui';
+import { Button, Modal, PageHeader, Select, SkeletonTable, useFetch, useToast } from '../components/ui';
+import { KpiCard } from '../components/dashboard/primitives';
 import { api } from '../lib/api';
 import { downloadBlob } from '../lib/download';
 import { MONTHS, money, number } from '../lib/format';

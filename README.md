@@ -29,7 +29,7 @@ scripts/    utility scripts (e.g. delete-user.ts)
 - **Properties & units** — units, occupancy, leases, move-in tracking
 - **Rent collection** — payment ledger, arrears (move-in-aware), receipts (PDF)
 - **Water billing** — meter readings, per-unit invoicing, bulk supply cost & margin
-- **M-Pesa** — three payment paths on one posting engine: automatic Paybill/Till C2B callbacks (unit-reference or sender-phone matching, review queue for stragglers), staff manual entry, and the manager-initiated Daraja STK prompt (`docs/RUNBOOK-mpesa-payment-flows.md`)
+- **M-Pesa** — three payment paths on one posting engine: automatic Paybill/Till C2B callbacks (unit-reference or sender-phone matching, review queue for stragglers), staff manual entry, and the manager-initiated Daraja STK prompt (`docs/runbooks/RUNBOOK-mpesa-payment-flows.md`)
 - **Tenant portal** — credentials issued by staff, self-service balances/statements, send-money payment instructions
 - **Messaging** — SMS + email providers with health checks, queued notifications, statement delivery
 - **Auth** — staff JWT with audience separation, optional dormant Clerk bridge, CSRF protection, audit log
@@ -55,7 +55,7 @@ credentials ship with the codebase.
 ## Testing & checks
 
 ```bash
-cd backend && npm test              # Jest integration suite (355 tests, 32 suites)
+cd backend && npm test              # Jest unit + integration suite (needs local PostgreSQL)
 cd frontend && npx tsc --noEmit     # strict typecheck
 cd frontend && npm run build        # production build
 ```

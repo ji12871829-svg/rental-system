@@ -1,0 +1,201 @@
+// textbee (own-SIM gateway) provider tests. Same shape as twilioProvider.test.ts:
+// the env module is mocked to pose as a non-test runtime with SMS_PROVIDER=textbee
+// (the real test env forces the mock provider), and global.fetch is stubbed so no
+// network is touched.
+jest.mock('../../src/config/env', () => {
+  const actual = jest.requireActual('../../src/config/env');
+  return {
+    ...actual,
+    isTest: false,
+    env: {
+      ...actual.env,
+      smsProvider: 'textbee',
+      textbeeApiKey: 'tb_test_key_123',
+      textbeeApiUrl: 'https://api.textbee.dev/api/v1',
+      textbeeDeviceId: '',
+    },
+  };
+});
+
+import { env } from '../../src/config/env';
+import { getSmsConfig, parseTextbeeResponse, sendSms } from '../../src/services/smsProvider';
+
+const fetchMock = jest.fn();
+
+beforeEach(() => {
+  fetchMock.mockReset();
+  jest.spyOn(global, 'fetch').mockImplementation(fetchMock);
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
+
+function textbeeQueued(overrides: Record<string, unknown> = {}, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => ({
+      data: { success: true, message: 'SMS added to queue for processing', smsBatchId: '66b1f2c3a4d5e6f7a8b9c0d2', recipientCount: 1, ...overrides },
+    }),
+  };
+}
+
+describe('getSmsConfig (textbee)', () => {
+  it('is live with only an API key — no sender ID exists to verify', () => {
+    expect(getSmsConfig()).toMatchObject({ provider: 'textbee', live: true });
+  });
+
+  it('exposes no senderId: the SIM in the phone is the sender, not an ID we set', () => {
+    expect(getSmsConfig().senderId).toBeUndefined();
+  });
+
+  it('is not live without an API key', () => {
+    (env as { textbeeApiKey: string }).textbeeApiKey = '';
+    expect(getSmsConfig().live).toBe(false);
+    (env as { textbeeApiKey: string }).textbeeApiKey = 'tb_test_key_123';
+  });
+});
+
+describe('sendSms (textbee)', () => {
+  it('POSTs x-api-key auth with recipients[]+message and NO from field', async () => {
+    fetchMock.mockResolvedValue(textbeeQueued());
+    const result = await sendSms({ phoneNumber: '0711000002', message: 'Rent receipt test' });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.textbee.dev/api/v1/gateway/send-sms');
+    expect(init.method).toBe('POST');
+    expect(init.headers['x-api-key']).toBe('tb_test_key_123');
+    expect(init.headers['Content-Type']).toBe('application/json');
+
+    const payload = JSON.parse(init.body);
+    expect(payload.recipients).toEqual(['+254711000002']); // normalized E.164
+    expect(payload.message).toBe('Rent receipt test');
+    // No sender identity of any kind — that is the point of this provider.
+    expect(payload.from).toBeUndefined();
+    expect(payload.senderId).toBeUndefined();
+    expect(payload.deviceId).toBeUndefined(); // unset → textbee picks the default
+
+    expect(result).toMatchObject({ ok: true, providerMessageId: '66b1f2c3a4d5e6f7a8b9c0d2' });
+    // Cost is the carrier's bundle, so the provider never reports one.
+    expect(result.cost).toBeUndefined();
+  });
+
+  it('includes deviceId only when TEXTBEE_DEVICE_ID is set', async () => {
+    (env as { textbeeDeviceId: string }).textbeeDeviceId = 'dev_42';
+    fetchMock.mockResolvedValue(textbeeQueued());
+    await sendSms({ phoneNumber: '+254711000002', message: 'x' });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).deviceId).toBe('dev_42');
+    (env as { textbeeDeviceId: string }).textbeeDeviceId = '';
+  });
+
+  it('strips a trailing slash from TEXTBEE_API_URL so the path never doubles', async () => {
+    (env as { textbeeApiUrl: string }).textbeeApiUrl = 'http://localhost:3001/api/v1/';
+    fetchMock.mockResolvedValue(textbeeQueued());
+    await sendSms({ phoneNumber: '+254711000002', message: 'x' });
+    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:3001/api/v1/gateway/send-sms');
+    (env as { textbeeApiUrl: string }).textbeeApiUrl = 'https://api.textbee.dev/api/v1';
+  });
+
+  it('turns the 429 free-tier quota response into an actionable FAILED send', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: async () => ({ message: 'Daily message limit reached' }),
+    });
+    const result = await sendSms({ phoneNumber: '+254711000002', message: 'x' });
+    expect(result.ok).toBe(false);
+    expect(result.failureReason).toContain('429');
+    expect(result.failureReason).toContain('Daily message limit reached');
+    expect(result.failureReason).toContain('retry later');
+  });
+
+  it('fails with a credential hint on 401 rather than a generic HTTP error', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 401, json: async () => ({ message: 'Unauthorized' }) });
+    const result = await sendSms({ phoneNumber: '+254711000002', message: 'x' });
+    expect(result.ok).toBe(false);
+    expect(result.failureReason).toContain('TEXTBEE_API_KEY');
+  });
+
+  it('reports data.success=false as a rejected send, not an accepted one', async () => {
+    fetchMock.mockResolvedValue(textbeeQueued({ success: false, message: 'Device is offline', smsBatchId: undefined }));
+    const result = await sendSms({ phoneNumber: '+254711000002', message: 'x' });
+    expect(result.ok).toBe(false);
+    expect(result.failureReason).toContain('Device is offline');
+  });
+
+  it('times out with an offline-phone hint instead of hanging the request', async () => {
+    fetchMock.mockImplementation((_url: string, init: { signal: AbortSignal }) =>
+      new Promise((_resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(new Error('This operation was aborted')));
+      }),
+    );
+    jest.useFakeTimers();
+    const pending = sendSms({ phoneNumber: '+254711000002', message: 'x' });
+    jest.advanceTimersByTime(15_000);
+    const result = await pending;
+    jest.useRealTimers();
+    expect(result.ok).toBe(false);
+    expect(result.failureReason).toContain('timed out');
+    expect(result.failureReason).toContain('phone online');
+  });
+
+  it('fails fast with a clear reason when the API key is missing (no network)', async () => {
+    (env as { textbeeApiKey: string }).textbeeApiKey = '';
+    const result = await sendSms({ phoneNumber: '+254711000002', message: 'x' });
+    expect(result.ok).toBe(false);
+    expect(result.failureReason).toContain('TEXTBEE_API_KEY');
+    expect(fetchMock).not.toHaveBeenCalled();
+    (env as { textbeeApiKey: string }).textbeeApiKey = 'tb_test_key_123';
+  });
+
+  it('rejects unparseable phone numbers before contacting the gateway', async () => {
+    const result = await sendSms({ phoneNumber: 'not-a-phone', message: 'x' });
+    expect(result.ok).toBe(false);
+    expect(result.failureReason).toContain('Invalid phone number');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('parseTextbeeResponse (response mapping)', () => {
+  it('records the batch id from the queued-accept shape', () => {
+    const r = parseTextbeeResponse({ data: { success: true, smsBatchId: 'batch_1' } }, 200);
+    expect(r).toMatchObject({ ok: true, providerMessageId: 'batch_1' });
+  });
+
+  it('falls back to a generated id when the immediate-dispatch shape omits one', () => {
+    const r = parseTextbeeResponse({ data: { successCount: 1, failureCount: 0 } }, 200);
+    expect(r.ok).toBe(true);
+    expect(r.providerMessageId).toMatch(/^TEXTBEE-\d+$/);
+  });
+
+  it('does not record a partial recipient failure as full success', () => {
+    const r = parseTextbeeResponse({ data: { successCount: 0, failureCount: 2 } }, 200);
+    expect(r.ok).toBe(false);
+    expect(r.failureReason).toContain('2 recipient(s) failed');
+  });
+
+  it('accepts a mixed batch that mostly succeeded, carrying the batch id', () => {
+    const r = parseTextbeeResponse({ data: { successCount: 3, failureCount: 1, smsBatchId: 'batch_2' } }, 200);
+    expect(r).toMatchObject({ ok: true, providerMessageId: 'batch_2' });
+  });
+
+  it('treats a 200 with no data as a non-send rather than a success', () => {
+    expect(parseTextbeeResponse({}, 200).ok).toBe(false);
+    expect(parseTextbeeResponse({ data: {} }, 200).ok).toBe(true); // {} → id "unknown"
+  });
+
+  it('surfaces the free-tier limit wording for 429 even with an empty body', () => {
+    const r = parseTextbeeResponse({}, 429);
+    expect(r.ok).toBe(false);
+    expect(r.failureReason).toContain('50/day');
+    expect(r.failureReason).toContain('300/month');
+  });
+
+  it('passes through other 4xx/5xx statuses with the provider message', () => {
+    const r = parseTextbeeResponse({ message: 'Device not found' }, 404);
+    expect(r.ok).toBe(false);
+    expect(r.failureReason).toContain('404');
+    expect(r.failureReason).toContain('Device not found');
+  });
+});

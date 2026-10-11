@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Button, EmptyState, Field, KpiCard, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
+import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
+import { KpiCard } from '../components/dashboard/primitives';
 import { api, qs } from '../lib/api';
 import { formatDate } from '../lib/format';
 

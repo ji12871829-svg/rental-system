@@ -295,7 +295,7 @@ existing service cannot be moved. Migrating = recreating:
 ## 8. M-Pesa rent automation
 
 Rent money arrives through three paths that all converge on the same posting
-engine and receipt pipeline — `docs/RUNBOOK-mpesa-payment-flows.md` is the
+engine and receipt pipeline — `docs/runbooks/RUNBOOK-mpesa-payment-flows.md` is the
 full walkthrough (matching cascade, review queue, STK outcomes, debug SQL):
 
 1. **Paybill/Till C2B confirmations (automatic)** — the tenant pays the
@@ -323,7 +323,7 @@ Set these environment variables in Render:
 | `MPESA_SHORTCODE` | Paybill/Till shortcode |
 | `MPESA_PASSKEY` | Daraja passkey for STK Push |
 | `MPESA_CALLBACK_URL` | `https://<service>.onrender.com/api/mpesa/stk/callback?token=<MPESA_CALLBACK_TOKEN>` |
-| `MPESA_CALLBACK_TOKEN` | Shared secret guarding all `/api/mpesa/*` callbacks; see `docs/RUNBOOK-mpesa-callback-gate.md` |
+| `MPESA_CALLBACK_TOKEN` | Shared secret guarding all `/api/mpesa/*` callbacks; see `docs/runbooks/RUNBOOK-mpesa-callback-gate.md` |
 | `MPESA_BASE_URL` | `https://sandbox.safaricom.co.ke` for testing, or the Daraja production URL |
 
 Register these HTTPS endpoints with Safaricom for C2B (append the same

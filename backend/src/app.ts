@@ -28,6 +28,8 @@ import rentRoutes from './routes/rent';
 import mpesaRoutes from './routes/mpesa';
 import mpesaReviewRoutes from './routes/mpesaReview';
 import notificationStuckRoutes from './routes/notificationStuck';
+import notificationsSummaryRoutes from './routes/notificationsSummary';
+import searchRoutes from './routes/search';
 import reportRoutes from './routes/reports';
 import settingsRoutes from './routes/settings';
 import smsRoutes from './routes/sms';
@@ -47,7 +49,7 @@ import vacanciesPublicRoutes from './routes/vacanciesPublic';
 
 // One entry per route module mounted into the app — recorded by mountApi()
 // at mount time so /api/health can report the exact module set of the
-// running build (see docs/RUNBOOK-deploy-gap-checks.md). The name, not the
+// running build (see docs/runbooks/RUNBOOK-deploy-gap-checks.md). The name, not the
 // prefix, is the identity: two routers may share one prefix.
 type ApiModuleRef = { prefix: string; name: string };
 
@@ -112,7 +114,7 @@ export function createApp() {
   // serves. Deploy-gap checks read this instead of inferring route presence
   // from 401-vs-404 probes — those are ambiguous under router-level
   // requireAuth (any /api/reports/* path 401s whether or not the subroute
-  // exists). See docs/RUNBOOK-deploy-gap-checks.md.
+  // exists). See docs/runbooks/RUNBOOK-deploy-gap-checks.md.
   const apiModules: ApiModuleRef[] = [];
   const mountApi = (prefix: string, router: express.Router, name: string): void => {
     apiModules.push({ prefix, name });
@@ -161,7 +163,7 @@ export function createApp() {
         // endpoint, but this makes it visible in every health check too.
         mpesaCallbackTokenSet: Boolean(env.mpesaCallbackToken),
       },
-      // Deploy-gap fingerprint (docs/RUNBOOK-deploy-gap-checks.md):
+      // Deploy-gap fingerprint (docs/runbooks/RUNBOOK-deploy-gap-checks.md):
       // `commit` pins the exact revision Render deployed — Render injects
       // RENDER_GIT_COMMIT at runtime; null anywhere else. `apiModules` is
       // every route module mounted in THIS build. Neither leaks secrets:
@@ -219,6 +221,8 @@ export function createApp() {
   mountApi('/api/privacy-requests', privacyRequestRoutes, 'privacyRequests');
   mountApi('/api/reports', reportRoutes, 'reports');
   mountApi('/api/reports', notificationStuckRoutes, 'notificationStuck');
+  mountApi('/api/reports', notificationsSummaryRoutes, 'notificationsSummary');
+  mountApi('/api/reports', searchRoutes, 'search');
   mountApi('/api/audit', auditRoutes, 'audit');
 
   // Unknown API routes → 404 in the standard error shape.

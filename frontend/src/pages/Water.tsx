@@ -598,13 +598,35 @@ function SupplySection() {
 
       {summary && (
         <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <KpiCard label="Water purchased" value={`${summary.waterPurchased} units`} sub={`avg ${money(summary.averagePurchaseCost, summary.currency)}/unit`} />
-          <KpiCard label="Total supply cost" value={money(summary.waterSupplyCost, summary.currency)} tone="warn" />
-          <KpiCard label="Water collected" value={money(summary.waterCollected, summary.currency)} sub={`${summary.collectionRate}% of billed`} tone="good" />
+          <KpiCard
+            label="Water purchased"
+            value={`${summary.waterPurchased} units`}
+            caption={`avg ${money(summary.averagePurchaseCost, summary.currency)}/unit`}
+            tone="default"
+            linkTo="/water?tab=supply"
+            linkLabel="Supply"
+          />
+          <KpiCard
+            label="Total supply cost"
+            value={money(summary.waterSupplyCost, summary.currency)}
+            tone="warn"
+            linkTo="/water?tab=supply"
+            linkLabel="Supply"
+          />
+          <KpiCard
+            label="Water collected"
+            value={money(summary.waterCollected, summary.currency)}
+            caption={`${summary.collectionRate}% of billed`}
+            tone="good"
+            linkTo="/water?tab=payments"
+            linkLabel="Payments"
+          />
           <KpiCard
             label={summary.surplus ? 'Water surplus' : 'Water deficit'}
             value={money(Math.abs(summary.surplusDeficit), summary.currency)}
             tone={summary.surplus ? 'good' : 'bad'}
+            linkTo="/water?tab=supply"
+            linkLabel="Supply"
           />
         </div>
       )}

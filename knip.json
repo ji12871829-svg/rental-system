@@ -1,11 +1,11 @@
 {
-  "$schema": "https://unpkg.com/knip@5/schema.json",
-  "ignore": [".ua/**", "shared/**", "design/**"],
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignore": ["shared/**", "design/**", "docs/**", ".agents/**"],
   "ignoreDependencies": ["jest-environment-node", "@jest/environment"],
   "workspaces": {
     ".": {
-      "entry": ["scripts/*.mjs"],
-      "ignoreDependencies": ["pg"]
+      "entry": ["scripts/*.mjs", "scripts/*.cjs"],
+      "ignoreDependencies": ["pg", "bcryptjs"]
     },
     "backend": {},
     "frontend": {

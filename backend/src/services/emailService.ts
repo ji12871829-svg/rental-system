@@ -66,6 +66,7 @@ export interface EmailRow {
   attachment2_name?: string | null;
   attachment2_content?: string | null;
   attachment2_content_type?: string | null;
+  template_kind?: string | null;
   attempt_count?: number;
   next_retry_at?: string | null;
   created_at: string;
@@ -120,6 +121,7 @@ interface QueueEmailInput {
   tenantId?: number | null;
   receiptId?: number | null;
   attachments?: EmailAttachment[];
+  templateKind?: string | null;
 }
 
 // The schema stores two attachment slots per row; callers hand us 0..2
@@ -179,8 +181,9 @@ async function queueEmail(input: QueueEmailInput, exec: SqlExec = pool): Promise
     `INSERT INTO email_notifications
        (receipt_id, tenant_id, email_address, subject, body_html, body_text, status,
         attachment_name, attachment_content, attachment_content_type,
-        attachment2_name, attachment2_content, attachment2_content_type)
-     VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', $7, $8, $9, $10, $11, $12)
+        attachment2_name, attachment2_content, attachment2_content_type,
+        template_kind)
+     VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', $7, $8, $9, $10, $11, $12, $13)
      RETURNING id, receipt_id, tenant_id, email_address, subject, body_html, body_text,
                status, provider_message_id, sent_at, failure_reason,
                attachment_name, attachment_content, attachment_content_type,
@@ -199,6 +202,7 @@ async function queueEmail(input: QueueEmailInput, exec: SqlExec = pool): Promise
       a2?.filename ?? null,
       a2?.content ?? null,
       a2?.contentType ?? null,
+      input.templateKind ?? null,
     ]
   );
   return rows[0] as EmailRow;
@@ -225,7 +229,7 @@ async function queueEmail(input: QueueEmailInput, exec: SqlExec = pool): Promise
 //
 // Both statuses are replayable: the sweep claims rows in EITHER status that
 // carry a due deadline, and only a SENT row is genuinely final.
-export async function sendEmailNotification(id: number, opts: { email?: string } = {}): Promise<EmailRow> {
+export async function sendEmailNotification(id: number, opts: { email?: string; templateKind?: string | null } = {}): Promise<EmailRow> {
   const row = await queryOne<EmailRow & {
     receipt_number: string | null;
     attachment_name: string | null;
@@ -256,6 +260,9 @@ export async function sendEmailNotification(id: number, opts: { email?: string }
   const sendTo = opts.email ? opts.email : row.email_address;
   if (opts.email && opts.email !== row.email_address) {
     await query('UPDATE email_notifications SET email_address = $2 WHERE id = $1', [id, opts.email]);
+  }
+  if (opts.templateKind && row.template_kind === null) {
+    await query('UPDATE email_notifications SET template_kind = $2 WHERE id = $1', [id, opts.templateKind]);
   }
 
   const attachments = attachmentsFromRow(row);

@@ -94,7 +94,7 @@ try {
 // Asserts the LIVE deployment is the revision being verified, and that every
 // route module mounted in backend/src/app.ts shows up in the running build's
 // apiModules — the authoritative deploy-gap check (see
-// docs/RUNBOOK-deploy-gap-checks.md, Technique 1). Both are recorded as
+// docs/runbooks/RUNBOOK-deploy-gap-checks.md, Technique 1). Both are recorded as
 // SKIPs, not failures, on a build that predates the liveness fields (commit
 // null / apiModules absent): absence is an old build, not drift. A WRONG
 // commit, however, is a hard failure — after a bounded wait in CI, so a

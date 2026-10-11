@@ -7,7 +7,7 @@
 // baseUrl defaults to RPMS_BASE_URL, then https://rpms-gakt.onrender.com —
 // same precedence as scripts/verify-live.mjs.
 //
-// What it compares (techniques from docs/RUNBOOK-deploy-gap-checks.md):
+// What it compares (techniques from docs/runbooks/RUNBOOK-deploy-gap-checks.md):
 //   1. /api/health `commit`        — deployed revision vs `git rev-parse origin/main`
 //   2. /api/health `apiModules`    — route modules mounted in app.ts vs what the
 //                                    running build reports it mounted
@@ -18,7 +18,7 @@
 //                                    authless router with no GET route at the
 //                                    prefix (e.g. /api/auth) return the identical
 //                                    404. Absence is provable only via apiModules.
-//                                    See RUNBOOK-deploy-gap-checks.md.
+//                                    See docs/runbooks/RUNBOOK-deploy-gap-checks.md.
 //   4. Frontend chunk inventory    — pages registered in routeChunks.ts vs the
 //                                    chunk filenames embedded in the live bundle
 //
@@ -88,7 +88,12 @@ function parseBackendModules() {
   for (const m of appTs.matchAll(/mountApi\(\s*'([^']+)',\s*(\w+),\s*'([^']+)'\s*\)/g)) {
     modules.push({ prefix: m[1], var: m[2], name: m[3], file: files.get(m[2]) ?? null });
   }
-  if (modules.length === 0) fail('no mountApi(...) calls found in backend/src/app.ts');
+  if (modules.length === 0) {
+    // Checked-out ref predates mountApi() (e.g. origin/main before the
+    // health-liveness work merged). Module drift is not enumerable from
+    // app.ts at this ref - leave it undetermined rather than abort.
+    return [];
+  }
   return modules;
 }
 
@@ -263,7 +268,7 @@ function report() {
     }
   }
   console.log(`\nSummary: ${drift.length} definite drift item(s), ${ambiguous.length} undetermined.`);
-  console.log('Remedies per cause: docs/RUNBOOK-deploy-gap-checks.md');
+  console.log('Remedies per cause: docs/runbooks/RUNBOOK-deploy-gap-checks.md');
 }
 
 const health = await fetchHealth();

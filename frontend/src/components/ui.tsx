@@ -13,23 +13,34 @@ export function StatusBadge({ status }: { status: string }) {
   );
 }
 
-// ------------------------------------------------------------------- KpiCard
-export function KpiCard({ label, value, sub, tone = 'default' }: { label: string; value: ReactNode; sub?: ReactNode; tone?: 'default' | 'good' | 'bad' | 'warn' }) {
-  const tones: Record<string, string> = {
-    default: 'border-ash',
-    good: 'border-emerald-300 bg-emerald-50/50',
-    bad: 'border-red-300 bg-red-50/50',
-    warn: 'border-amber-300 bg-amber-50/50',
-  };
+// ---------------------------------------------------------------- SectionHead
+// Small section eyebrow: tiny uppercase label (left) with an optional context
+// caption (right). Used by the dashboard bands (KpiBand, ChartGrid, HealthCards,
+// stats strips) and available to any page that wants the same chapter-heading
+// rhythm without importing from the dashboard primitives.
+export function SectionHead({ label, caption }: { label: string; caption?: ReactNode }) {
   return (
-    <div className={`rounded-xl border ${tones[tone]} bg-white p-4 shadow-sm`}>
-      <div className="font-sans text-xs font-medium uppercase tracking-wide text-silver">{label}</div>
-      {/* text-xl on narrow phones keeps currency values from overflowing a 2-col grid. */}
-      <div className="mt-1 text-xl font-bold text-gray-900 sm:text-2xl">{value}</div>
-      {sub && <div className="mt-1 text-xs text-graphite">{sub}</div>}
+    <div className="mb-3 flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+      <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-gray-500">{label}</h2>
+      {caption && <div className="text-[11px] text-gray-400">{caption}</div>}
     </div>
   );
 }
+
+// ------------------------------------------------------------------- KpiCard
+// Unified KPI card — single component covering both the simple metric shape
+// (label/value/sub/tone, used by Arrears/Water/Expenses/etc.) and the rich
+// dashboard shape (title/badge/link*/children/footer, used by KpiBand).
+//
+// The canonical definition lives in primitives.tsx. This re-export keeps the
+// `import { KpiCard } from '../components/ui'` contract working for the simple
+// callers; new code should import from primitives directly.
+//
+// Deprecated: the old inline body (border-ash / bg-white / p-4 shell) is
+// replaced by the primitives.tsx definition, which renders the same visual
+// for the simple shape and adds the rich shape. Remove this alias once every
+// import points at primitives.
+export { KpiCard } from './dashboard/primitives';
 
 // -------------------------------------------------------------- StatGroupCard
 // Groups several related numbers into ONE bordered card instead of one box
@@ -483,3 +494,97 @@ export function useFetch<T>(fetcher: () => Promise<T>, deps: unknown[] = [], opt
   const refresh = useCallback(() => setTick((t) => t + 1), []);
   return { data, loading, error, refresh };
 }
+
+// ---------------------------------------------------------------- TopbarSearch
+// Re-exported from the dedicated file below. Kept in ui.tsx's export surface
+// so pages keep importing from '../components/ui' like every other card.
+export { TopbarSearch } from './TopbarSearch';
+
+// ---------------------------------------------------------------- NotifPanel
+// Re-exported from the dedicated file below. Kept in ui.tsx's export surface
+// so pages keep importing from '../components/ui' like every other card.
+export { NotifPanel, type NotifSummary } from './NotifPanel';
+
+// ---------------------------------------------------------------- MetricCardWithActions
+// Metric card with icon slot + action buttons row — modeled on the xampp RMS
+// `.metric-card` pattern (design-system.css §METRIC CARDS). Extends the local
+// KpiCard simple shape with an icon + a row of action links/buttons.
+export interface MetricAction {
+  label: string;
+  to?: string;
+  onClick?: () => void;
+  variant?: 'outline' | 'primary';
+}
+
+export function MetricCardWithActions({
+  label,
+  value,
+  sub,
+  icon,
+  iconVariant = 'default',
+  actions,
+  tone = 'default',
+}: {
+  label: string;
+  value: ReactNode;
+  sub?: ReactNode;
+  icon?: ReactNode;
+  iconVariant?: 'default' | 'red' | 'green';
+  actions?: MetricAction[];
+  tone?: 'default' | 'good' | 'bad' | 'warn';
+}) {
+  const iconStyles: Record<string, string> = {
+    default: 'bg-gray-100 text-gray-600',
+    red: 'bg-red-50 text-red-600',
+    green: 'bg-emerald-50 text-emerald-600',
+  };
+  const valueStyles: Record<string, string> = {
+    default: 'text-gray-900',
+    good: 'text-emerald-700',
+    bad: 'text-red-700',
+    warn: 'text-amber-700',
+  };
+  return (
+    <div className="rounded-xl border border-ash bg-white p-5 shadow-sm">
+      {icon && (
+        <div className="mb-3 flex items-center gap-2">
+          <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-base ${iconStyles[iconVariant]}`}>
+            {icon}
+          </div>
+          <div className="font-sans text-xs font-medium uppercase tracking-wide text-silver">{label}</div>
+        </div>
+      )}
+      <div className={`text-xl font-bold tabular-nums ${valueStyles[tone]}`}>{value}</div>
+      {sub && <div className="mt-1 text-xs text-gray-400">{sub}</div>}
+      {actions && actions.length > 0 && (
+        <div className="mt-4 flex gap-2">
+          {actions.map((a) =>
+            a.to ? (
+              <Link
+                key={a.label}
+                to={a.to}
+                className="flex-1 rounded-lg border border-ash bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-50 hover:border-gray-300 active:scale-[0.98]"
+              >
+                {a.label}
+              </Link>
+            ) : a.onClick ? (
+              <button
+                key={a.label}
+                type="button"
+                onClick={a.onClick}
+                className={`flex-1 rounded-lg px-3 py-2 text-xs font-medium transition-colors duration-150 active:scale-95 ${
+                  a.variant === 'primary'
+                    ? 'bg-brand-500 text-white hover:bg-brand-600'
+                    : 'border border-ash bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {a.label}
+              </button>
+            ) : null,
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+

@@ -60,7 +60,17 @@ export const api = {
   del: <T extends ApiItemResponse<unknown>>(path: string) =>
     request<T>(path, { method: 'DELETE' }),
   list: <T>(path: string) => request<Paged<T>>(path),
+  templateKinds: () => api.list<TemplateKindRow>('/api/templates'),
 };
+
+export interface TemplateKindRow {
+  kind: string;
+  label: string;
+  channel: 'SMS' | 'WHATSAPP' | 'EMAIL';
+  customized: boolean;
+  subject: string | null;
+  body: string;
+}
 
 export function qs(params: Record<string, string | number | boolean | undefined | null>): string {
   const search = new URLSearchParams();

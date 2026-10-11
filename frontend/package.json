@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "guard:dark-mode": "node ../scripts/check-dark-mode.mjs",
+    "guard:dark-mode-classes": "node ../scripts/check-dark-mode-classes.mjs",
+    "test:dark-mode": "npx playwright test dark-mode-screenshot"
   },
   "dependencies": {
     "@clerk/react": "^6.16.1",
@@ -20,6 +23,7 @@
     "react-router-dom": "^7.18.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@types/react": "^18.3.3",

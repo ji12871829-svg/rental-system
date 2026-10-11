@@ -5,7 +5,7 @@
 //
 // The with-keys path (real Clerk session → mapped user → staff cookie) needs
 // a live Clerk instance to sign anything, so it is verified manually per
-// docs/RUNBOOK-clerk-setup.md, not here.
+// docs/runbooks/RUNBOOK-clerk-setup.md, not here.
 import request from 'supertest';
 import { createApp } from '../../src/app';
 import { pool } from '../../src/config/db';

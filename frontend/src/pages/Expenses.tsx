@@ -3,7 +3,8 @@ import { Plus } from 'lucide-react';
 import {
   Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from '../components/charts';
-import { Button, EmptyState, Field, KpiCard, Modal, PageHeader, Pagination, Select, SkeletonTable, TextInput, useFetch, useToast } from '../components/ui';
+import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, TextInput, useFetch, useToast } from '../components/ui';
+import { KpiCard } from '../components/dashboard/primitives';
 import { api, qs } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { MONTHS, categoryLabel, formatDate, methodLabel, money } from '../lib/format';
@@ -74,14 +75,15 @@ export default function Expenses() {
 
       {summary && (
         <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <KpiCard label={`Total expenses ${summary.reportingYear}`} value={money(summary.totalExpenses)} tone="warn" />
+          <KpiCard label={`Total expenses ${summary.reportingYear}`} value={money(summary.totalExpenses)} tone="warn" caption="All categories, full year" />
           {/* Follows the month filter when one is active, else today's month. */}
           <KpiCard
             label={monthFilter ? `${MONTHS[Number(monthFilter) - 1]} spend` : 'This month'}
             value={money(summary.byMonth.find((m) => m.month === (monthFilter ? Number(monthFilter) : now.getMonth() + 1))?.total ?? 0)}
+            caption="Drill down by category below"
           />
-          <KpiCard label="Biggest category" value={summary.byCategory[0] ? categoryLabel(summary.byCategory[0].category) : '—'} sub={summary.byCategory[0] ? money(summary.byCategory[0].total) : undefined} />
-          <KpiCard label="Categories used" value={summary.byCategory.length} />
+          <KpiCard label="Biggest category" value={summary.byCategory[0] ? categoryLabel(summary.byCategory[0].category) : '—'} caption={summary.byCategory[0] ? money(summary.byCategory[0].total) : undefined} />
+          <KpiCard label="Categories used" value={summary.byCategory.length} caption="Active spend categories" />
         </div>
       )}
 

@@ -68,11 +68,12 @@ const paramsSchema = z.object({ id: z.coerce.number().int().positive() });
 // the stored address (the normal retry path).
 const sendAgainSchema = z.object({
   email: z.string().trim().email().max(255).optional(),
+  templateKind: z.string().optional(),
 });
 
 router.post('/:id/send', validateParams(paramsSchema), validateBody(sendAgainSchema.optional()), asyncHandler(async (req, res) => {
-  const { email } = (req.body ?? {}) as { email?: string };
-  const row = await sendEmailNotification(Number(req.params.id), { email });
+  const { email, templateKind } = (req.body ?? {}) as { email?: string; templateKind?: string };
+  const row = await sendEmailNotification(Number(req.params.id), { email, templateKind: templateKind ?? null });
   res.json({ data: row });
 }));
 

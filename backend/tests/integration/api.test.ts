@@ -105,7 +105,7 @@ afterAll(async () => {
 // Security (spec §67)
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
-// Deploy-gap liveness (docs/RUNBOOK-deploy-gap-checks.md)
+// Deploy-gap liveness (docs/runbooks/RUNBOOK-deploy-gap-checks.md)
 // ---------------------------------------------------------------------------
 describe('Deploy-gap liveness', () => {
   it('health echoes RENDER_GIT_COMMIT when Render provides it', async () => {
@@ -130,11 +130,20 @@ describe('Deploy-gap liveness', () => {
       const names = modules.map((m) => m.name);
       // One pre-branch module, one feature-branch module, and the twin-mount
       // case behind the 2026-10-07 false positive: 401s under /api/reports
-      // masked whether notificationStuck was actually mounted.
-      for (const expected of ['units', 'vacancies', 'reports', 'notificationStuck']) {
+      // masked whether notificationStuck was actually mounted. notificationsSummary
+      // and search are the two later additions to the same prefix, so the
+      // /api/reports multi-mount is exactly what this assertion pins.
+      for (const expected of [
+        'units',
+        'vacancies',
+        'reports',
+        'notificationStuck',
+        'notificationsSummary',
+        'search',
+      ]) {
         expect(names).toContain(expected);
       }
-      expect(modules.filter((m) => m.prefix === '/api/reports')).toHaveLength(2);
+      expect(modules.filter((m) => m.prefix === '/api/reports')).toHaveLength(4);
       expect(modules.filter((m) => m.prefix === '/api/public')).toHaveLength(2);
     } finally {
       if (prev !== undefined) process.env.RENDER_GIT_COMMIT = prev;

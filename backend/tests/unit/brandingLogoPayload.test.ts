@@ -4,7 +4,7 @@ import { parseLogoPayload } from '../../src/services/brandingService';
 const fromText = (s: string) => Buffer.from(s, 'utf8').toString('base64');
 const url = (mime: string, base64: string) => `data:${mime};base64,${base64}`;
 
-// Regression lock for security finding F3 (SECURITY-ASSESSMENT-2026-09-19):
+// Regression lock for security finding F3 (docs/security/SECURITY-ASSESSMENT-2026-09-19.md):
 // stored XSS via an SVG logo served back from this origin. parseLogoPayload is
 // the single gate on the only write path (uploadLogo), so every case below
 // asserts the gate still holds — a widened MIME regex or a dropped magic-byte

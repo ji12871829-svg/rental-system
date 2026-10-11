@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BrandLogo } from './BrandLogo';
 import { Suspense } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
@@ -8,11 +8,13 @@ import {
   Percent, FolderLock, Megaphone,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { api } from '../lib/api';
 import { branding } from '../lib/branding';
 import { routeChunks, prefetchRoute } from '../lib/routeChunks';
 import { useBranding } from '../lib/BrandingContext';
 import BrandingBanner from './BrandingBanner';
 import { ThemeToggle } from './ThemeToggle';
+import { NotifPanel, type NotifSummary, TopbarSearch } from './ui';
 
 // One icon set (lucide), one stroke weight (1.75), recolored via currentColor.
 import type { LucideIcon } from 'lucide-react';
@@ -160,11 +162,30 @@ const NAV_SECTIONS: NavSection[] = [
 export default function Layout() {
   const { legalNameDisplay, lastUpdatedDisplay } = useBranding();
   const { user, logout } = useAuth();
+  const [notifSummary, setNotifSummary] = useState<NotifSummary | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   // Every titled section (Property, Billing, … Management, Help) is a
   // collapsible tab: closed by default, toggled only by clicking its header.
   // Only the untitled Dashboard section always renders open.
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  // Live unread badge: poll the summary while the topbar is mounted so the
+  // bell always reflects real delivery state (PENDING/FAILED/ERRONEOUS), not a
+  // render-time snapshot. 60s cadence matches the dashboard poll.
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const load = async () => {
+      try {
+        const data = await api.get<{ data: NotifSummary }>('/api/reports/notifications-summary').then((r) => r.data);
+        if (!cancelled) setNotifSummary(data);
+      } catch {
+        // Non-blocking: badge keeps its last known value.
+      }
+      if (!cancelled) timer = setTimeout(load, 60_000);
+    };
+    load();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, []);
 
   const visibleSections = NAV_SECTIONS.map((section) =>
     Object.assign({}, section, {
@@ -343,12 +364,33 @@ export default function Layout() {
               </Link>
             </div>
           </div>
+          {/* Global search — xampp RMS `.topbar-search` + `#searchDropdown`
+                pattern, mirrored as a React component. Center flex:1 on
+                desktop, hidden on mobile (the xampp RMS mobile CSS hides
+                .topbar-search under 768px; we hide it under md). */}
+          <div className="hidden md:block flex-1 max-w-md">
+            <TopbarSearch />
+          </div>
           <div className="hidden items-center gap-2 text-sm font-medium text-gray-500 md:flex">
             <BarChart3 size={16} strokeWidth={1.75} className="text-brand-500" aria-hidden />
             {branding.appNameFull}
           </div>
           <div className="flex items-center gap-3">
             <ThemeToggle />
+            {/* Notification bell — xampp RMS `.topbar-btn`#notifBtn pattern,
+                mirrored here with a live unread badge from the summary poll.
+                Desktop bell sits between the theme toggle and the date; the
+                mobile bell is in the chevron group to the left. */}
+            <div className="flex items-center gap-2">
+              {/* Mobile-only chevron group: the bell is part of the top row
+                  (menu + logo + bell) so the header stays one row under 640px. */}
+              <div className="hidden sm:flex" />
+              <NotifPanel
+                key={notifSummary?.unread ?? 0}
+                unread={notifSummary?.unread ?? 0}
+                onUnreadChange={(unread) => setNotifSummary((prev) => prev ? { ...prev, unread, unreadCounts: prev.unreadCounts } : null)}
+              />
+            </div>
             {/* Decorative date: hidden below 400px, where it would squeeze
                 the theme toggle below its 44px touch width. */}
             <div className="hidden max-[400px]:hidden min-[401px]:block text-sm text-gray-600">

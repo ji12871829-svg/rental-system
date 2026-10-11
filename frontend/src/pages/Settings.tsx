@@ -435,7 +435,7 @@ export default function Settings() {
 
       {canEditIdentity && (
         <div className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-900">Business logo</h2>
+          <h2 className="card-heading">Business logo</h2>
           <p className="mt-1 mb-4 text-sm text-gray-500">
             Shown in the app header, the tenant portal and on every printed or emailed receipt and report.
             PNG, JPEG, GIF or WebP — up to 512 KB. A transparent PNG looks best on receipts.
@@ -481,7 +481,7 @@ export default function Settings() {
 
       {canEditIdentity && (
         <form noValidate ref={shakeIdentityRef} onSubmit={saveIdentity} className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-900">Edit business identity</h2>
+          <h2 className="card-heading">Edit business identity</h2>
           <p className="mt-1 mb-4 text-sm text-gray-500">
             These details appear on legal pages, printed and PDF receipts, SMS/email receipts, footers and the favicon.
             Clear a field to hide it everywhere until it is filled again.
@@ -532,7 +532,7 @@ export default function Settings() {
 
       {canEditIdentity && (
         <form ref={shakePaybillRef} onSubmit={savePaybill} className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-900">Tenant PayBill</h2>
+          <h2 className="card-heading">Tenant PayBill</h2>
           <p className="mt-1 mb-4 text-sm text-gray-500">One landlord PayBill for all tenants. Rent uses the unit number; water uses the unit number followed by <b>-WATER</b>.</p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="PayBill number" hint="Digits only, 5 to 10 digits.">
@@ -557,7 +557,7 @@ export default function Settings() {
 
       {canEditIdentity && (
         <div className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-900">Email provider</h2>
+          <h2 className="card-heading">Email provider</h2>
           <p className="mt-1 mb-4 text-sm text-gray-500">
             Receipts, statements and portal credentials are sent through this provider. Send a test email to
             verify the configuration end-to-end — the provider's own response is shown below.
@@ -612,7 +612,7 @@ export default function Settings() {
 
       {canEditIdentity && (
         <div className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-900">SMS provider</h2>
+          <h2 className="card-heading">SMS provider</h2>
           <p className="mt-1 mb-4 text-sm text-gray-500">
             Receipt SMS and notifications are sent through this provider. Send a test SMS to verify the
             configuration end-to-end — the provider's own response is shown below.

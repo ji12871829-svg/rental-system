@@ -161,5 +161,18 @@ export interface DashboardData {
     waterSupplyCostVsCollected: { month: number; supplyCost: number; collected: number }[];
     monthlyWaterSurplusDeficit: { month: number; surplusDeficit: number }[];
     outstandingWaterByUnit: OutstandingWaterRow[];
+    /** Financial trends: money in (rent + water) vs expenses out per month —
+        the xampp RMS-style financial-trends bar chart (payments / invoices /
+        expenses). `cashflow()` in financeService.ts is the one source. */
+    cashflow: {
+      month: number;
+      monthName: string;
+      rentIn: number;
+      waterIn: number;
+      totalIn: number;
+      expensesOut: number;
+      net: number;
+      cumulativeNet: number;
+    }[];
   };
 }

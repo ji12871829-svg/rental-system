@@ -158,14 +158,15 @@ export interface QueueSmsInput {
   phoneNumber: string;
   message: string;
   receiptId?: number | null;
+  templateKind?: string | null;
 }
 
 export async function queueSms(input: QueueSmsInput, exec: SqlExec = poolExec): Promise<number | null> {
   const inserted = await exec.query(
-    `INSERT INTO sms_notifications (receipt_id, tenant_id, phone_number, message, status)
-     VALUES ($1, $2, $3, $4, 'PENDING')
+    `INSERT INTO sms_notifications (receipt_id, tenant_id, phone_number, message, status, template_kind)
+     VALUES ($1, $2, $3, $4, 'PENDING', $5)
      RETURNING id`,
-    [input.receiptId ?? null, input.tenantId, input.phoneNumber, input.message]
+    [input.receiptId ?? null, input.tenantId, input.phoneNumber, input.message, input.templateKind ?? null]
   );
   return inserted.rows[0]?.id ?? null;
 }
@@ -302,7 +303,7 @@ export async function listSms(filters: SmsFilters): Promise<{
 // failure with attempts left schedules next_retry_at (exponential backoff —
 // see smsRetryJob) unless retries are disabled (manual sends honor that too:
 // the job, not the route, decides when automation touches a row).
-export async function sendSmsNotification(id: number): Promise<unknown> {
+export async function sendSmsNotification(id: number, opts: { templateKind?: string | null } = {}): Promise<unknown> {
   const row = await queryOne<{ id: number; phone_number: string; message: string; status: string }>(
     'SELECT id, phone_number, message, status FROM sms_notifications WHERE id = $1',
     [id]
@@ -350,6 +351,10 @@ export async function sendSmsNotification(id: number): Promise<unknown> {
       [id, result.failureReason ?? 'Unknown provider error', attemptCount, delayMs === null ? null : new Date(Date.now() + delayMs)]
     );
   }
+  await query(
+    `UPDATE sms_notifications SET template_kind = $2 WHERE id = $1 AND template_kind IS NULL`,
+    [id, opts.templateKind ?? null],
+  );
   return queryOne('SELECT * FROM sms_notifications WHERE id = $1', [id]);
 }
 
@@ -424,6 +429,15 @@ export async function applyDeliveryReport(report: AtDeliveryReport): Promise<Del
 // provider's reason, and the UI shows the mode banner instead of a warning.
 export async function getSmsBalance(): Promise<BalanceStatus> {
   const cfg = getSmsConfig();
+  if (cfg.provider === 'textbee') {
+    // There is no pre-paid wallet to check: the send is relayed by a phone's
+    // own SIM, so the cost is whatever the carrier bundle covers. Saying
+    // "balance unknown" here would imply a missing credential — it isn't.
+    return {
+      state: 'unknown',
+      reason: 'No wallet balance: SMS_PROVIDER=textbee sends from the phone\'s own SIM, so cost is your carrier bundle. Watch the free-tier quota (50/day, 300/month) on the textbee dashboard instead.',
+    };
+  }
   if (cfg.provider !== 'africastalking' || !cfg.live) {
     return { state: 'unknown', reason: 'Balance is only available in live Africa\'s Talking mode.' };
   }
