@@ -2,7 +2,7 @@ import { poolExec, query, queryOne, type SqlExec } from '../config/db';
 import { paginate } from './paginate';
 import { env } from '../config/env';
 import { MONTH_NAMES, type Pagination } from '../types';
-import { combinedReceiptMessage, rentReceiptMessage, waterReceiptMessage } from '../utils/businessRules';
+import { combinedReceiptMessage, landlordAlertMessage, rentReceiptMessage, waterReceiptMessage } from '../utils/businessRules';
 import { badRequest, notFound } from '../utils/httpError';
 import { logAudit } from './auditService';
 import { toNumber } from '../utils/money';
@@ -154,7 +154,8 @@ async function resolveReceiptTemplate(
 // the Tenant reminder module — funnels through here. Pass the enclosing
 // transaction's `exec` to queue inside a payment transaction.
 export interface QueueSmsInput {
-  tenantId: number;
+  /** NULL for owner-facing rows (landlord alerts) — never tenant-scoped. */
+  tenantId: number | null;
   phoneNumber: string;
   message: string;
   receiptId?: number | null;
@@ -208,6 +209,67 @@ export async function prepareForReceipt(
   });
   return queueSms(
     { tenantId: receipt.tenant_id, phoneNumber: row.phone_number, message, receiptId: receipt.id },
+    exec
+  );
+}
+
+// The landlord (owner) payment alert: a PENDING sms row on the operator's own
+// business contact phone, prepared on the caller's payment transaction
+// exactly like the tenant's receipt SMS. Gated by
+// settings.notify_landlord_on_payment and by a contact phone being on file
+// in Business Identity. tenant_id stays NULL — the alert is not the tenant's
+// message, so tenant-scoped history views can never match it. Returns the new
+// row's id (for post-commit auto-dispatch) or null when nothing should queue.
+// RENT/COMBINED gating is the seam's job (postPaymentDispatch) — money into
+// the rent book, not a water top-up.
+export async function prepareLandlordAlert(
+  receipt: ReceiptLike,
+  exec: SqlExec = poolExec
+): Promise<number | null> {
+  const row = (
+    await exec.query(
+      `SELECT t.full_name, u.unit_number, s.currency, s.notify_landlord_on_payment
+       FROM tenants t
+       JOIN units u ON u.id = t.unit_id
+       JOIN settings s ON s.id = 1
+       WHERE t.id = $1`,
+      [receipt.tenant_id]
+    )
+  ).rows[0];
+  if (!row || !row.notify_landlord_on_payment) return null;
+
+  const identity = await getBusinessIdentity();
+  const phone = identity.phone?.trim();
+  if (!phone) return null; // no contact phone on file → nothing to alert
+
+  const amount = toNumber(receipt.total_amount);
+  const monthName = MONTH_NAMES[receipt.billing_month - 1];
+  const custom = await getCustomTemplate('SMS_LANDLORD_ALERT');
+  const message = custom
+    ? renderMergeFields(custom.body, {
+        name: row.full_name,
+        unit: row.unit_number ?? '',
+        month: monthName,
+        year: receipt.billing_year,
+        amount,
+        balance: toNumber(receipt.balance),
+        receipt: receipt.receipt_number,
+        currency: row.currency,
+        business: identity.name ?? '',
+      })
+    : landlordAlertMessage({
+        tenantName: row.full_name,
+        unitNumber: row.unit_number ?? '',
+        monthName,
+        year: receipt.billing_year,
+        amountPaid: amount,
+        receiptNumber: receipt.receipt_number,
+        balance: toNumber(receipt.balance),
+        currency: row.currency,
+        businessIdentity: identity.name ?? undefined,
+      });
+  return queueSms(
+    { tenantId: null, phoneNumber: phone, message, receiptId: receipt.id, templateKind: 'LANDLORD_ALERT' },
     exec
   );
 }

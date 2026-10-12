@@ -4,13 +4,15 @@ import { TEMPLATE_KINDS } from '../../src/services/templateService';
 import { renderMergeFields } from '../../src/utils/mergeFields';
 
 describe('template kind registry', () => {
-  it('declares exactly the 9 supported kinds in a stable order', () => {
+  it('declares exactly the 11 supported kinds in a stable order', () => {
     expect(TEMPLATE_KINDS.map((k) => k.kind)).toEqual([
       'SMS_RENT_RECEIPT',
       'SMS_WATER_RECEIPT',
       'SMS_COMBINED_RECEIPT',
       'SMS_BALANCE_DUE',
       'SMS_OVERDUE',
+      'SMS_LANDLORD_ALERT',
+      'SMS_RENT_DUE_SOON',
       'WHATSAPP_BALANCE_DUE',
       'WHATSAPP_OVERDUE',
       'WHATSAPP_PAYMENT_CONFIRMATION',

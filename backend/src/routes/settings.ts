@@ -27,6 +27,9 @@ const updateSchema = z.object({
   // Runtime SMS provider override. null/empty clears the override so the
   // .env SMS_PROVIDER becomes effective again.
   smsProvider: z.enum(['mock', 'africastalking', 'twilio', 'textbee']).nullable().optional(),
+  // Rent SMS automation: owner payment alert + scheduled reminder job.
+  notifyLandlordOnPayment: z.boolean().optional(),
+  autoRemindersEnabled: z.boolean().optional(),
 });
 
 router.put('/', managerOrAdmin, validateBody(updateSchema), asyncHandler(async (req, res) => {
@@ -34,6 +37,7 @@ router.put('/', managerOrAdmin, validateBody(updateSchema), asyncHandler(async (
     reportingYear?: number; currency?: string; waterRate?: number; retentionYears?: number;
     ownerName?: string; ownerEmail?: string; ownerPhone?: string; managementFeePercent?: number;
     smsProvider?: string | null;
+    notifyLandlordOnPayment?: boolean; autoRemindersEnabled?: boolean;
   };
   const settings = await updateSettings({
     reportingYear: body.reportingYear,
@@ -47,6 +51,9 @@ router.put('/', managerOrAdmin, validateBody(updateSchema), asyncHandler(async (
     managementFeePercent: body.managementFeePercent,
     // null = clear the override (fall back to .env); omitted = leave as-is.
     smsProvider: body.smsProvider === undefined ? undefined : (body.smsProvider || null),
+    // Booleans: omitted leaves the stored flag untouched.
+    notifyLandlordOnPayment: body.notifyLandlordOnPayment,
+    autoRemindersEnabled: body.autoRemindersEnabled,
   }, req.user!.userId);
   res.json({ data: settings });
 }));

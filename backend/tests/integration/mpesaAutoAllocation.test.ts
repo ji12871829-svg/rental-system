@@ -47,7 +47,8 @@ async function smsRowsForPayments(paymentIds: number[]): Promise<Array<{ id: num
   if (paymentIds.length === 0) return [];
   const rows = await query<{ id: number; status: string; receipt_id: number | null }>(
     `SELECT s.id, s.status, s.receipt_id FROM sms_notifications s
-     WHERE s.receipt_id IN (
+     WHERE s.tenant_id IS NOT NULL
+       AND s.receipt_id IN (
        SELECT r.id FROM receipts r
        WHERE r.receipt_number IN (SELECT receipt_number FROM rent_payments WHERE id = ANY($1::int[]) AND receipt_number IS NOT NULL)
      )`,

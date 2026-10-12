@@ -30,6 +30,10 @@ export interface SettingsRow {
   retention_years: number;
   /** Runtime SMS provider override (migration 013). NULL = use .env value. */
   sms_provider: string | null;
+  /** Owner payment alert per receipt (migration 014). */
+  notify_landlord_on_payment: boolean;
+  /** Master switch for the scheduled reminder job (migration 014). */
+  auto_reminders_enabled: boolean;
   // Property-owner communication (owner remittance templates). NULL until
   // the operator fills them in Settings — owner channels without a contact
   // point are simply not offered.

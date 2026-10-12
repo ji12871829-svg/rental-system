@@ -229,6 +229,51 @@ export function overdueNoticeMessage(opts: {
   );
 }
 
+// --- Owner-facing alert ------------------------------------------------------
+// "You just got paid": the operator's own phone learns about a rent receipt
+// the moment it is recorded (landlord alert, notify_landlord_on_payment).
+// Same 2-segment GSM-7 budget; the business name line distinguishes alerts
+// when one operator manages more than one property.
+export function landlordAlertMessage(opts: {
+  tenantName: string;
+  unitNumber: string;
+  monthName: string;
+  year: number;
+  amountPaid: number;
+  receiptNumber: string;
+  balance: number;
+  currency: string;
+  businessIdentity?: string | string[];
+}): string {
+  const { tenantName, unitNumber, monthName, year, amountPaid, receiptNumber, balance, currency } = opts;
+  return withIdentity(
+    `PAYMENT RECEIVED: ${currency} ${amountPaid} from ${tenantName} (Unit ${unitNumber}) for ${monthName} ${year}. Receipt: ${receiptNumber}. Balance: ${currency} ${balance}.`,
+    opts.businessIdentity,
+  );
+}
+
+// --- Scheduled rent reminder --------------------------------------------------
+// "Rent is coming due": sent on the last day of each month for the month
+// that starts the next day (autoReminderJob). The amount is the unit's
+// monthly rent; paymentMethod carries the configured paybill when there is
+// one. Keep it plain ASCII — GSM-7 keeps this at one SMS segment.
+export function rentDueSoonMessage(opts: {
+  tenantName: string;
+  unitNumber: string;
+  nextMonthName: string;
+  year: number;
+  rentAmount: number;
+  paymentMethod: string;
+  currency: string;
+  businessIdentity?: string | string[];
+}): string {
+  const { tenantName, unitNumber, nextMonthName, year, rentAmount, paymentMethod, currency } = opts;
+  return withIdentity(
+    `Dear ${tenantName}, a reminder that ${nextMonthName} ${year} rent of ${currency} ${rentAmount} for Unit ${unitNumber} is due. Pay via ${paymentMethod}. Thank you.`,
+    opts.businessIdentity,
+  );
+}
+
 // --- WhatsApp templates (informal & action-oriented) -------------------------
 // The same three messages as the SMS reminders but in a friendlier voice with
 // emoji. These are NOT sent through an API — the operator opens a WhatsApp

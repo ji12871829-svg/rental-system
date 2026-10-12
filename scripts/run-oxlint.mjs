@@ -6,8 +6,9 @@
 // 2. With no args, lints the standard project globs (same as CI).
 // 3. Runs the npm package first; if its native binding can't load (some
 //    Windows hosts block .node modules via Application Control), falls back
-//    to the standalone binary in .tools/oxlint.exe, which is how the binding
-//    error surfaces here. Exit code and output pass straight through.
+//    to the standalone binary in .devtools/.tools/oxlint.exe, which is how
+//    the binding error surfaces here. Exit code and output pass straight
+//    through.
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +25,7 @@ const npm = spawnSync('npx', ['--no-install', 'oxlint', ...args], {
   cwd: root,
 });
 if (npm.error || npm.status !== 0) {
-  const exe = path.join(root, '.tools', process.platform === 'win32' ? 'oxlint.exe' : 'oxlint');
+  const exe = path.join(root, '.devtools', '.tools', process.platform === 'win32' ? 'oxlint.exe' : 'oxlint');
   if (!existsSync(exe)) {
     console.error(`oxlint binary not found at ${exe}.`);
     console.error('Download it: https://github.com/oxc-project/oxc/releases (oxlint-x86_64-pc-windows-msvc.zip)');
