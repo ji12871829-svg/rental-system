@@ -79,7 +79,15 @@ test.describe('dark-mode screenshot check', () => {
     // Collect Error-level console messages during the session.
     const consoleErrors: string[] = [];
     page.on('console', (msg) => {
-      if (msg.type() === 'error') consoleErrors.push(msg.text());
+      if (msg.type() !== 'error') return;
+      // The ci-visual job runs Vite alone (no backend, no Postgres), so the
+      // /api/* proxy answers 502 on every call. That is environmental noise,
+      // not an app or styling regression — this spec's console-error gate is
+      // about the page itself. Verified: the first real CI run (c996b35) was
+      // drowned in exactly these 502s.
+      const url = msg.location()?.url ?? '';
+      if (url.includes('/api/') && /502 \(Bad Gateway\)/.test(msg.text())) return;
+      consoleErrors.push(msg.text());
     });
 
     // Verify the server is reachable; skip gracefully if not (e.g. local run
