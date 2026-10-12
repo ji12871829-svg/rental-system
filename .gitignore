@@ -41,8 +41,11 @@ videos/
 .tools/
 .ua/
 
-# Generated knowledge graph (graphify) — local tooling state, rebuilt on demand
+# Generated knowledge graph (graphify) - local tooling state, rebuilt on demand
 graphify-out/
+
+# Debugging scratch - probe scripts and screenshot diffs from local sessions
+.tmp/
 
 # Raw photo drops at the repo root (e.g. "olbano plaza.jpeg") — working
 # material for the optimized set in frontend/public/, never source. Anchor
