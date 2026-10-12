@@ -31,6 +31,7 @@ import { monthlyRentSummary } from './rentService';
 import { getSettings } from './settingsService';
 import { monthlyWaterSummary, outstandingWaterByUnit, waterSummary } from './waterService';
 import {
+  occupiedInMonth,
   occupancyRows,
   reportingThroughMonth,
   rentMonths,
@@ -98,6 +99,34 @@ export async function dashboard(year?: number): Promise<DashboardData> {
     [targetYear]
   );
 
+  // Tenant Advance (dashboard metric card): tenants whose ledger balance is a
+  // positive credit — they paid more than they owe year-to-date, so the amount
+  // carries forward instead of being chased. One aggregate over the same
+  // move-in-aware YTD math the ledger uses (expected = occupied months × rent),
+  // so this number and "View Details → /tenants" always agree.
+  const creditBalances = await queryOne<{ n: string; total: string }>(
+    `SELECT COUNT(*)::text AS n, COALESCE(SUM(credit), 0)::text AS total
+     FROM (
+       SELECT t.id,
+              (t_paid.rent_paid + t_paid.water_paid) - (COALESCE(u.monthly_rent, 0) * COALESCE(occ.months, 0) + t_paid.water_billed) AS credit
+       FROM tenants t
+       LEFT JOIN units u ON u.id = t.unit_id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE((SELECT SUM(amount) FROM rent_payments rp WHERE rp.tenant_id = t.id AND rp.billing_year = $1), 0) AS rent_paid,
+                COALESCE((SELECT SUM(amount) FROM water_payments wp WHERE wp.tenant_id = t.id AND wp.billing_year = $1), 0) AS water_paid,
+                COALESCE((SELECT SUM(wmr.water_bill) FROM water_meter_readings wmr JOIN tenants tw2 ON tw2.unit_id = wmr.unit_id WHERE tw2.id = t.id AND wmr.billing_year = $1), 0) AS water_billed
+       ) t_paid ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS months
+         FROM generate_series(1, $2::int) AS mm
+         WHERE ${occupiedInMonth('t', 2, 'mm')}
+       ) occ ON TRUE
+       WHERE t.status = 'ACTIVE'
+     ) c
+     WHERE c.credit > 0`,
+    [targetYear, currentMonth]
+  );
+
   const cashflowRows = await cashflow(targetYear);
 
   const outstandingRentByUnit = unitOutstanding;
@@ -147,6 +176,10 @@ export async function dashboard(year?: number): Promise<DashboardData> {
       waterCollected: water.waterCollected,
       totalExpenses,
       netIncome: round2(totalCollected - totalExpenses),
+      tenantAdvances: {
+        count: Number(creditBalances?.n ?? 0),
+        total: round2(toNumber(creditBalances?.total)),
+      },
     },
     charts: {
       expectedVsCollected: rentMonthlySummary.map((r) => ({

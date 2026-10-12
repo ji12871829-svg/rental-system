@@ -137,6 +137,10 @@ export interface DashboardData {
     waterCollected: number;
     totalExpenses: number;
     netIncome: number;
+    /** Tenants whose YTD ledger balance is a credit (paid more than owed).
+        Drives the dashboard's Tenant Advance metric card; absent on older
+        payloads, so the widget falls back to the derived-negative view. */
+    tenantAdvances?: { count: number; total: number };
   };
   sms: {
     balance: SmsBalance;
