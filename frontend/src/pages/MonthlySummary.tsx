@@ -282,7 +282,7 @@ export default function MonthlySummary() {
                   <Tooltip formatter={(v: any) => money(v)} />
                   <Legend />
                   <Line type="monotone" dataKey="net" stroke="#11a8ff" name="Net this month" />
-                  <Line type="monotone" dataKey="cumulativeNet" stroke="#8b5cf6" name="Cumulative" />
+                  <Line type="monotone" dataKey="cumulativeNet" stroke="#10b981" name="Cumulative" />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -336,7 +336,7 @@ export default function MonthlySummary() {
               <Tooltip formatter={(v: any) => money(v)} />
               <Legend />
               <Line type="monotone" dataKey="rentOutstanding" stroke="#ef4444" name="Rent outstanding" />
-              <Line type="monotone" dataKey="waterOutstanding" stroke="#8b5cf6" name="Water outstanding" />
+              <Line type="monotone" dataKey="waterOutstanding" stroke="#f59e0b" name="Water outstanding" />
               <Line type="monotone" dataKey="totalOutstanding" stroke="#11a8ff" name="Total outstanding" />
             </LineChart>
           </ResponsiveContainer>

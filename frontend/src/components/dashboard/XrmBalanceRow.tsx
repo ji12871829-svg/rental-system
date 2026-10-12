@@ -23,12 +23,14 @@ function smsBalanceLabel(balance: SmsBalance, reportingYear: number): { amount: 
 
 /** xampp RMS balance-row (design-system.css §BALANCE ROW):
  *   • Subscription Balance — blue icon, amount, expiry, "Pay Subscription →" link.
- *   • SMS Balance — purple icon, units, last purchase, "Buy SMS Credits →" link.
+ *   • SMS Balance — blue icon, units, last purchase, "Buy SMS Credits →" link.
  *
  * Local adaptation: the local app has no subscription, so the first card shows the
  * consolidated net position (combined.netIncome) as a "Net Position" card with the
  * same balance-card layout (blue icon, amount, sub, link to /monthly). The second
- * card is the real SMS balance from sms.balance (purple icon) with a link to /sms. */
+ * card is the real SMS balance from sms.balance (blue icon) with a link to /sms.
+ * Both cards share the brand blue on purpose: the row reads as one unit, and it
+ * keeps the palette to the design's achromatic + single-accent rule. */
 export function XrmBalanceRow({ data: { sms, combined, currency, reportingYear } }: XrmBalanceRowProps) {
   const smsInfo = smsBalanceLabel(sms.balance, reportingYear);
   const isNetPositive = combined.netIncome >= 0;
@@ -65,7 +67,7 @@ export function XrmBalanceRow({ data: { sms, combined, currency, reportingYear }
       <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-purple-700">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
               <MessageSquare size={20} strokeWidth={1.75} />
             </div>
             <div>
@@ -76,7 +78,7 @@ export function XrmBalanceRow({ data: { sms, combined, currency, reportingYear }
           </div>
           <a
             href="/sms"
-            className="text-xs font-semibold text-purple-700 transition-colors duration-150 hover:text-purple-800 hover:underline"
+            className="text-xs font-semibold text-brand-600 transition-colors duration-150 hover:text-brand-700 hover:underline"
           >
             Buy SMS Credits
           </a>

@@ -16,14 +16,20 @@ interface XrmArrearsMetricCardsProps {
  *     View Details action.
  *
  * Local adaptation uses DashboardData.combined.totalOutstanding (rent + water
- * outstanding) as the arrears figure, and shows the overpayment as "advances"
- * when outstanding is negative. The arrears unit count comes from
- * charts.outstandingRentByUnit filtered to > 0 (in the dashboard payload). */
+ * outstanding) as the arrears figure. The advance figure comes from real
+ * per-tenant credit balances (combined.tenantAdvances from the backend)
+ * when the payload carries them — falling back to the old derived-negative
+ * view of totalOutstanding on payloads that predate the field. The arrears
+ * unit count comes from charts.outstandingRentByUnit filtered to > 0 (in the
+ * dashboard payload). */
 export function XrmArrearsMetricCards({ data }: XrmArrearsMetricCardsProps) {
-  const { totalOutstanding } = data.combined;
+  const { totalOutstanding, tenantAdvances } = data.combined;
   const { currency } = data;
   const arrears = Math.max(0, totalOutstanding);
-  const advances = totalOutstanding < 0 ? Math.abs(totalOutstanding) : 0;
+  // Real credit-balance data wins; older payloads only expose the negative
+  // outstanding view (portfolio-wide overpayment, no per-tenant truth).
+  const advances = tenantAdvances ? tenantAdvances.total : (totalOutstanding < 0 ? Math.abs(totalOutstanding) : 0);
+  const advanceCount = tenantAdvances ? tenantAdvances.count : null;
   const isArrears = arrears > 0;
   const isAdvances = advances > 0;
 
@@ -47,7 +53,7 @@ export function XrmArrearsMetricCards({ data }: XrmArrearsMetricCardsProps) {
         <div className="mt-4 flex gap-2">
           <Link
             to="/arrears"
-            className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-50 hover:border-gray-300 active:scale-[0.98]"
+            className="flex-1 flex items-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-50 hover:border-gray-300 active:scale-[0.98]"
           >
             View Details <ArrowRight size={13} strokeWidth={2} className="ml-1" />
           </Link>
@@ -72,13 +78,16 @@ export function XrmArrearsMetricCards({ data }: XrmArrearsMetricCardsProps) {
           {money(advances, currency)}
         </div>
         <div className="mt-1 text-xs text-gray-400">
-          <strong className="text-gray-900">{isAdvances ? 'Some tenants' : 'No tenants'}</strong>
+          <strong className="text-gray-900">{isAdvances ? `${advanceCount ?? 0} Tenants` : 'No tenants'}</strong>
           {' '}with credit balances
         </div>
-        <div className="mt-4">
+        {/* flex row, not a bare div: `flex-1` on the link only works as a flex
+            item, and preflight's `svg { display: block }` splits an inline link
+            around the arrow icon (narrow first fragment + stray second one). */}
+        <div className="mt-4 flex gap-2">
           <Link
             to="/tenants"
-            className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-50 hover:border-gray-300 active:scale-[0.98]"
+            className="flex-1 flex items-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-50 hover:border-gray-300 active:scale-[0.98]"
           >
             View Details <ArrowRight size={13} strokeWidth={2} className="ml-1" />
           </Link>

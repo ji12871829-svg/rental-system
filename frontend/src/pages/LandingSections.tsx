@@ -98,7 +98,7 @@ export function usePublicUnits(): { rows: UnitPriceRow[] | null; failed: boolean
 const TRUST_ITEMS: { icon: typeof Wallet; label: string; accent: string }[] = [
   { icon: Smartphone, label: 'M-Pesa STK push & PayBill', accent: 'border-brand-300 text-brand-600' },
   { icon: Droplets, label: 'Per-unit water meters', accent: 'border-mint/40 text-mint' },
-  { icon: UserRound, label: 'Tenant self-service portal', accent: 'border-violet/40 text-violet' },
+  { icon: UserRound, label: 'Tenant self-service portal', accent: 'border-gray-300 text-gray-600' },
   { icon: ReceiptText, label: 'Numbered receipts, every payment', accent: 'border-amber-300 text-amber-600' },
   { icon: Wallet, label: 'Live arrears ledger', accent: 'border-emerald-300 text-emerald-600' },
   { icon: ShieldCheck, label: 'Audit trail & access control', accent: 'border-ash text-charcoal' },

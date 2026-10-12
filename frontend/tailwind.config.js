@@ -3,8 +3,9 @@
 // One achromatic canvas (white/fog), ash hairlines, and a single electric
 // sky-blue (#11a8ff) reserved for action. Numeric ramps (brand/sky) are
 // validated by scripts/check-tailwind-tokens.mjs; single-value keys (fog,
-// ash, divider, graphite, silver, ink, charcoal, pale, pink, mint, violet,
-// sun) are literal tokens from the DESIGN.md.
+// ash, divider, graphite, silver, ink, charcoal, pale, pink, mint, sun) are
+// literal tokens from the DESIGN.md (its violet tag token was dropped here —
+// the build stays achromatic + brand blue, see design/amie-DESIGN.md).
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   darkMode: 'class',
@@ -45,7 +46,6 @@ export default {
         pale: '#cfeeff',
         pink: '#f6a6a6',
         mint: '#01ca45',
-        violet: '#a050ff',
         sun: '#fbefaf',
       },
       fontFamily: {

@@ -176,7 +176,7 @@ function MeterSection({ formOpen, setFormOpen }: { formOpen: boolean; setFormOpe
                   <td>{r.tenant_name ?? '—'}</td>
                   <td>{MONTHS[r.billing_month - 1].slice(0, 3)} {r.billing_year}</td>
                   <td>{Number(r.previous_reading)}
-                    {Number(r.previous_reading) === 0 && <span className="ml-1 rounded bg-violet/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet">FIRST READING</span>}
+                    {Number(r.previous_reading) === 0 && <span className="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-700">FIRST READING</span>}
                   </td>
                   <td>{Number(r.current_reading)}</td>
                   <td className="font-medium">{Number(r.consumption)}</td>

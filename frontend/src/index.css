@@ -435,7 +435,6 @@ html.dark .bg-cyan-50\/50 { background-color: rgb(3 105 161 / 0.13); }
 html.dark .bg-cyan-50\/60 { background-color: rgb(3 105 161 / 0.16); }
 html.dark .bg-green-100 { background-color: rgb(6 78 59 / 0.45); }
 html.dark .bg-blue-100 { background-color: rgb(30 58 138 / 0.45); }
-html.dark .bg-purple-100 { background-color: rgb(107 33 168 / 0.45); }
 html.dark .bg-sky-100 { background-color: rgb(3 105 161 / 0.45); }
 
 /* Opacity variants compile to their own escaped classes — remap them
@@ -546,5 +545,4 @@ html.dark .text-red-900 { color: #fca5a5; }
 html.dark .text-emerald-800,
 html.dark .text-emerald-900 { color: #6ee7b7; }
 html.dark .text-green-800 { color: #86efac; }
-html.dark .text-purple-800 { color: #d8b4fe; }
 html.dark .text-blue-900 { color: #93c5fd; }

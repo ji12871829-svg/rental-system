@@ -86,7 +86,7 @@ const CAPABILITIES: { icon: typeof Wallet; tag: string; tagClass: string; title:
   {
     icon: UserRound,
     tag: 'Self-service',
-    tagClass: 'border-violet/40 text-violet',
+    tagClass: 'border-gray-300 text-gray-600',
     title: 'Tenants serve themselves',
     body: 'The tenant portal shows balances, payment history, water bills, statements and receipts — so the office phone stops ringing for answers tenants can look up.',
   },
