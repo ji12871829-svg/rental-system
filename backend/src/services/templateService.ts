@@ -19,6 +19,8 @@ export type TemplateKind =
   | 'SMS_COMBINED_RECEIPT'
   | 'SMS_BALANCE_DUE'
   | 'SMS_OVERDUE'
+  | 'SMS_LANDLORD_ALERT'
+  | 'SMS_RENT_DUE_SOON'
   | 'WHATSAPP_BALANCE_DUE'
   | 'WHATSAPP_OVERDUE'
   | 'WHATSAPP_PAYMENT_CONFIRMATION'
@@ -91,6 +93,30 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     defaultSubject: null,
     defaultBody:
       'Hi {{name}}, Unit {{unit}} has an overdue balance of {{currency}} {{amount_due}}. Please clear this immediately to avoid late fees. Total Balance: {{currency}} {{total_due}}.',
+  },
+  {
+    kind: 'SMS_LANDLORD_ALERT',
+    label: 'Landlord Payment Alert',
+    channel: 'SMS' as const,
+    description:
+      'Sent to the business contact phone (Business Identity contact phone) whenever a rent or combined payment is receipted — a text the moment money lands. Note: customized templates are sent as-is; include {{business}} if you want the identity line.',
+    fields: ['name', 'unit', 'month', 'year', 'amount', 'balance', 'receipt', 'currency', 'business'],
+    hasSubject: false,
+    defaultSubject: null,
+    defaultBody:
+      'PAYMENT RECEIVED: {{currency}} {{amount}} from {{name}} (Unit {{unit}}) for {{month}} {{year}}. Receipt: {{receipt}}. Balance: {{currency}} {{balance}}.',
+  },
+  {
+    kind: 'SMS_RENT_DUE_SOON',
+    label: 'Rent Due Reminder',
+    channel: 'SMS' as const,
+    description:
+      'The automatic "rent is due" nudge sent on the last day of each month for the month that starts the next day (when Automatic monthly reminders are on in Settings).',
+    fields: ['name', 'unit', 'next_month', 'amount', 'currency', 'payment_method', 'business'],
+    hasSubject: false,
+    defaultSubject: null,
+    defaultBody:
+      'Dear {{name}}, a reminder that {{next_month}} rent of {{currency}} {{amount}} for Unit {{unit}} is due. Pay via {{payment_method}}. Thank you.',
   },
   {
     kind: 'WHATSAPP_BALANCE_DUE',

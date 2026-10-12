@@ -31,6 +31,10 @@ export interface SettingsInput {
   // becomes the effective provider again). 'africastalking' is the main
   // live route; 'textbee' is the own-SIM low-cost alternative.
   smsProvider?: string | null;
+  // Rent SMS automation (migration 014): owner alert per receipt, and the
+  // scheduled reminder job's master switch.
+  notifyLandlordOnPayment?: boolean;
+  autoRemindersEnabled?: boolean;
 }
 
 /**
@@ -66,7 +70,10 @@ export async function updateSettings(
            management_fee_percent = COALESCE($8, management_fee_percent),
            -- SMS provider: same pattern. Undefined keeps; empty string maps to
            -- null (clear the override) before reaching this query.
-           sms_provider = COALESCE($9, sms_provider)
+           sms_provider = COALESCE($9, sms_provider),
+           -- Rent SMS automation: booleans, same omitted-keeps pattern.
+           notify_landlord_on_payment = COALESCE($10, notify_landlord_on_payment),
+           auto_reminders_enabled     = COALESCE($11, auto_reminders_enabled)
        WHERE id = 1
        RETURNING *`,
       [
@@ -79,6 +86,8 @@ export async function updateSettings(
         input.ownerPhone ?? null,
         input.managementFeePercent ?? null,
         input.smsProvider ?? null,
+        input.notifyLandlordOnPayment ?? null,
+        input.autoRemindersEnabled ?? null,
       ]
     );
     return res.rows[0] as SettingsRow;
@@ -95,6 +104,8 @@ export async function updateSettings(
       waterRate: toNumber(before.water_rate),
       retentionYears: before.retention_years,
       smsProvider: before.sms_provider ?? null,
+      notifyLandlordOnPayment: before.notify_landlord_on_payment,
+      autoRemindersEnabled: before.auto_reminders_enabled,
     },
     newValue: {
       reportingYear: updated.reporting_year,
@@ -102,6 +113,8 @@ export async function updateSettings(
       waterRate: toNumber(updated.water_rate),
       retentionYears: updated.retention_years,
       smsProvider: updated.sms_provider ?? null,
+      notifyLandlordOnPayment: updated.notify_landlord_on_payment,
+      autoRemindersEnabled: updated.auto_reminders_enabled,
     },
   });
   return updated;

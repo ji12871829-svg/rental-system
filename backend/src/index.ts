@@ -10,6 +10,7 @@ import { startEmailRetryJob, stopEmailRetryJob } from './services/emailRetryJob'
 import { startTenantRetentionJob, stopTenantRetentionJob } from './services/tenantRetentionJob';
 import { startStaleUnmatchedAlertJob, stopStaleUnmatchedAlertJob } from './services/staleUnmatchedAlertJob';
 import { startRecurringExpenseJob, stopRecurringExpenseJob } from './services/recurringExpenseJob';
+import { startAutoReminderJob, stopAutoReminderJob } from './services/autoReminderJob';
 
 const app = createApp();
 
@@ -46,6 +47,7 @@ async function main() {
       startTenantRetentionJob();
       startStaleUnmatchedAlertJob();
       startRecurringExpenseJob();
+      startAutoReminderJob();
       // Fire-and-forget boot log: getSmsConfig is async now (it may read the
       // DB override) and the listener callback must not block on it.
       void getSmsConfig().then((sms) => {
@@ -81,6 +83,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     stopTenantRetentionJob();
     stopStaleUnmatchedAlertJob();
     stopRecurringExpenseJob();
+    stopAutoReminderJob();
     process.exit(0);
   });
 }

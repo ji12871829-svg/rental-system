@@ -16,6 +16,7 @@ import { MONTH_NAMES } from '../types';
 import {
   monthlyBalanceDueMessage,
   overdueNoticeMessage,
+  rentDueSoonMessage,
   whatsappBalanceDueMessage,
   whatsappOverdueMessage,
 } from '../utils/businessRules';
@@ -38,6 +39,8 @@ interface ReminderFigures {
   phoneNumber: string | null;
   email: string | null;
   unitNumber: string;
+  /** Real UTC month (1-12) the figures were computed for. */
+  month: number;
   monthName: string;
   year: number;
   currency: string;
@@ -100,6 +103,7 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
     phoneNumber: tenant.phone_number,
     email: tenant.email,
     unitNumber: tenant.unit_number ?? String(tenantId),
+    month,
     monthName,
     year,
     currency: settings.currency,
@@ -114,7 +118,7 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
   };
 }
 
-export type ReminderKind = 'BALANCE_DUE' | 'OVERDUE';
+export type ReminderKind = 'BALANCE_DUE' | 'OVERDUE' | 'DUE_SOON';
 export type ReminderChannel = 'SMS' | 'WHATSAPP' | 'EMAIL';
 export interface ReminderResult {
   message: string;
@@ -132,13 +136,17 @@ export async function prepareReminder(
   tenantId: number,
   kind: ReminderKind,
   channel: ReminderChannel,
-  opts: { userId?: number | null } = {},
+  opts: { userId?: number | null; templateKind?: string | null } = {},
 ): Promise<ReminderResult | null> {
   const f = await gatherReminderFigures(tenantId);
-  if (channel === 'WHATSAPP') return whatsappReminder(f, kind, tenantId, opts.userId ?? null);
-  if (channel === 'EMAIL') return emailReminder(f, kind, tenantId, opts.userId ?? null);
-  // SMS (default)
-  return smsReminder(f, kind, tenantId, opts.userId ?? null);
+  // DUE_SOON is the scheduler's SMS-only nudge; the manual channels treat it
+  // as the neutral BALANCE_DUE statement rather than mislabeling it.
+  const channelKind: ReminderKind = kind === 'DUE_SOON' ? 'BALANCE_DUE' : kind;
+  if (channel === 'WHATSAPP') return whatsappReminder(f, channelKind, tenantId, opts.userId ?? null);
+  if (channel === 'EMAIL') return emailReminder(f, channelKind, tenantId, opts.userId ?? null);
+  // SMS (default) — keeps the real kind so SMS_RENT_DUE_SOON can override,
+  // and tags the row (templateKind) so the scheduler can dedupe its batches.
+  return smsReminder(f, kind, tenantId, opts.userId ?? null, opts.templateKind ?? null);
 }
 
 // WHATSAPP — nothing is queued or sent: returns a wa.me click-to-chat URL
@@ -268,11 +276,18 @@ async function smsReminder(
   kind: ReminderKind,
   tenantId: number,
   userId: number | null,
+  templateKind: string | null = null,
 ): Promise<ReminderResult | null> {
   if (!f.phoneNumber) return null;
-  // A customized Message Templates row (SMS_BALANCE_DUE / SMS_OVERDUE)
-  // overrides the hardcoded wording; merge fields resolve per tenant.
-  const custom = await getCustomTemplate(kind === 'BALANCE_DUE' ? 'SMS_BALANCE_DUE' : 'SMS_OVERDUE');
+  // A customized Message Templates row (SMS_BALANCE_DUE / SMS_OVERDUE /
+  // SMS_RENT_DUE_SOON) overrides the hardcoded wording; merge fields resolve
+  // per tenant.
+  const templateKindName =
+    kind === 'BALANCE_DUE' ? 'SMS_BALANCE_DUE' : kind === 'DUE_SOON' ? 'SMS_RENT_DUE_SOON' : 'SMS_OVERDUE';
+  const custom = await getCustomTemplate(templateKindName);
+  // DUE_SOON speaks about NEXT month (it is sent on the last day of this one).
+  const nextMonth = f.month === 12 ? 1 : f.month + 1;
+  const nextYear = f.month === 12 ? f.year + 1 : f.year;
   const baseVars = {
     name: f.tenantName,
     unit: f.unitNumber,
@@ -291,11 +306,18 @@ async function smsReminder(
               account: f.accountNumber,
               payment_method: f.paymentMethod,
             }
-          : {
-              ...baseVars,
-              amount_due: Math.max(f.rentBalance, 0),
-              total_due: Math.max(f.combinedBalance, 0),
-            },
+          : kind === 'DUE_SOON'
+            ? {
+                ...baseVars,
+                next_month: MONTH_NAMES[nextMonth - 1],
+                amount: Math.max(f.currentRent, 0),
+                payment_method: f.paymentMethod,
+              }
+            : {
+                ...baseVars,
+                amount_due: Math.max(f.rentBalance, 0),
+                total_due: Math.max(f.combinedBalance, 0),
+              },
       )
     : kind === 'BALANCE_DUE'
     ? monthlyBalanceDueMessage({
@@ -309,6 +331,17 @@ async function smsReminder(
         currency: f.currency,
         businessIdentity: f.identityName ?? undefined,
       })
+    : kind === 'DUE_SOON'
+    ? rentDueSoonMessage({
+        tenantName: f.tenantName,
+        unitNumber: f.unitNumber,
+        nextMonthName: MONTH_NAMES[nextMonth - 1],
+        year: nextYear,
+        rentAmount: Math.max(f.currentRent, 0),
+        paymentMethod: f.paymentMethod,
+        currency: f.currency,
+        businessIdentity: f.identityName ?? undefined,
+      })
     : overdueNoticeMessage({
         tenantName: f.tenantName,
         unitNumber: f.unitNumber,
@@ -317,7 +350,7 @@ async function smsReminder(
         currency: f.currency,
         businessIdentity: f.identityName ?? undefined,
       });
-  const smsId = await queueSms({ tenantId, phoneNumber: f.phoneNumber, message });
+  const smsId = await queueSms({ tenantId, phoneNumber: f.phoneNumber, message, templateKind });
   await logAudit({
     userId,
     action: 'SMS_REMINDER_QUEUED',

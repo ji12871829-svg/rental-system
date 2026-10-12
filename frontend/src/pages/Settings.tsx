@@ -13,6 +13,9 @@ interface SettingsData {
   currency: string;
   water_rate: string;
   retention_years: number;
+  // Rent SMS automation (migration 014).
+  notify_landlord_on_payment: boolean;
+  auto_reminders_enabled: boolean;
 }
 
 // Email provider mode (from GET /api/emails/config) and the test-send verdict.
@@ -375,6 +378,24 @@ export default function Settings() {
     }
   }
 
+  // --- Rent SMS automation toggles --------------------------------------------
+  // Immediate-save checkboxes (same pattern as the provider switch): each
+  // flip PUTs the single flag and refreshes the settings row.
+  const [rentSmsBusy, setRentSmsBusy] = useState(false);
+
+  async function saveRentSmsFlag(flag: 'notifyLandlordOnPayment' | 'autoRemindersEnabled', value: boolean) {
+    setRentSmsBusy(true);
+    try {
+      await api.put('/api/settings', { [flag]: value });
+      toast('success', value ? 'Turned on — new sends follow it immediately.' : 'Turned off.');
+      refresh();
+    } catch (err) {
+      toast('error', (err as Error).message);
+    } finally {
+      setRentSmsBusy(false);
+    }
+  }
+
   // Flattens the balance union once — TS loses both the state narrowing and
   // `balance` presence across the JSX ternary chain otherwise. In the ok/low/
   // empty states the backend always carries `balance` (getSmsBalance).
@@ -689,7 +710,38 @@ export default function Settings() {
               </Field>
             </div>
           </div>
-          <div className="flex flex-wrap items-end gap-3">
+          {/* Rent SMS automation — immediate-save flags, same pattern as the
+              provider switch. Both default on (migration 014). */}
+          <div className="mt-6 border-t border-gray-100 pt-4">
+            <p className="text-sm font-medium text-gray-700">Rent SMS automation</p>
+            <label className="mt-3 flex items-start gap-3 text-sm text-gray-600">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                checked={data?.notify_landlord_on_payment ?? true}
+                disabled={!canEdit || rentSmsBusy}
+                onChange={(e) => void saveRentSmsFlag('notifyLandlordOnPayment', e.target.checked)}
+              />
+              <span>
+                <b className="text-gray-900">Text me when rent is paid</b> — every receipted rent payment
+                also alerts the business contact phone from Business Identity.
+              </span>
+            </label>
+            <label className="mt-2 flex items-start gap-3 text-sm text-gray-600">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                checked={data?.auto_reminders_enabled ?? true}
+                disabled={!canEdit || rentSmsBusy}
+                onChange={(e) => void saveRentSmsFlag('autoRemindersEnabled', e.target.checked)}
+              />
+              <span>
+                <b className="text-gray-900">Automatic monthly reminders</b> — a due-soon nudge on the last
+                day of each month, and an overdue chase on the 5th, sent to tenants with arrears.
+              </span>
+            </label>
+          </div>
+          <div className="mt-6 flex flex-wrap items-end gap-3">
             <div className="w-64">
               <Field label="Send test SMS to" hint="Leave empty to send to your own user phone.">
                 <TextInput

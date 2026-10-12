@@ -15,6 +15,7 @@ jest.mock('../../src/services/smsService', () => ({
   autoSendEnabled: jest.fn(() => true),
   dispatchAutoSend: jest.fn(),
   prepareForReceipt: jest.fn(),
+  prepareLandlordAlert: jest.fn(),
 }));
 jest.mock('../../src/services/emailService', () => ({
   prepareForReceipt: jest.fn(),
@@ -25,7 +26,7 @@ jest.mock('../../src/config/env', () => {
   return { ...actual, isTest: false };
 });
 
-import { dispatchAutoSend, prepareForReceipt as prepareSms } from '../../src/services/smsService';
+import { dispatchAutoSend, prepareForReceipt as prepareSms, prepareLandlordAlert } from '../../src/services/smsService';
 import { prepareForReceipt as prepareEmail } from '../../src/services/emailService';
 import { autoSendEnabled as channelGate, dispatchAfterCommit } from '../../src/services/outboundMessage';
 import { notifyPaymentRecorded } from '../../src/services/postPaymentDispatch';
@@ -39,6 +40,7 @@ jest.mock('../../src/services/outboundMessage', () => ({
 
 const prepareSmsMock = prepareSms as jest.Mock;
 const prepareEmailMock = prepareEmail as jest.Mock;
+const prepareLandlordAlertMock = prepareLandlordAlert as jest.Mock;
 const dispatchAutoSendMock = dispatchAutoSend as jest.Mock;
 const dispatchAfterCommitMock = dispatchAfterCommit as jest.Mock;
 const channelGateMock = channelGate as jest.Mock;
@@ -62,6 +64,9 @@ beforeEach(() => {
   jest.clearAllMocks();
   channelGateMock.mockImplementation(() => true);
   prepareSmsMock.mockResolvedValue(11);
+  // The owner alert is opt-out per install; existing tests assert the tenant
+  // channels only, so the default is "nothing to alert".
+  prepareLandlordAlertMock.mockResolvedValue(null);
   // The seam reads the email recipient-availability fact on the caller's
   // transaction; by default this tenant has an address on file.
   client.query.mockResolvedValue({ rows: [{ email: 'grace@example.com' }] });
@@ -163,5 +168,36 @@ describe('notifyPaymentRecorded — after the commit', () => {
     prepared.dispatch();
     // dispatchAutoSend consults the gate itself; the seam does not bypass it.
     expect(dispatchAutoSendMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('notifyPaymentRecorded — landlord (owner) payment alert', () => {
+  it('prepares the owner alert on the same transaction and dispatches it after commit', async () => {
+    prepareEmailMock.mockRejectedValue(new HttpError(400, 'BAD_REQUEST', '"grace@example.com" is not a valid email address.'));
+    prepareLandlordAlertMock.mockResolvedValue(55);
+    const prepared = await notifyPaymentRecorded(receipt(), client as never);
+    expect(prepared.landlordAlert).toEqual({ queued: true, autoSend: true });
+    // Prepared on the caller's executor, like every other row.
+    expect(prepareLandlordAlertMock).toHaveBeenCalledWith(receipt(), client);
+    prepared.dispatch();
+    expect(dispatchAutoSendMock).toHaveBeenCalledWith(55);
+  });
+
+  it('never alerts for a water-only receipt', async () => {
+    prepareLandlordAlertMock.mockResolvedValue(55);
+    const prepared = await notifyPaymentRecorded({ ...receipt(), receipt_type: 'WATER' }, client as never);
+    expect(prepared.landlordAlert).toEqual({ queued: false, autoSend: true });
+    expect(prepareLandlordAlertMock).not.toHaveBeenCalled();
+  });
+
+  it('reports an honestly skipped fact when the alert was not prepared', async () => {
+    // Flag off or no contact phone — prepareLandlordAlert returns null and
+    // the dispatch closure must not try to send a row that does not exist.
+    prepareLandlordAlertMock.mockResolvedValue(null);
+    const prepared = await notifyPaymentRecorded(receipt(), client as never);
+    expect(prepared.landlordAlert).toEqual({ queued: false, autoSend: true });
+    prepared.dispatch();
+    expect(dispatchAutoSendMock).toHaveBeenCalledWith(11); // tenant SMS still fires
+    expect(dispatchAutoSendMock).not.toHaveBeenCalledWith(null);
   });
 });

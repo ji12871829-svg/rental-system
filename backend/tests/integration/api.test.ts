@@ -337,13 +337,26 @@ describe('Rent collection', () => {
       expect(res.body.data.email).toEqual({ queued: false, autoSend: false, reason: null });
 
       // The receipt SMS row exists exactly as production would auto-send it.
+      // Scoped to tenant rows: the landlord (owner) alert below is a second
+      // row on the same receipt, addressed to nobody's tenant.
       const rentReceiptId = (await pool.query('SELECT id FROM receipts WHERE receipt_number = $1', [receiptNumber])).rows[0].id;
-      const smsRows = (await pool.query('SELECT id, status, phone_number, message FROM sms_notifications WHERE receipt_id = $1', [rentReceiptId])).rows;
+      const smsRows = (await pool.query('SELECT id, status, phone_number, message FROM sms_notifications WHERE receipt_id = $1 AND tenant_id IS NOT NULL', [rentReceiptId])).rows;
       expect(smsRows).toHaveLength(1);
       const tenantPhone = (await pool.query('SELECT phone_number FROM tenants WHERE id = 4')).rows[0].phone_number;
       expect(smsRows[0].status).toBe('PENDING');
       expect(smsRows[0].phone_number).toBe(tenantPhone);
       expect(smsRows[0].message).toContain(receiptNumber);
+
+      // The landlord (owner) payment alert rides the same receipt: exactly one
+      // NULL-tenant row tagged LANDLORD_ALERT, so tenant-scoped history views
+      // can never match it.
+      const landlordRows = (await pool.query(
+        'SELECT id, message, template_kind FROM sms_notifications WHERE receipt_id = $1 AND tenant_id IS NULL',
+        [rentReceiptId]
+      )).rows;
+      expect(landlordRows).toHaveLength(1);
+      expect(landlordRows[0].template_kind).toBe('LANDLORD_ALERT');
+      expect(landlordRows[0].message).toContain(receiptNumber);
 
       // Test env auto-send is off, so dispatchAutoEmail prepared no email row
       // here (the manual email path in the "Email receipts" suite proves the
@@ -358,8 +371,9 @@ describe('Rent collection', () => {
       // dispatch is routed at all — production (gate on) prepares the row
       // in-transaction and dispatches run: sendEmailNotification, the split
       // pinned by tests/unit/postPaymentDispatch.test.ts.
-      expect(dispatchAutoSendSpy).toHaveBeenCalledTimes(1);
+      expect(dispatchAutoSendSpy).toHaveBeenCalledTimes(2); // tenant SMS + landlord alert
       expect(dispatchAutoSendSpy).toHaveBeenCalledWith(smsRows[0].id);
+      expect(dispatchAutoSendSpy).toHaveBeenCalledWith(landlordRows[0].id);
       expect(dispatchAfterCommitSpy).toHaveBeenCalledWith(
         expect.objectContaining({ channel: 'SMS', what: `notification ${smsRows[0].id}` }),
       );

@@ -18,6 +18,10 @@
 //     `dispatchAfterCommit` (Outbound Message module) is fire-and-forget: the
 //     HTTP response never waits on a provider, and a provider outage can
 //     never fail a recorded payment.
+//   - The landlord (owner) payment alert is prepared here too — a third
+//     PENDING SMS row on the business contact phone (Business Identity),
+//     gated to RENT/COMBINED receipts and settings.notify_landlord_on_payment,
+//     dispatched after commit alongside the tenant's receipt SMS.
 //   - The email row is prepared only when the EMAIL channel's auto-send is on
 //     and the receipt kind carries tenant-facing money facts (RENT or
 //     COMBINED). A blank or invalid recipient degrades to a "not queued"
@@ -33,6 +37,7 @@ import { autoSendEnabled as channelAutoSendEnabled, dispatchAfterCommit } from '
 import {
   dispatchAutoSend,
   prepareForReceipt as prepareSmsReceipt,
+  prepareLandlordAlert,
   type ReceiptLike,
 } from './smsService';
 import { prepareForReceipt as prepareEmailReceipt, sendEmailNotification } from './emailService';
@@ -68,8 +73,10 @@ interface EmailDeliveryFact {
 }
 
 export interface PreparedNotifications {
-  /** The SMS delivery fact, as prepared on the caller's transaction. */
+  /** The tenant receipt SMS delivery fact, as prepared on the caller's transaction. */
   sms: SmsDeliveryFact;
+  /** The landlord (owner) payment alert fact — the third prepared row. */
+  landlordAlert: SmsDeliveryFact;
   /** The email delivery fact, as prepared (or honestly skipped) on it. */
   email: EmailDeliveryFact;
   /**
@@ -91,6 +98,19 @@ export async function notifyPaymentRecorded(
   const smsId = await prepareSmsReceipt(receipt, exec);
   const sms: SmsDeliveryFact = {
     queued: smsId != null,
+    autoSend: channelAutoSendEnabled('SMS'),
+  };
+
+  // The landlord (owner) payment alert — same transaction, same dispatch
+  // closure. Only RENT/COMBINED receipts alert (money into the rent book),
+  // mirroring the email channel's gate; the flag and contact phone live in
+  // prepareLandlordAlert itself.
+  let landlordSmsId: number | null = null;
+  if (receipt.receipt_type === 'RENT' || receipt.receipt_type === 'COMBINED') {
+    landlordSmsId = await prepareLandlordAlert(receipt, exec);
+  }
+  const landlordAlert: SmsDeliveryFact = {
+    queued: landlordSmsId != null,
     autoSend: channelAutoSendEnabled('SMS'),
   };
 
@@ -137,9 +157,11 @@ export async function notifyPaymentRecorded(
 
   return {
     sms,
+    landlordAlert,
     email,
     dispatch: () => {
       if (smsId) dispatchAutoSend(smsId);
+      if (landlordSmsId) dispatchAutoSend(landlordSmsId);
       if (emailId) {
         dispatchAfterCommit({
           channel: 'EMAIL',
