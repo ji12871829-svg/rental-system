@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CheckCircle2, CircleDashed, ImageUp, Trash2 } from 'lucide-react';
-import { Button, Field, PageHeader, Skeleton, TextInput, useFetch, useShake, useToast } from '../components/ui';
+import { Button, Field, PageHeader, Select, Skeleton, TextInput, useFetch, useShake, useToast } from '../components/ui';
 import { BrandLogo } from '../components/BrandLogo';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -40,6 +40,17 @@ interface SmsConfigView {
   senderId?: string;
   autoSend: boolean;
 }
+
+/** Provider names offered by the SMS provider selector (Africa's Talking is
+    the main route; textbee is the own-SIM low-cost alternative). */
+type SmsProviderChoice = 'africastalking' | 'textbee' | 'mock' | 'twilio';
+
+const SMS_PROVIDER_LABELS: Record<SmsProviderChoice, string> = {
+  africastalking: "Africa's Talking (main — wallet credits)",
+  textbee: 'textbee (own-SIM gateway — carrier bundle)',
+  mock: 'Simulated (no real sends)',
+  twilio: 'Twilio (global)',
+};
 
 interface SmsBalanceView {
   state: 'unknown' | 'unavailable' | 'ok' | 'low' | 'empty';
@@ -257,7 +268,10 @@ export default function Settings() {
 
   // --- Logo upload -----------------------------------------------------------
   const LOGO_MAX_BYTES = 512 * 1024;
-  const LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']);
+  // Raster only — the server rejects anything else. SVG is not offered because
+  // it is served back from this origin and can carry <script>; a transparent
+  // PNG achieves the same result safely. See brandingService.parseLogoPayload.
+  const LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
   function toDataUrl(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -271,7 +285,7 @@ export default function Settings() {
   async function handleLogoFile(file: File) {
     setLogoError(null);
     if (!LOGO_TYPES.has(file.type)) {
-      setLogoError('Please choose a PNG, JPEG, GIF, WebP or SVG image.');
+      setLogoError('Please choose a PNG, JPEG, GIF or WebP image.');
       return;
     }
     if (file.size > LOGO_MAX_BYTES) {
@@ -337,6 +351,27 @@ export default function Settings() {
       setSmsError((err as Error).message);
     } finally {
       setSmsBusy(false);
+    }
+  }
+
+  // --- SMS provider runtime switch --------------------------------------------
+  // Local selection state; smsCfg.provider shows what is currently effective.
+  const [smsProviderChoice, setSmsProviderChoice] = useState<SmsProviderChoice | ''>('');
+  const [smsProviderBusy, setSmsProviderBusy] = useState(false);
+
+  async function saveSmsProvider(choice: SmsProviderChoice) {
+    setSmsProviderBusy(true);
+    setSmsError(null);
+    try {
+      await api.put('/api/settings', { smsProvider: choice });
+      const label = SMS_PROVIDER_LABELS[choice];
+      toast('success', `SMS provider switched to ${label}. New sends use it immediately.`);
+      refreshSmsCfg();
+      refreshSmsBalance();
+    } catch (err) {
+      toast('error', (err as Error).message);
+    } finally {
+      setSmsProviderBusy(false);
     }
   }
 
@@ -432,10 +467,12 @@ export default function Settings() {
 
       {canEditIdentity && (
         <div className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-900">Business logo</h2>
+          <h2 className="card-heading">Business logo</h2>
           <p className="mt-1 mb-4 text-sm text-gray-500">
             Shown in the app header, the tenant portal and on every printed or emailed receipt and report.
-            PNG, JPEG, GIF, WebP or SVG — up to 512 KB. A transparent PNG or SVG looks best on receipts.
+            PNG, JPEG, GIF or WebP — up to 512 KB. A transparent PNG looks best on receipts.
+            SVG is not accepted: it is served from this origin and can carry
+            scripts, so only raster images are allowed.
           </p>
           <div className="flex flex-wrap items-center gap-4">
             <BrandLogo
@@ -446,7 +483,7 @@ export default function Settings() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                accept="image/png,image/jpeg,image/gif,image/webp"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
@@ -476,7 +513,7 @@ export default function Settings() {
 
       {canEditIdentity && (
         <form noValidate ref={shakeIdentityRef} onSubmit={saveIdentity} className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-900">Edit business identity</h2>
+          <h2 className="card-heading">Edit business identity</h2>
           <p className="mt-1 mb-4 text-sm text-gray-500">
             These details appear on legal pages, printed and PDF receipts, SMS/email receipts, footers and the favicon.
             Clear a field to hide it everywhere until it is filled again.
@@ -527,7 +564,7 @@ export default function Settings() {
 
       {canEditIdentity && (
         <form ref={shakePaybillRef} onSubmit={savePaybill} className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-900">Tenant PayBill</h2>
+          <h2 className="card-heading">Tenant PayBill</h2>
           <p className="mt-1 mb-4 text-sm text-gray-500">One landlord PayBill for all tenants. Rent uses the unit number; water uses the unit number followed by <b>-WATER</b>.</p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="PayBill number" hint="Digits only, 5 to 10 digits.">
@@ -552,7 +589,7 @@ export default function Settings() {
 
       {canEditIdentity && (
         <div className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-900">Email provider</h2>
+          <h2 className="card-heading">Email provider</h2>
           <p className="mt-1 mb-4 text-sm text-gray-500">
             Receipts, statements and portal credentials are sent through this provider. Send a test email to
             verify the configuration end-to-end — the provider's own response is shown below.
@@ -607,9 +644,11 @@ export default function Settings() {
 
       {canEditIdentity && (
         <div className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-900">SMS provider</h2>
+          <h2 className="card-heading">SMS provider</h2>
           <p className="mt-1 mb-4 text-sm text-gray-500">
-            Receipt SMS and notifications are sent through this provider. Send a test SMS to verify the
+            Receipt SMS and notifications are sent through this provider. Pick the main route
+            (Africa's Talking) or the low-cost own-SIM alternative (textbee) below — the switch
+            takes effect on the next send, no redeploy needed. Send a test SMS to verify the
             configuration end-to-end — the provider's own response is shown below.
           </p>
           <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-gray-600">
@@ -623,8 +662,32 @@ export default function Settings() {
                 {balanceInfo.state === 'empty' && <span className="text-red-700"> — empty</span>}
               </span>
             ) : smsBalance?.state === 'unavailable' ? (
-              <span className="text-amber-700" title={smsBalance.reason}>Balance: unavailable</span>
-            ) : null}
+              <span className="text-amber-700" title={smsBalance.reason}>Balance: unavailable</span>              ) : null}
+          </div>
+          {/* Provider selector — Africa's Talking is the main route; textbee is the
+              selectable second option. Requires .env credentials for the chosen
+              provider; the live badge above reflects whether they are present. */}
+          <div className="mb-4 flex flex-wrap items-end gap-3">
+            <div className="w-72">
+              <Field label="Provider" hint="Switching updates the dashboard banner and balance readout immediately.">
+                <Select
+                  value={smsProviderChoice || ''}
+                  onChange={(e) => {
+                    const choice = e.target.value as SmsProviderChoice;
+                    setSmsProviderChoice(choice);
+                    if (choice) void saveSmsProvider(choice);
+                  }}
+                  disabled={smsProviderBusy}
+                >
+                  <option value="">— choose provider —</option>
+                  {(Object.keys(SMS_PROVIDER_LABELS) as SmsProviderChoice[]).map((name) => (
+                    <option key={name} value={name}>
+                      {SMS_PROVIDER_LABELS[name]}{smsCfg?.provider === name ? '  ✓ current' : ''}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
           </div>
           <div className="flex flex-wrap items-end gap-3">
             <div className="w-64">

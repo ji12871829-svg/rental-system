@@ -143,7 +143,7 @@ function OperatorContact({ privacyEmail }: { privacyEmail?: string | null }) {
 // business_branding record.
 
 // Build-time truth: when the deployment enables Clerk staff sign-in
-// (VITE_CLERK_PUBLISHABLE_KEY — see docs/RUNBOOK-clerk-setup.md), sign-in
+// (VITE_CLERK_PUBLISHABLE_KEY — see docs/runbooks/RUNBOOK-clerk-setup.md), sign-in
 // data flows through a third party and this notice must say so. Dormant
 // builds omit the clause entirely.
 const CLERK_SIGNIN_ENABLED = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined);

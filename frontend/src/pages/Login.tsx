@@ -27,7 +27,7 @@ type Tab = 'landlord' | 'tenant';
 
 // Clerk is deployment-optional: with no publishable key the staff tab keeps
 // the classic password form — the only auth path on installs without Clerk
-// (see docs/RUNBOOK-clerk-setup.md for turning Clerk on).
+// (see docs/runbooks/RUNBOOK-clerk-setup.md for turning Clerk on).
 const CLERK_PK = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
 
 export default function Login() {

@@ -42,11 +42,11 @@ describe('parseProviderCost', () => {
 });
 
 describe('getSmsConfig / sendSms (provider selection)', () => {
-  it('forces the mock provider in the test environment', () => {
+  it('forces the mock provider in the test environment', async () => {
     // tests/setup-env.ts sets NODE_ENV=test before modules load — this guard
     // guarantees test runs never contact a real provider.
     expect(process.env.NODE_ENV).toBe('test');
-    expect(getSmsConfig()).toMatchObject({ provider: 'mock', live: false });
+    expect(await getSmsConfig()).toMatchObject({ provider: 'mock', live: false });
   });
 
   it('mock provider records a MOCK reference without any network call', async () => {

@@ -137,6 +137,10 @@ export interface DashboardData {
     waterCollected: number;
     totalExpenses: number;
     netIncome: number;
+    /** Tenants whose YTD ledger balance is a credit (paid more than owed).
+        Drives the dashboard's Tenant Advance metric card; absent on older
+        payloads, so the widget falls back to the derived-negative view. */
+    tenantAdvances?: { count: number; total: number };
   };
   sms: {
     balance: SmsBalance;
@@ -161,5 +165,18 @@ export interface DashboardData {
     waterSupplyCostVsCollected: { month: number; supplyCost: number; collected: number }[];
     monthlyWaterSurplusDeficit: { month: number; surplusDeficit: number }[];
     outstandingWaterByUnit: OutstandingWaterRow[];
+    /** Financial trends: money in (rent + water) vs expenses out per month —
+        the xampp RMS-style financial-trends bar chart (payments / invoices /
+        expenses). `cashflow()` in financeService.ts is the one source. */
+    cashflow: {
+      month: number;
+      monthName: string;
+      rentIn: number;
+      waterIn: number;
+      totalIn: number;
+      expensesOut: number;
+      net: number;
+      cumulativeNet: number;
+    }[];
   };
 }

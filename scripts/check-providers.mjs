@@ -118,5 +118,59 @@ if (smsProvider === 'africastalking') {
   console.log(`\n[africastalking] SMS_PROVIDER=${smsProvider} — not africastalking, skipped`);
 }
 
+// --- textbee (own-SIM gateway) --------------------------------------------------
+if (smsProvider === 'textbee') {
+  const key = get('TEXTBEE_API_KEY');
+  // Trailing slashes are stripped by the backend so the path never doubles;
+  // do the same here so the probe hits the real endpoint.
+  const apiUrl = (get('TEXTBEE_API_URL', 'https://api.textbee.dev/api/v1') || 'https://api.textbee.dev/api/v1').replace(/\/+$/, '');
+  console.log(`\n[textbee] provider=textbee  apiKey=${mask(key)}  api=${apiUrl}`);
+  if (!key) {
+    console.log('[textbee] ✗ TEXTBEE_API_KEY missing'); failures++;
+  } else {
+    // No wallet to check and no free send to spend — list the registered
+    // devices instead. This verifies the API key AND whether a phone is
+    // actually registered and beating its heartbeat, which is the failure
+    // mode that matters for an own-SIM gateway.
+    try {
+      const res = await fetch(`${apiUrl}/gateway/devices`, {
+        headers: { 'x-api-key': key, Accept: 'application/json' },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.log(`[textbee] ✗ HTTP ${res.status}: ${body.message ?? JSON.stringify(body).slice(0, 200)}`);
+        failures++;
+      } else {
+        const devices = Array.isArray(body.data) ? body.data : [];
+        if (devices.length === 0) {
+          console.log('[textbee] ✗ API key valid but no phone is registered — install the textbee app on the phone and register it');
+          failures++;
+        } else {
+          console.log(`[textbee] ✓ API key valid — ${devices.length} device(s) registered`);
+          const configured = get('TEXTBEE_DEVICE_ID');
+          for (const d of devices) {
+            const id = d?._id ?? d?.id ?? '(unknown id)';
+            const beat = d?.lastHeartbeat;
+            const ageMs = beat ? Date.now() - new Date(beat).getTime() : null;
+            const stale = ageMs === null || Number.isNaN(ageMs) || ageMs > 15 * 60 * 1000;
+            const marker = configured && String(id) === configured ? '  <- TEXTBEE_DEVICE_ID' : '';
+            console.log(`[textbee]   device ${id}${marker}: lastHeartbeat=${beat ?? 'never'}${stale ? ' ⚠ STALE (>15min or missing — the phone is likely offline, sends will queue and fail)' : ' ✓'}`);
+          }
+          if (configured && !devices.some((d) => String(d?._id ?? d?.id) === configured)) {
+            console.log(`[textbee] ✗ TEXTBEE_DEVICE_ID=${configured} does not match any registered device`);
+            failures++;
+          }
+        }
+      }
+    } catch (e) {
+      console.log(`[textbee] ✗ request failed: ${e.message}`);
+      failures++;
+    }
+  }
+} else {
+  console.log(`\n[textbee] SMS_PROVIDER=${smsProvider} — not textbee, skipped`);
+}
+
 console.log(failures === 0 ? '\nAll configured providers validated.' : `\n${failures} provider check(s) FAILED.`);
 process.exit(failures === 0 ? 0 : 1);

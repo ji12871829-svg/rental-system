@@ -285,7 +285,7 @@ export async function getPaybillInstructions(): Promise<PaybillInstructions> {
 // files are never useful — and base64 rows live inside the branding row.
 const LOGO_MAX_BYTES = 512 * 1024;
 
-function parseLogoPayload(dataUrl: string): { bytes: Buffer; mimeType: string } {
+export function parseLogoPayload(dataUrl: string): { bytes: Buffer; mimeType: string } {
   // SVG is deliberately NOT accepted: it is served back from this origin
   // (Content-Type image/svg+xml), and SVG can carry <script> — a stored XSS
   // vector executed on anyone who opens the URL directly. Raster formats

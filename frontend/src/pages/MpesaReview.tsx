@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PageHeader, Button, useFetch, useShake, useToast } from '../components/ui';
+import { PageHeader, Button, EmptyState, useFetch, useShake, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { money, formatDate } from '../lib/format';
 
@@ -100,83 +100,87 @@ export default function MpesaReview() {
     <div>
       <PageHeader title="M-Pesa Review" subtitle="Resolve PayBill transactions that could not be matched automatically" />
       {rows.length > 0 && (
-        <div className="mb-4 flex flex-wrap gap-3 text-sm">
-          <span className="rounded-lg bg-amber-50 px-3 py-1.5 text-amber-800"><b>{rows.length}</b> pending · <b>{money(totalPending, 'KSh')}</b> held</span>
+        <div className="mb-4 flex flex-wrap gap-2">
+          <span className="rounded-lg bg-amber-50 px-3 py-1.5 text-amber-800 text-sm"><b>{rows.length}</b> pending · <b>{money(totalPending, 'KSh')}</b> held</span>
           {blankRefCount > 0 && (
-            <span className="rounded-lg bg-amber-50 px-3 py-1.5 text-amber-800"><b>{blankRefCount}</b> with a blank account reference — payer left the field empty</span>
+            <span className="rounded-lg bg-amber-50 px-3 py-1.5 text-amber-800 text-sm"><b>{blankRefCount}</b> with a blank account reference — payer left the field empty</span>
           )}
           {likelyWaterCount > 0 && (
-            <span className="rounded-lg bg-cyan-50 px-3 py-1.5 text-cyan-800"><b>{likelyWaterCount}</b> likely water payments — kind preselected</span>
+            <span className="rounded-lg bg-cyan-50 px-3 py-1.5 text-cyan-800 text-sm"><b>{likelyWaterCount}</b> likely water payments — kind preselected</span>
           )}
           {suggestedCount > 0 && (
-            <span className="rounded-lg bg-emerald-50 px-3 py-1.5 text-emerald-800">{suggestedCount} matched by sender phone — confirm to post</span>
+            <span className="rounded-lg bg-emerald-50 px-3 py-1.5 text-emerald-800 text-sm">{suggestedCount} matched by sender phone — confirm to post</span>
           )}
         </div>
       )}
-      <div ref={shakeRef} className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
-        {loading && <p className="p-6 text-sm text-gray-500">Loading review queue…</p>}
-        {!loading && rows.length === 0 && <p className="p-6 text-sm text-gray-500">No unmatched M-Pesa transactions — every payment has been matched automatically.</p>}
+      <div ref={shakeRef} className="rounded-xl border border-gray-200 bg-white shadow-sm">
+        {loading && <div className="p-6"><p className="text-sm text-gray-500">Loading review queue…</p></div>}
+        {!loading && rows.length === 0 && <div className="p-6"><EmptyState message="No unmatched M-Pesa transactions — every payment has been matched automatically." /></div>}
         {!loading && rows.length > 0 && (
-          <table className="w-full text-sm">
-            <thead><tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500">
-              <th className="px-4 py-3">Transaction</th><th className="px-4 py-3">Reference</th><th className="px-4 py-3">Amount</th><th className="px-4 py-3">Reason</th><th className="px-4 py-3">Resolve</th>
-            </tr></thead>
-            <tbody>{rows.map((row) => {
-              const selected = selectionFor(row);
-              return <tr
-                key={row.id}
-                className={`border-b border-gray-100 align-top last:border-0 ${row.likely_water ? 'bg-cyan-50' : ''}`}
-              >
-                <td className="px-4 py-3 text-gray-900"><b>{row.transaction_id}</b><br /><span className="text-xs text-gray-500">{formatDate(row.transaction_date)}{row.phone_number ? ` · ${row.phone_number}` : ''}</span></td>
-                <td className="px-4 py-3 text-gray-700">
-                  {row.account_reference.trim() === ''
-                    ? (
-                      <span
-                        className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800"
-                        title="The payer left the paybill account field empty — the sender phone is the only identifier"
-                      >
-                        BLANK REFERENCE
+          <div className="table-scroll">
+            <table className="text-sm">
+              <thead>
+                <tr>
+                  <th className="">Transaction</th><th>Reference</th><th>Amount</th><th>Reason</th><th>Resolve</th>
+                </tr>
+              </thead>
+              <tbody>{rows.map((row) => {
+                const selected = selectionFor(row);
+                return <tr
+                  key={row.id}
+                  className={`${row.likely_water ? 'bg-cyan-50/60' : ''}`}
+                >
+                  <td className="font-semibold text-gray-900">{row.transaction_id}<br /><span className="text-xs text-gray-500">{formatDate(row.transaction_date)}{row.phone_number ? ` · ${row.phone_number}` : ''}</span></td>
+                  <td className="text-gray-700">
+                    {row.account_reference.trim() === ''
+                      ? (
+                        <span
+                          className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800"
+                          title="The payer left the paybill account field empty — the sender phone is the only identifier"
+                        >
+                          BLANK REFERENCE
+                        </span>
+                      )
+                      : <>{row.account_reference}</>}
+                    <br /><span className="text-xs text-red-700">{row.status}</span>
+                  </td>
+                  <td className="font-medium">{money(row.amount, 'KSh')}</td>
+                  <td className="max-w-xs text-gray-600">
+                    {row.error_message ?? 'Needs staff review'}
+                    {row.suggested_tenant && (
+                      <span className={`mt-1 block text-xs font-medium ${row.likely_water ? 'text-cyan-700' : 'text-emerald-700'}`}>
+                        Likely: {row.suggested_tenant.full_name}{row.suggested_tenant.unit_number ? ` · ${row.suggested_tenant.unit_number}` : ''} (sender phone)
+                        {row.likely_water && ' · likely paying water'}
                       </span>
-                    )
-                    : <>{row.account_reference}</>}
-                  <br /><span className="text-xs text-red-700">{row.status}</span>
-                </td>
-                <td className="px-4 py-3 font-medium">{money(row.amount, 'KSh')}</td>
-                <td className="max-w-xs px-4 py-3 text-gray-600">
-                  {row.error_message ?? 'Needs staff review'}
-                  {row.suggested_tenant && (
-                    <span className={`mt-1 block text-xs font-medium ${row.likely_water ? 'text-cyan-700' : 'text-emerald-700'}`}>
-                      Likely: {row.suggested_tenant.full_name}{row.suggested_tenant.unit_number ? ` · ${row.suggested_tenant.unit_number}` : ''} (sender phone)
-                      {row.likely_water && ' · likely paying water'}
-                    </span>
-                  )}
-                </td>
-                <td className="min-w-72 px-4 py-3">
-                  <div className="flex flex-wrap gap-2">
-                    <select value={selected.tenantId} onChange={(e) => setSelection((all) => ({ ...all, [row.id]: { ...selected, tenantId: e.target.value } }))} className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm">
-                      <option value="">Select tenant</option>
-                      {(tenantsData?.data ?? []).map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.full_name}{tenant.unit_number ? ` · ${tenant.unit_number}` : ''}</option>)}
-                    </select>
-                    <select value={selected.kind} onChange={(e) => setSelection((all) => ({ ...all, [row.id]: { ...selected, kind: e.target.value as 'RENT' | 'WATER' } }))} className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm">
-                      <option value="RENT">Rent</option><option value="WATER">Water</option>
-                    </select>
-                    {selected.kind === 'RENT' && (
-                      <label className="flex items-center gap-1.5 text-xs text-gray-600">
-                        <input
-                          type="checkbox"
-                          checked={selected.allocate}
-                          onChange={(e) => setSelection((all) => ({ ...all, [row.id]: { ...selected, allocate: e.target.checked } }))}
-                        />
-                        clear oldest arrears
-                      </label>
                     )}
-                    <Button type="button" disabled={busy === row.id} loading={busy === row.id} onClick={() => resolve(row)}>Post</Button>
-                    <Button type="button" variant="secondary" disabled={busy === row.id} loading={busy === row.id} onClick={() => ignore(row)}>Ignore</Button>
-                  </div>
-                </td>
-              </tr>;
-            })}</tbody>
-          </table>
+                  </td>
+                  <td className="min-w-72">
+                    <div className="flex flex-wrap gap-2">
+                      <select value={selected.tenantId} onChange={(e) => setSelection((all) => ({ ...all, [row.id]: { ...selected, tenantId: e.target.value } }))} className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm">
+                        <option value="">Select tenant</option>
+                        {(tenantsData?.data ?? []).map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.full_name}{tenant.unit_number ? ` · ${tenant.unit_number}` : ''}</option>)}
+                      </select>
+                      <select value={selected.kind} onChange={(e) => setSelection((all) => ({ ...all, [row.id]: { ...selected, kind: e.target.value as 'RENT' | 'WATER' } }))} className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm">
+                        <option value="RENT">Rent</option><option value="WATER">Water</option>
+                      </select>
+                      {selected.kind === 'RENT' && (
+                        <label className="flex items-center gap-1.5 text-xs text-gray-600">
+                          <input
+                            type="checkbox"
+                            checked={selected.allocate}
+                            onChange={(e) => setSelection((all) => ({ ...all, [row.id]: { ...selected, allocate: e.target.checked } }))}
+                          />
+                          clear oldest arrears
+                        </label>
+                      )}
+                      <Button type="button" disabled={busy === row.id} loading={busy === row.id} onClick={() => resolve(row)}>Post</Button>
+                      <Button type="button" variant="secondary" disabled={busy === row.id} loading={busy === row.id} onClick={() => ignore(row)}>Ignore</Button>
+                    </div>
+                  </td>
+                </tr>;
+              })}</tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

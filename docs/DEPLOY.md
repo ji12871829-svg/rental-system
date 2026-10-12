@@ -220,7 +220,7 @@ the first real tenant.
 
 | Task | How |
 |---|---|
-| Deploy an update | push to the default branch — Render auto-deploys (`autoDeploy: true`) |
+| Deploy an update | push to `main` — Render auto-deploys (`autoDeploy: true`). Status checks are enforced: every push/PR runs the 8 required checks (`backend`, `frontend`, `lint`, `knip`, `secrets-scan`, `dependency-audit`, `render-build`, `verify-live`) under branch protection (`strict: true`, required PR, `enforce_admins`), so Render's GitHub App will only build commits whose checks pass. Use the dashboard **Redeploy this commit** button to re-promote a commit whose checks were manually approved or to roll back a broken release. |
 | Watch a deploy | `RENDER_API_KEY=rnd_… node scripts/render-deploy.mjs wait <sha>` — real status from Render's API (also `list`, `status`, `deploys`). Keyless alternative: `node scripts/render-deploy.mjs gh <services \| status \| deploys \| wait <sha>>` reads GitHub's deployments feed — no API key needed (60 req/h per IP; `GITHUB_TOKEN` raises it to 5,000/h). Exit codes: 0 live/success, 1 failed, 3 pending, 2 timeout. GitHub environments are named like `main - rpms` — quote them. |
 | Roll back | Render dashboard → the bad deploy → **Roll back** |
 | See API logs | Render dashboard → Logs tab (stdout/stderr) |
@@ -295,7 +295,7 @@ existing service cannot be moved. Migrating = recreating:
 ## 8. M-Pesa rent automation
 
 Rent money arrives through three paths that all converge on the same posting
-engine and receipt pipeline — `docs/RUNBOOK-mpesa-payment-flows.md` is the
+engine and receipt pipeline — `docs/runbooks/RUNBOOK-mpesa-payment-flows.md` is the
 full walkthrough (matching cascade, review queue, STK outcomes, debug SQL):
 
 1. **Paybill/Till C2B confirmations (automatic)** — the tenant pays the
@@ -323,7 +323,7 @@ Set these environment variables in Render:
 | `MPESA_SHORTCODE` | Paybill/Till shortcode |
 | `MPESA_PASSKEY` | Daraja passkey for STK Push |
 | `MPESA_CALLBACK_URL` | `https://<service>.onrender.com/api/mpesa/stk/callback?token=<MPESA_CALLBACK_TOKEN>` |
-| `MPESA_CALLBACK_TOKEN` | Shared secret guarding all `/api/mpesa/*` callbacks; see `docs/RUNBOOK-mpesa-callback-gate.md` |
+| `MPESA_CALLBACK_TOKEN` | Shared secret guarding all `/api/mpesa/*` callbacks; see `docs/runbooks/RUNBOOK-mpesa-callback-gate.md` |
 | `MPESA_BASE_URL` | `https://sandbox.safaricom.co.ke` for testing, or the Daraja production URL |
 
 Register these HTTPS endpoints with Safaricom for C2B (append the same

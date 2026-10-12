@@ -65,6 +65,58 @@ export function isValidEmail(raw: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(raw.trim());
 }
 
+// --- Terminal vs transient failure --------------------------------------------
+//
+// Distinguishing the two is what lets the retry sweep avoid re-spending
+// attempts on a row that can never succeed. A permanent rejection means the
+// ADDRESS is wrong (no mailbox, domain refused) — retrying changes nothing, so
+// the row is recorded ERRONEOUS with no retry deadline and left for the
+// operator to fix. Everything else (network blip, greylisting, 4xx throttle,
+// provider outage) is transient and gets a backoff deadline.
+//
+// Mirrors the SMS channel's DND carve-out (smsService: a DND block stays FAILED
+// with next_retry_at NULL so the sweep stops touching it) — same intent, a
+// different vocabulary because the channel's failure modes differ.
+
+// Permanent SMTP reply codes (RFC 5321 §4.2.1): 5xx is permanent, 4xx is a
+// transient request to try again later.
+const PERMANENT_SMTP_CODES = [
+  '510', // bad address format
+  '511', // ambiguous address
+  '550', // mailbox unavailable / rejected
+  '551', // user not local / no such mailbox
+  '553', // mailbox name not allowed
+  '554', // transaction failed
+];
+
+// Phrases providers use for an address that will never be deliverable.
+const PERMANENT_MARKERS = [
+  'address unknown',
+  'unrecognized recipient',
+  'unknown recipient',
+  'no such user',
+  'recipient not found',
+  'does not exist',
+  'invalid recipient',
+  'invalid email',
+  'invalid address',
+  'mailbox unavailable',
+  'mailbox not found',
+  'user unknown',
+  'rejected: sender',
+];
+
+export function isTerminalEmailFailure(reason: string | null | undefined): boolean {
+  if (!reason) return false;
+  const text = reason.toLowerCase();
+
+  if (PERMANENT_MARKERS.some((marker) => text.includes(marker))) return true;
+
+  // Match a standalone 5xx SMTP code (nodemailer prefixes them, e.g.
+  // "550 5.1.1 <a@b.c>: Recipient address rejected").
+  return PERMANENT_SMTP_CODES.some((code) => new RegExp(`(^|[^0-9])${code}([^0-9]|$)`).test(text));
+}
+
 // --- Mock (simulated) provider ----------------------------------------------
 
 function mockSend(): EmailSendResult {

@@ -175,6 +175,36 @@
     },
 
     {
+      // HyperFrames launch-film sources are plain page-global scripts loaded
+      // via <script src> tags from src/index.html (not ES modules), so most
+      // top-level helpers are intentional cross-file namespace API. Linting
+      // them as app code floods the hook with unused-var noise.
+      "files": [
+        "docs/launch-film/**/*.js"
+      ],
+      "rules": {
+        "no-console": "off",
+        "no-await-in-loop": "off",
+        "no-unused-vars": "off"
+      }
+    },
+
+    {
+      // Skill templates and helper scripts are the motion-designer skill's
+      // own assets (synced from Cloud): page-global script namespaces plus
+      // render tooling, never imported by app code. Not repo-lint surface.
+      "files": [
+        ".agents/**/*.js",
+        ".agents/**/*.mjs"
+      ],
+      "rules": {
+        "no-console": "off",
+        "no-await-in-loop": "off",
+        "no-unused-vars": "off"
+      }
+    },
+
+    {
       "files": [
         "backend/src/db/migrations.ts",
         "backend/src/services/smsRetryJob.ts",

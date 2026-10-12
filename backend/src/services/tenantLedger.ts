@@ -60,7 +60,9 @@ function monthStartExpr(yearIdx: number, monthExpr: string): string {
 
 // True for month `monthExpr` iff the tenancy was live for (any part of) that
 // month: moved in by the month's end, and not moved out before its start.
-function occupiedInMonth(tAlias: string, yearIdx: number, monthExpr: string): string {
+// Exported so financeService's Tenant Advance aggregate reuses the same
+// predicate instead of a fourth hand-copy.
+export function occupiedInMonth(tAlias: string, yearIdx: number, monthExpr: string): string {
   return `(${tAlias}.move_in_date <= ${monthEndExpr(yearIdx, monthExpr)} AND (${tAlias}.move_out_date IS NULL OR ${tAlias}.move_out_date >= ${monthStartExpr(yearIdx, monthExpr)}))`;
 }
 

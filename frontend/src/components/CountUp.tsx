@@ -1,8 +1,6 @@
-// Count-up displays shared by the Dashboard's polled KPI strip and the
-// provider health cards. Animations live here so every polled figure moves
-// the same way. See useCountUp for the motion contract.
+// Count-up display for polled figures. Animations live here so every polled
+// number moves the same way. See useCountUp for the motion contract.
 import { useEffect, useRef, useState } from 'react';
-import { money } from '../lib/format';
 
 // Animates a numeric display from its previous value toward a new one so a
 // poll-driven change is *seen* rather than silently swapped. 600ms ease-out,
@@ -57,14 +55,9 @@ function useCountUp(target: number, durationMs = 600): { value: number; flash: b
   return { value: display, flash };
 }
 
-// Formatted count-up displays for the polled KPI strip. Both keep the label
-// readable while animating (real text, no icon-only swap) and hold still
-// when a poll returns unchanged numbers.
-export function CountMoney({ value, currency }: { value: number; currency?: string }) {
-  const { value: v, flash } = useCountUp(value);
-  return <span className={flash ? 'value-flash' : undefined}>{money(v, currency)}</span>;
-}
-
+// Formatted count-up display. Keeps the label readable while animating (real
+// text, no icon-only swap) and holds still when a poll returns an unchanged
+// number.
 export function Count({ value }: { value: number }) {
   const { value: v, flash } = useCountUp(value);
   return <span className={flash ? 'value-flash' : undefined}>{Math.round(v).toLocaleString('en-KE')}</span>;

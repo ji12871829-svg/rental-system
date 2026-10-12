@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Download, Mail } from 'lucide-react';
-import { EmptyState, KpiCard, PageHeader, Select, SkeletonTable, StatusBadge, useFetch, useToast } from '../components/ui';
+import { EmptyState, PageHeader, Select, SkeletonTable, StatusBadge, useFetch, useToast } from '../components/ui';
+import { KpiCard } from '../components/dashboard/primitives';
 import { api } from '../lib/api';
 import { downloadBlob } from '../lib/download';
 import { money } from '../lib/format';

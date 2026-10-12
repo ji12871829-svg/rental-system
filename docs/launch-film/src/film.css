@@ -1,0 +1,66 @@
+:root {
+  /* ---- stage (Midnight style, brand canvas) ---- */
+  --bg: #0B0E13;                  /* flat ink, from the landing's dark sections */
+  --card: #12161F;                /* rare stage surface */
+  --ink: #E9EDF5;                 /* stage text */
+  --ink2: #9AA6B8;
+  --ink3: #5D6A7C;
+  --hair: rgba(255, 255, 255, 0.16);
+  --accent: #11A8FF;              /* the now line / live action */
+  --accentDeep: #0B8EDE;
+  --mint: #01CA45;
+  --amber: #E8A33D;
+
+  /* ---- the app (Amie design system, never restyled) ---- */
+  --appBg: #FFFFFF;
+  --appFog: #FAFAFA;
+  --appHair: #EBEBEB;
+  --appAsh: #CDCDCD;
+  --appInk: #111111;
+  --appBody: #2E2E2E;
+  --appDim: #5C5C5C;
+  --appMute: #A0A0A0;
+  --brand: #11A8FF;
+  --brandDeep: #0B8EDE;
+  --brandSoft: #EBF9FF;
+  --mintSoft: #E9FAF0;
+  --amberSoft: #FDF0E1;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: Inter, -apple-system, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+}
+
+#stage { position: relative; overflow: hidden; background: var(--bg); contain: strict; }
+
+.cam { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.full { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.screen { position: absolute; left: 0; top: 0; width: 402px; height: 874px; }
+.abs { position: absolute; }
+.row { display: flex; align-items: center; }
+.center { display: flex; align-items: center; justify-content: center; }
+.mask { overflow: hidden; }
+.t { display: inline-block; white-space: nowrap; line-height: 1.3; vertical-align: top; }
+.card { background: var(--appBg); border-radius: 16px; border: 1px solid var(--appHair); box-shadow: 0 2px 10px rgba(17, 17, 17, 0.06); }
+
+/* ---- app chrome ---- */
+.mono { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+.eyebrow { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; color: var(--appMute); }
+.eyebrow i { width: 6px; height: 6px; border-radius: 999px; background: var(--appAsh); flex: none; }
+.hd h1 { font-size: 22px; font-weight: 700; color: var(--appInk); letter-spacing: -0.02em; }
+.hd p { margin-top: 3px; font-size: 11px; line-height: 1.45; color: var(--appMute); }
+.field label { display: block; font-size: 11px; font-weight: 600; color: var(--appDim); margin-bottom: 4px; }
+.field .box { width: 100%; height: 38px; border-radius: 10px; border: 1px solid var(--appAsh); background: var(--appBg); padding: 0 12px; font-size: 13px; color: var(--appBody); display: flex; align-items: center; justify-content: space-between; }
+
+/* ---- now line (Midnight signature) ---- */
+.now { position: absolute; height: 3px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 14px rgba(17, 168, 255, 0.55); }
+
+/* ---- device shadow over light canvases stays subtle ---- */
+.devsGone #stage { background: var(--bg); }

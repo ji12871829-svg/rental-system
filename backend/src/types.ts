@@ -28,6 +28,8 @@ export interface SettingsRow {
   currency: string;
   water_rate: string;
   retention_years: number;
+  /** Runtime SMS provider override (migration 013). NULL = use .env value. */
+  sms_provider: string | null;
   // Property-owner communication (owner remittance templates). NULL until
   // the operator fills them in Settings — owner channels without a contact
   // point are simply not offered.

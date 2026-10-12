@@ -31,6 +31,7 @@ import { monthlyRentSummary } from './rentService';
 import { getSettings } from './settingsService';
 import { monthlyWaterSummary, outstandingWaterByUnit, waterSummary } from './waterService';
 import {
+  occupiedInMonth,
   occupancyRows,
   reportingThroughMonth,
   rentMonths,
@@ -98,6 +99,36 @@ export async function dashboard(year?: number): Promise<DashboardData> {
     [targetYear]
   );
 
+  // Tenant Advance (dashboard metric card): tenants whose ledger balance is a
+  // positive credit — they paid more than they owe year-to-date, so the amount
+  // carries forward instead of being chased. One aggregate over the same
+  // move-in-aware YTD math the ledger uses (expected = occupied months × rent),
+  // so this number and "View Details → /tenants" always agree.
+  const creditBalances = await queryOne<{ n: string; total: string }>(
+    `SELECT COUNT(*)::text AS n, COALESCE(SUM(credit), 0)::text AS total
+     FROM (
+       SELECT t.id,
+              (t_paid.rent_paid + t_paid.water_paid) - (COALESCE(u.monthly_rent, 0) * COALESCE(occ.months, 0) + t_paid.water_billed) AS credit
+       FROM tenants t
+       LEFT JOIN units u ON u.id = t.unit_id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE((SELECT SUM(amount) FROM rent_payments rp WHERE rp.tenant_id = t.id AND rp.billing_year = $1), 0) AS rent_paid,
+                COALESCE((SELECT SUM(amount) FROM water_payments wp WHERE wp.tenant_id = t.id AND wp.billing_year = $1), 0) AS water_paid,
+                COALESCE((SELECT SUM(wmr.water_bill) FROM water_meter_readings wmr JOIN tenants tw2 ON tw2.unit_id = wmr.unit_id WHERE tw2.id = t.id AND wmr.billing_year = $1), 0) AS water_billed
+       ) t_paid ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS months
+         FROM generate_series(1, $2::int) AS mm
+         WHERE ${occupiedInMonth('t', 2, 'mm')}
+       ) occ ON TRUE
+       WHERE t.status = 'ACTIVE'
+     ) c
+     WHERE c.credit > 0`,
+    [targetYear, currentMonth]
+  );
+
+  const cashflowRows = await cashflow(targetYear);
+
   const outstandingRentByUnit = unitOutstanding;
 
   const monthlyWater = await monthlyWaterSummary(targetYear);
@@ -145,10 +176,24 @@ export async function dashboard(year?: number): Promise<DashboardData> {
       waterCollected: water.waterCollected,
       totalExpenses,
       netIncome: round2(totalCollected - totalExpenses),
+      tenantAdvances: {
+        count: Number(creditBalances?.n ?? 0),
+        total: round2(toNumber(creditBalances?.total)),
+      },
     },
     charts: {
       expectedVsCollected: rentMonthlySummary.map((r) => ({
         month: r.month, expected: r.expectedRent, collected: r.rentCollected,
+      })),
+      cashflow: cashflowRows.map((r) => ({
+        month: r.month,
+        monthName: r.monthName,
+        rentIn: r.rentIn,
+        waterIn: r.waterIn,
+        totalIn: r.totalIn,
+        expensesOut: r.expensesOut,
+        net: r.net,
+        cumulativeNet: r.cumulativeNet,
       })),
       occupiedVsVacant: { occupied, vacant },
       rentByPaymentMethod: rentByMethod.map((r) => ({ method: r.method, total: toNumber(r.total) })),
@@ -415,6 +460,65 @@ export async function combinedMonthlySummary(year?: number): Promise<CombinedMon
       vacantUnits: r.vacantUnits,
       currency: settings.currency,
     };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Cashflow (ported from the legacy system's CashflowController): money in vs
+// money out per month, over the EXISTING ledger — collections from rent +
+// water payments, outflows from the expense ledger. Penalties ride the rent
+// ledger as negative rows and are excluded from collections (they are a
+// charge, not money in) but their effect shows up naturally in arrears.
+// ---------------------------------------------------------------------------
+export interface CashflowRow {
+  month: number;
+  monthName: string;
+  rentIn: number;
+  waterIn: number;
+  totalIn: number;
+  expensesOut: number;
+  net: number;
+  cumulativeNet: number;
+}
+
+export async function cashflow(year?: number): Promise<CashflowRow[]> {
+  const settings = await getSettings();
+  const targetYear = year ?? settings.reporting_year;
+
+  // Negative rent rows are penalties (charges), not collections — exclude them.
+  const rentIn = await query<{ month: number; total: string }>(
+    `SELECT billing_month AS month, COALESCE(SUM(amount), 0)::text AS total
+     FROM rent_payments WHERE billing_year = $1 AND amount > 0
+     GROUP BY billing_month`,
+    [targetYear]
+  );
+  const waterIn = await query<{ month: number; total: string }>(
+    `SELECT billing_month AS month, COALESCE(SUM(amount), 0)::text AS total
+     FROM water_payments WHERE billing_year = $1
+     GROUP BY billing_month`,
+    [targetYear]
+  );
+  const expensesOut = await query<{ month: number; total: string }>(
+    `SELECT EXTRACT(MONTH FROM expense_date)::int AS month, COALESCE(SUM(amount), 0)::text AS total
+     FROM expenses WHERE EXTRACT(YEAR FROM expense_date)::int = $1
+     GROUP BY 1`,
+    [targetYear]
+  );
+
+  const rentMap = new Map(rentIn.map((r) => [r.month, toNumber(r.total)]));
+  const waterMap = new Map(waterIn.map((r) => [r.month, toNumber(r.total)]));
+  const expenseMap = new Map(expensesOut.map((r) => [r.month, toNumber(r.total)]));
+
+  let cumulative = 0;
+  return MONTH_NAMES.map((monthName, i) => {
+    const month = i + 1;
+    const rIn = rentMap.get(month) ?? 0;
+    const wIn = waterMap.get(month) ?? 0;
+    const out = expenseMap.get(month) ?? 0;
+    const totalIn = round2(rIn + wIn);
+    const net = round2(totalIn - out);
+    cumulative = round2(cumulative + net);
+    return { month, monthName, rentIn: rIn, waterIn: wIn, totalIn, expensesOut: out, net, cumulativeNet: cumulative };
   });
 }
 // Monthly financial report PDF — the combined monthly summary rendered as a

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Reject commit messages that carry GitHub Actions skip tokens, so no push
+# can ever reach Render with zero status checks. Bypass deliberately with
+# `git commit --no-verify` (rare — e.g. emergency revert of a broken hook).
+MSG_FILE="${1:-}"
+MSG=$(cat "$MSG_FILE" 2>/dev/null || true)
+if printf '%s\n' "$MSG" | grep -iE '\[ ?skip ci ?\]|\[ ?ci skip ?\]|\[ ?skip a ?ctions ?\]|\[ ?no ci ?\]|\[ ?skip ci tests ?\]|\[skip[-_]ci\]|\[skip\.ci\]' > /dev/null; then
+  echo "✖ commit-msg hook: commit message contains a [skip ci]-family token —"
+  echo "  these tokens skip the entire GitHub Actions workflow, so the push"
+  echo "  would reach Render with ZERO status checks. Fix the message or"
+  echo "  bypass deliberately with: git commit --no-verify"
+  exit 1
+fi

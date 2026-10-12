@@ -38,6 +38,19 @@ a concept worth keeping.
   (`autoSendEnabled`) and the post-commit dispatch seam
   (`dispatchAfterCommit`) that email and SMS both enter through. A provider
   outage or a disabled flag can never fail the request that queued a message.
+- **Post-payment dispatch module** — `services/postPaymentDispatch.ts`. The
+  one orchestration every payment flow (rent, water, and the M-Pesa paths
+  that reuse them) uses to tell a tenant about a recorded payment:
+  `notifyPaymentRecorded` prepares the SMS and email rows ON the payment's
+  transaction (a pool connection cannot yet see the seconds-old receipt),
+  returns the two channels' delivery facts — `{ queued, autoSend }` for SMS,
+  `{ queued, autoSend, reason }` for email — computed from what it actually
+  did, and hands back a `dispatch()` closure the flow calls strictly after
+  commit. The flows report those fact objects verbatim in both the audit
+  entry and the API response, so no record can drift from what was really
+  prepared. A missing phone or email on file degrades to "nothing queued"
+  (email carries the canonical `reason: 'no email on file'`), never an error;
+  a provider failure leaves a retryable row and never touches the payment.
 - **Outbound Email module** — `emailService.ts` plus the pure compositions in
   `utils/emailTemplates.ts`. Owns the email lifecycle exactly once; callers
   compose content and delegate. Cross-module callers queue through
@@ -46,12 +59,20 @@ a concept worth keeping.
   copy (subject, html, text, attachments) of what was sent, kept for the
   accountability principle. History pages render these rows; they are records,
   not a queue API.
-- **Queue/send lifecycle** — `PENDING` (queued by the channel's single persist
-  point — `queueEmail` for email, `queueSms` for SMS) → provider → `SENT`
-  (with message id) or `FAILED` (with the provider's reason). Send transitions
-  stay per channel on purpose (email is PENDING-only and records a plain
-  failure; SMS counts attempts and schedules retries); the post-commit
-  dispatch seam is shared in the Outbound Message module.
+- **Retry sweep** — `services/retrySweep.ts`. The one parameterized sweep
+  behind both channels' automatic retries: it claims due rows (`FOR UPDATE
+  SKIP LOCKED`, batch 20), re-sends them through the channel's own send and
+  contains per-row errors by reverting to `FAILED` with the reason appended.
+  `smsRetryJob` binds it to `sms_notifications` claiming `FAILED`;
+  `emailRetryJob` binds it to `email_notifications` claiming `FAILED` +
+  `ERRONEOUS` — a transient `FAILED` row gets a `next_retry_at` deadline
+  the sweep honors; a row that exhausts its budget keeps `FAILED` with no
+  deadline — visibly "gave up", still sendable manually. Email adds the
+  terminal `ERRONEOUS` outcome for a rejected ADDRESS (no mailbox, refused
+  domain): no retry can help, so it is recorded without a deadline for the
+  operator to fix and re-send. Send transitions stay per channel on purpose
+  (SMS carries provider cost and delivery reports; email classifies permanent
+  vs transient via `isTerminalEmailFailure`).
 - **Tenant reminder module** — `services/reminderService.ts`. One home for
   "tell this tenant what they owe": resolves the live ledger figures once,
   then queues an SMS row, queues a statement email, or composes a WhatsApp

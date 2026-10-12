@@ -18,7 +18,7 @@ registerServiceWorker();
 // Clerk (staff sign-in) is opt-in per deployment: the provider mounts only
 // when VITE_CLERK_PUBLISHABLE_KEY is present in the frontend build. Without
 // it the app renders exactly as before — the password form on /login is the
-// only door — and @clerk/react never activates. See docs/RUNBOOK-clerk-setup.md.
+// only door — and @clerk/react never activates. See docs/runbooks/RUNBOOK-clerk-setup.md.
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
 
 function ClerkGate({ children }: { children: React.ReactNode }) {

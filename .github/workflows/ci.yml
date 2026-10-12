@@ -40,10 +40,10 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinned by commit SHA for supply-chain hardening
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 pinned by commit SHA for supply-chain hardening
         with:
-          node-version: 26 # matches local dev and Render's pinned NODE_VERSION (render.yaml)
+          node-version: 26.3.0 # matches local dev (v26.3.0) and Render's NODE_VERSION (render.yaml)
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
@@ -75,10 +75,10 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinned by commit SHA for supply-chain hardening
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 pinned by commit SHA for supply-chain hardening
         with:
-          node-version: 26 # matches local dev and Render's pinned NODE_VERSION (render.yaml)
+          node-version: 26.3.0 # matches local dev (v26.3.0) and Render's NODE_VERSION (render.yaml)
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
@@ -97,10 +97,10 @@ jobs:
     env:
       NODE_ENV: production
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinned by commit SHA for supply-chain hardening
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 pinned by commit SHA for supply-chain hardening
         with:
-          node-version: 26 # matches local dev and Render's pinned NODE_VERSION (render.yaml)
+          node-version: 26.3.0 # matches local dev (v26.3.0) and Render's NODE_VERSION (render.yaml)
           cache: npm
           cache-dependency-path: |
             frontend/package-lock.json
@@ -134,7 +134,7 @@ jobs:
     env:
       BASE_URL: ${{ vars.RENDER_URL || 'https://rpms-gakt.onrender.com' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinned by commit SHA for supply-chain hardening
       - name: Wait for the service to answer (deploy already live → instant)
         run: |
           for i in $(seq 1 40); do
@@ -151,6 +151,11 @@ jobs:
       - name: Verify live deployment
         env:
           VERIFY_SKIP_AUTH: '1'
+          # The revision the deploy-identity checks must find live (see
+          # scripts/verify-live.mjs). On pull_request, github.sha is a
+          # merge-preview commit Render never deploys — the PR branch head is
+          # what autoDeploy ships.
+          VERIFY_TARGET_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node scripts/verify-live.mjs "$BASE_URL"
 
   # Dead-code detector (knip): blocks on unused files, dependencies, exports
@@ -163,10 +168,10 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinned by commit SHA for supply-chain hardening
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 pinned by commit SHA for supply-chain hardening
         with:
-          node-version: 26 # matches local dev and Render's pinned NODE_VERSION
+          node-version: 26.3.0 # matches local dev (v26.3.0) and Render's NODE_VERSION
           cache: npm
           cache-dependency-path: package-lock.json
       # knip parses each workspace's sources, so every workspace's deps must
@@ -191,10 +196,10 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinned by commit SHA for supply-chain hardening
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 pinned by commit SHA for supply-chain hardening
         with:
-          node-version: 26 # matches local dev and Render's pinned NODE_VERSION
+          node-version: 26.3.0 # matches local dev (v26.3.0) and Render's NODE_VERSION
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci --include=dev
@@ -202,6 +207,8 @@ jobs:
         run: npx oxlint shared backend/src backend/tests frontend/src scripts --config=.oxlintrc.json
       - name: Guard Tailwind color tokens (silent-drop detection)
         run: npm run guard:tailwind-tokens
+      - name: Guard dark-mode CSS rule content (empty / inherited-value detection)
+        run: npm run guard:dark-mode
 
   # Secret scanner: blocks on credentials committed in any reachable commit.
   # Gitleaks is installed from its official GitHub release pinned by version
@@ -212,7 +219,7 @@ jobs:
   secrets-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinned by commit SHA for supply-chain hardening
         with:
           fetch-depth: 0 # full history — the scan covers every reachable commit
       - name: Install gitleaks (pinned version + sha256)
@@ -237,10 +244,10 @@ jobs:
   dependency-audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinned by commit SHA for supply-chain hardening
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 pinned by commit SHA for supply-chain hardening
         with:
-          node-version: 26 # matches local dev and Render's pinned NODE_VERSION
+          node-version: 26.3.0 # matches local dev (v26.3.0) and Render's NODE_VERSION
           cache: npm
           cache-dependency-path: |
             backend/package-lock.json
@@ -251,3 +258,98 @@ jobs:
       - name: Audit frontend production dependencies
         working-directory: frontend
         run: npm audit --omit=dev --audit-level=low
+
+  # Dark-mode visual regression: starts the Vite dev server, loads the
+  # app in a headless Chromium, toggles dark mode, and captures screenshots
+  # of key pages in both themes. The screenshots are uploaded as artifacts
+  # for human review; the test fails on console errors (Error-level) or when
+  # the dev server doesn't start. This catches styling regressions like a
+  # missing `shadow-sm` on a card or a dark-mode class that stopped applying
+  # — things that token guards can't see because they're about rendered output,
+  # not class names.
+  #
+  # Runs on PRs and pushes (not the weekly sweep). Skips when the frontend
+  # build would be skipped (schedule events).
+  # Job ids may only contain letters, digits, - and _ — a colon (as in the
+  # original "ci:visual") makes GitHub reject the ENTIRE workflow file at
+  # trigger time: the run fails with zero jobs, so no check ever reports and
+  # a protected branch can never merge. Found the hard way: PR #5 sat with
+  # "8 of 8 required checks expected" and nothing running.
+  ci-visual:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinned
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 pinned
+        with:
+          node-version: 26.3.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+      - name: Start dev server in background
+        run: |
+          npm run dev &
+          SERVER_PID=$!
+          echo "DEV_SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+          # Wait for the server to answer.
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://localhost:5173 | grep -q 200; then
+              echo "dev server ready after ${i} attempt(s)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "dev server did not start within 60s" >&2
+          exit 1
+      - name: Run dark-mode screenshot tests
+        env:
+          VITE_BASE_URL: http://localhost:5173
+        run: npx playwright test dark-mode-screenshot --reporter=list
+      - name: Upload dark-mode screenshots
+        if: always()
+        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4 pinned
+        with:
+          name: dark-mode-screenshots-${{ github.run_id }}
+          path: frontend/test-results/dark-mode-*.png
+          retention-days: 30
+          if-no-files-found: warn
+      - name: Stop dev server
+        if: always()
+        run: |
+          if [ -n "${{ env.DEV_SERVER_PID }}" ]; then
+            kill "${{ env.DEV_SERVER_PID }}" 2>/dev/null || true
+          fi
+
+  # Weekly drift check (Monday 06:00 UTC — same cadence as the security sweep):
+  # compares the live /api/health commit + apiModules against origin/main and
+  # fails red when they diverge. verify-live is push-time-only, and Render
+  # never posts deploy statuses, so this is the scheduled read of
+  # currently-live that catches a deploy that slipped past CI or an
+  # advisory-driven red on an already-deployed tip (autoDeploy posture bypass
+  # #5). It leans on the same zero-dep audit script as the manual drift audit,
+  # so the command path is identical to a local run: node
+  # scripts/audit-deploy-drift.mjs "$BASE_URL".
+  drift:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 pinned by commit SHA for supply-chain hardening
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 pinned by commit SHA for supply-chain hardening
+        with:
+          node-version: 26.3.0 # matches local dev (v26.3.0) and Render's NODE_VERSION
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --include=dev
+      - name: Fetch origin so origin/main is current
+        run: git fetch origin --quiet
+      - name: Compare live deployment to origin/main
+        env:
+          BASE_URL: ${{ vars.RENDER_URL || 'https://rpms-gakt.onrender.com' }}
+        run: node scripts/audit-deploy-drift.mjs "$BASE_URL"

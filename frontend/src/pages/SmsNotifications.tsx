@@ -34,10 +34,20 @@ interface SpendByCurrency {
 }
 
 interface SmsConfigInfo {
-  provider: 'mock' | 'africastalking' | 'twilio';
+  provider: 'mock' | 'africastalking' | 'twilio' | 'textbee';
   live: boolean;
   senderId?: string;
   autoSend: boolean;
+}
+
+/** Human label per provider (textbee can now be selected from Settings). */
+function providerLabel(p: string | undefined): string {
+  switch (p) {
+    case 'twilio': return 'Twilio';
+    case 'textbee': return 'textbee (own-SIM)';
+    case 'africastalking': return "Africa's Talking";
+    default: return p ?? '…';
+  }
 }
 
 type BalanceStatus =
@@ -144,7 +154,7 @@ export default function SmsNotifications() {
           {liveMode ? (
             <span>
               <strong>Live mode</strong> — messages are delivered by{' '}
-              {config.provider === 'twilio' ? 'Twilio' : "Africa's Talking"}
+              {providerLabel(config.provider)}
               {config.senderId ? ` using sender “${config.senderId}”` : ''}.{' '}
               {config.autoSend
                 ? 'Receipt SMS are sent automatically the moment a payment is recorded.'
@@ -156,8 +166,8 @@ export default function SmsNotifications() {
               {config.autoSend
                 ? 'Receipt messages dispatch automatically when a payment is recorded.'
                 : 'Auto-send is off (SMS_AUTO_SEND=false) — messages stay Pending until sent from this page.'}{' '}
-              Set <code className="rounded bg-amber-100 px-1 py-0.5 text-xs">SMS_PROVIDER=africastalking</code> with credentials in{' '}
-              <code className="rounded bg-amber-100 px-1 py-0.5 text-xs">backend/.env</code> to go live.
+              Pick <strong>Africa's Talking</strong> or <strong>textbee</strong> on the{' '}
+              <a href="/settings" className="underline underline-offset-2 hover:text-amber-900">Settings page</a> to go live.
             </span>
           )}
         </div>
@@ -178,7 +188,7 @@ export default function SmsNotifications() {
             <AlertTriangle size={16} strokeWidth={1.75} className="mt-0.5 shrink-0" aria-hidden />
             <span>
               <strong>{empty ? 'SMS balance depleted' : 'Low SMS balance'}</strong> — your {' '}
-              {config?.provider === 'twilio' ? 'Twilio' : "Africa's Talking"} wallet is at{' '}
+              {providerLabel(config?.provider)} wallet is at{' '}
               <strong className="tabular-nums">{b.currency} {b.amount.toLocaleString('en-KE', { maximumFractionDigits: 2 })}</strong>.
               {' '}{empty ? 'Messages will fail to send until the wallet is topped up.' : 'Top up soon to keep receipt delivery working.'}
               {lowBalance.threshold !== null && (

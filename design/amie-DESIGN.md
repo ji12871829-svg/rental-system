@@ -23,7 +23,7 @@ Amie feels like a well-lit productivity workspace — bright white surfaces, alm
 | Sky Pale | `linear-gradient(to right top, #cfeeff, #41baff)` | `--color-sky-pale` | Highlight backgrounds behind key phrases, decorative gradient start |
 | Amie Pink | `#f6a6a6` | `--color-amie-pink` | Decorative accent for soft highlights |
 | Mint Active | `#01ca45` | `--color-mint-active` | Icon fill/color accents |
-| Violet Tag | `#a050ff` | `--color-violet-tag` | Feature label / tag borders for category chips |
+| Violet Tag | `#a050ff` | `--color-violet-tag` | Feature label / tag borders for category chips — **not used in this build**: category chips stay neutral gray (purple removed from the local palette) |
 | Amber Highlight | `#fbefaf` | `--color-amber-highlight` | Text highlight background behind a key phrase — single warm note in a cool palette |
 
 ## Tokens — Typography
@@ -88,7 +88,7 @@ Background #ffffff (or #fafafa), 12px radius, 3-layer shadow stack acting as the
 Background #ebebeb, 16px radius, 8px/16px padding, Inter 600. Isolates a key statistic or phrase.
 
 ### Category Tag (Pill)
-9999px radius, transparent bg, 1px border in category accent (#01ca45 / #a050ff). Inter 500 13px.
+9999px radius, transparent bg, 1px border in category accent (#01ca45 / #a050ff — locally the violet accent is replaced by neutral gray). Inter 500 13px.
 
 ### Inline Text Highlight
 Background #fbefaf on a span within the heading. No border, no radius. Once per hero.
@@ -155,7 +155,7 @@ Logos grayscale(1), horizontally scrolling via scrollX animation (70s linear). N
   --color-sky-pale: #cfeeff;
   --color-amie-pink: #f6a6a6;
   --color-mint-active: #01ca45;
-  --color-violet-tag: #a050ff;
+  /* --color-violet-tag: #a050ff; — dropped in this build (no purple) */
   --color-amber-highlight: #fbefaf;
 
   --font-inter: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;

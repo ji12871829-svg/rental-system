@@ -28,6 +28,7 @@ export const routeChunks = {
   arrears: () => import('../pages/Arrears'),
   receipts: () => import('../pages/Receipts'),
   sms: () => import('../pages/SmsNotifications'),
+  emailHistory: () => import('../pages/EmailHistory'),
   emailCampaign: () => import('../pages/EmailCampaign'),
   messageTemplates: () => import('../pages/MessageTemplates'),
   users: () => import('../pages/Users'),
@@ -35,6 +36,14 @@ export const routeChunks = {
   clerkSignups: () => import('../pages/ClerkSignups'),
   privacyRegister: () => import('../pages/PrivacyRegister'),
   mpesaReview: () => import('../pages/MpesaReview'),
+  maintenance: () => import('../pages/Maintenance'),
+  vendors: () => import('../pages/Vendors'),
+  expenseApprovals: () => import('../pages/ExpenseApprovals'),
+  recurringExpenses: () => import('../pages/RecurringExpenses'),
+  penalties: () => import('../pages/Penalties'),
+  documents: () => import('../pages/Documents'),
+  vacancies: () => import('../pages/Vacancies'),
+  publicVacancies: () => import('../pages/PublicVacancies'),
   legal: () => import('../pages/Legal'),
 } as const;
 

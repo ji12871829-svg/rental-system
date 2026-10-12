@@ -4,6 +4,8 @@
   "scripts": {
     "lint": "node scripts/run-oxlint.mjs",
     "guard:tailwind-tokens": "node scripts/check-tailwind-tokens.mjs",
+    "guard:dark-mode": "node scripts/check-dark-mode.mjs",
+    "guard:dark-mode-classes": "node scripts/check-dark-mode-classes.mjs",
     "knip": "knip --include files,dependencies,exports,types",
     "typecheck": "npm --prefix backend run typecheck",
     "typecheck:backend": "npm --prefix backend run typecheck",
@@ -23,6 +25,9 @@
     ],
     "{frontend/src/**,frontend/index.html,tailwind.config.js,frontend/tailwind.config.js}": [
       "npm run guard:tailwind-tokens"
+    ],
+    "frontend/src/index.css": [
+      "npm run guard:dark-mode"
     ]
   }
 }

@@ -41,7 +41,7 @@ interface EmailNotification {
   receipt_id: number | null;
   email_address: string;
   subject: string;
-  status: 'PENDING' | 'SENT' | 'FAILED';
+  status: 'PENDING' | 'SENT' | 'FAILED' | 'ERRONEOUS';
   failure_reason: string | null;
   created_at: string;
   tenant_name: string;
@@ -50,11 +50,11 @@ interface EmailNotification {
 
 const TYPE_STYLES: Record<string, string> = {
   // Receipt-type tags: filled tints stay in the semantic families (good /
-  // attention) plus the design's violet tag tint — no sky fills, which are
-  // reserved for action buttons (design/amie-DESIGN.md).
+  // attention); COMBINED is neutral so it doesn't invent a third hue — no sky
+  // fills either, which are reserved for action buttons (design/amie-DESIGN.md).
   RENT: 'bg-emerald-100 text-emerald-800',
   WATER: 'bg-amber-100 text-amber-800',
-  COMBINED: 'bg-violet/15 text-violet',
+  COMBINED: 'bg-gray-100 text-gray-700',
 };
 
 // Full standalone document for one receipt — used both for the in-modal

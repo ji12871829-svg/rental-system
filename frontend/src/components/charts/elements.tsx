@@ -4,7 +4,7 @@
 // swaps only its import source. Moved verbatim from the former single-file
 // charts.tsx.
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
-import type { AxisConfig, ChartDatum, DataKey, TickFormatter, TooltipFormatter } from './types';
+import type { AxisConfig, DataKey, TickFormatter, TooltipFormatter } from './types';
 
 export function CartesianGrid(_props: { strokeDasharray?: string }) {
   return null;
@@ -40,18 +40,6 @@ export function Bar(_props: { dataKey: DataKey; fill?: string; name?: string; ch
 }
 
 export function Line(_props: { dataKey: DataKey; stroke?: string; name?: string; type?: string }) {
-  return null;
-}
-
-export function Pie(_props: {
-  data: ChartDatum[];
-  dataKey: DataKey;
-  nameKey?: DataKey;
-  innerRadius?: number;
-  outerRadius?: number;
-  label?: boolean | ((datum: ChartDatum) => ReactNode);
-  children?: ReactNode;
-}) {
   return null;
 }
 

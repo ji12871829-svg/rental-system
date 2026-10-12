@@ -44,12 +44,15 @@ export const env = {
   // this process) CORS never triggers — the origin matches nothing but the
   // browser makes no cross-origin request. This keeps split deploys working.
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
-  smsProvider: (process.env.SMS_PROVIDER || 'mock').toLowerCase() as 'mock' | 'africastalking' | 'twilio',
+  smsProvider: (process.env.SMS_PROVIDER || 'mock').toLowerCase() as 'mock' | 'africastalking' | 'twilio' | 'textbee',
   // Auto-send receipt SMS right after the payment commits (set false to keep
   // them PENDING for manual sending from the SMS history page).
   smsAutoSend: (process.env.SMS_AUTO_SEND || 'true').toLowerCase() !== 'false',
-  // Automatic retry of FAILED SMS (see smsRetryJob). Base delay is the first
-  // wait; each further attempt multiplies it (1m → 5m → 25m by default).
+  // Automatic retry of FAILED SMS and FAILED/ERRONEOUS email. One knob set
+  // drives BOTH channels' sweeps (shared history: it predates the email
+  // channel — see retrySweep.ts, consumed by smsRetryJob and emailRetryJob).
+  // Base delay is the first wait; each further attempt multiplies it
+  // (1m → 5m → 25m by default).
   smsRetryEnabled: (process.env.SMS_RETRY_ENABLED || 'true').toLowerCase() !== 'false',
   smsMaxSendAttempts: Number(process.env.SMS_MAX_SEND_ATTEMPTS) || 3,
   smsRetryBaseDelayMs: Number(process.env.SMS_RETRY_BASE_DELAY_MS) || 60_000,
@@ -92,6 +95,18 @@ export const env = {
   twilioAuthToken: process.env.TWILIO_AUTH_TOKEN || '',
   twilioFrom: process.env.TWILIO_FROM || '',
   twilioMessagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID || '',
+  // textbee (own-SIM gateway — SMS_PROVIDER=textbee): an Android phone with a
+  // local SIM runs the textbee app and this backend POSTs to its REST API. The
+  // message leaves as an ordinary peer-to-peer text from that SIM, so there is
+  // NO sender ID to register or pay for, and the only cost is the carrier's own
+  // SMS bundle. Trade-off: the phone must stay powered and on signal.
+  //   TEXTBEE_API_KEY   generated in the textbee dashboard (API Keys panel)
+  //   TEXTBEE_API_URL   hosted default; override for a self-hosted instance
+  //   TEXTBEE_DEVICE_ID optional — pins which registered phone sends; unset
+  //                     lets textbee pick the account's default device
+  textbeeApiKey: process.env.TEXTBEE_API_KEY || '',
+  textbeeApiUrl: (process.env.TEXTBEE_API_URL || 'https://api.textbee.dev/api/v1').replace(/\/+$/, ''),
+  textbeeDeviceId: process.env.TEXTBEE_DEVICE_ID || '',
   mpesaProvider: (process.env.MPESA_PROVIDER || 'mock').toLowerCase() as 'mock' | 'daraja',
   mpesaConsumerKey: process.env.MPESA_CONSUMER_KEY || '',
   mpesaConsumerSecret: process.env.MPESA_CONSUMER_SECRET || '',
@@ -131,7 +146,7 @@ if (env.nodeEnv === 'production') {
   // deploy on every install buys nothing for single-operator setups.
   if (!process.env.JWT_STAFF_SECRET || !process.env.JWT_PORTAL_SECRET) {
     // eslint-disable-next-line no-console
-    console.warn('[config] JWT_STAFF_SECRET / JWT_PORTAL_SECRET are not both set — staff and portal tokens share one signing key. Set two distinct secrets to fully harden the auth boundary (see docs/RUNBOOK-jwt-secret-split.md).');
+    console.warn('[config] JWT_STAFF_SECRET / JWT_PORTAL_SECRET are not both set — staff and portal tokens share one signing key. Set two distinct secrets to fully harden the auth boundary (see docs/runbooks/RUNBOOK-jwt-secret-split.md).');
   }
   if (env.jwtStaffSecret.length < 32 || env.jwtPortalSecret.length < 32) {
     // eslint-disable-next-line no-console

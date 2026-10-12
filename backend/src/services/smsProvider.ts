@@ -1,7 +1,11 @@
 // SMS provider abstraction. This is the ONLY file that knows about a real
 // provider (spec §34/§41: credentials live in env vars — never in code or DB).
 //
-// Selection is env-driven via backend/.env:
+// Selection is two-tier:
+//   1. the DB override — settings.sms_provider (set/changed live from the
+//      Settings page without a redeploy; NULL = fall through), then
+//   2. the env var SMS_PROVIDER in backend/.env, which keeps its historical
+//      role as the default/fallback so existing deployments behave unchanged.
 //   SMS_PROVIDER=mock            (default) simulated send — no network call,
 //                                message recorded with a MOCK-<id> reference
 //   SMS_PROVIDER=africastalking  real delivery via Africa's Talking (Kenya)
@@ -12,6 +16,20 @@
 //   TWILIO_FROM                  verified number (E.164) OR
 //   TWILIO_MESSAGING_SERVICE_SID an alphanumeric sender via a Messaging
 //                                Service (recommended — number pooling)
+//   SMS_PROVIDER=textbee         own-SIM delivery via textbee — an Android
+//                                phone with a local SIM relays the API call.
+//                                No sender ID to buy: the SMS leaves as a
+//                                normal text from that SIM, so the only cost
+//                                is the carrier bundle (Safaricom sells ~1,000
+//                                SMS for KES 30/week). Kenya's Safaricom does
+//                                not accept unregistered alphanumeric sender
+//                                IDs, which is what makes this route — rather
+//                                than an unbranded Africa's Talking send — the
+//                                genuinely cheap option.
+//   TEXTBEE_API_KEY              generated in the textbee dashboard
+//   TEXTBEE_API_URL              default https://api.textbee.dev/api/v1;
+//                                point at your own host when self-hosting
+//   TEXTBEE_DEVICE_ID            optional — pin which registered phone sends
 //
 // Safety nets:
 //   - NODE_ENV=test forces the mock provider so test runs can never spend
@@ -19,6 +37,7 @@
 //   - A live provider with missing credentials records a FAILED row with a
 //     clear reason instead of crashing or silently pretending success.
 import { env, isTest } from '../config/env';
+import { getSmsProviderOverride } from './settingsService';
 
 export interface SendResult {
   ok: boolean;
@@ -29,7 +48,7 @@ export interface SendResult {
 }
 
 export interface SmsConfig {
-  provider: 'mock' | 'africastalking' | 'twilio';
+  provider: SmsProviderName;
   live: boolean;
   senderId?: string;
   /** Receipt SMS are auto-sent when a payment is recorded (never in tests). */
@@ -40,13 +59,36 @@ const AT_SMS_ENDPOINT = 'https://api.africastalking.com/version1/messaging';
 const AT_USER_ENDPOINT = 'https://api.africastalking.com/version1/user';
 const AT_TIMEOUT_MS = 15_000;
 const TWILIO_TIMEOUT_MS = 15_000;
+// textbee merely queues the send and returns — the phone dispatches
+// asynchronously — so this timeout only bounds the API round-trip, not
+// delivery. It stays generous because a self-hosted instance may be remote.
+const TEXTBEE_TIMEOUT_MS = 15_000;
+
+// Local (not exported): the provider union lives with its validation here —
+// knip's unused-export gate keeps every export honest.
+type SmsProviderName = 'mock' | 'africastalking' | 'twilio' | 'textbee';
+
+/**
+ * Resolve the raw provider choice: DB override → .env → 'mock'. Pure input
+ * mapping so it is testable without a DB — getSmsConfig() layers the rest of
+ * the safety rules (test forcing, mock fallback) around it.
+ */
+async function resolveProviderChoice(): Promise<SmsProviderName> {
+  if (isTest) return 'mock';
+  const override = await getSmsProviderOverride();
+  if (override === 'mock' || override === 'africastalking' || override === 'twilio' || override === 'textbee') {
+    return override;
+  }
+  return (
+    env.smsProvider === 'africastalking' ||
+    env.smsProvider === 'twilio' ||
+    env.smsProvider === 'textbee'
+  ) ? env.smsProvider : 'mock';
+}
 
 // Current mode, safe to expose to the UI — contains no secrets.
-export function getSmsConfig(): SmsConfig {
-  const provider: SmsConfig['provider'] =
-    !isTest && (env.smsProvider === 'africastalking' || env.smsProvider === 'twilio')
-      ? env.smsProvider
-      : 'mock';
+export async function getSmsConfig(): Promise<SmsConfig> {
+  const provider: SmsConfig['provider'] = await resolveProviderChoice();
   const twilioReady =
     Boolean(env.twilioAccountSid && env.twilioAuthToken) &&
     Boolean(env.twilioFrom || env.twilioMessagingServiceSid);
@@ -57,11 +99,19 @@ export function getSmsConfig(): SmsConfig {
         ? Boolean(env.smsApiKey && env.smsUsername)
         : provider === 'twilio'
           ? twilioReady
-          : false,
+          : // textbee needs only its API key — the "sender" is the SIM in the
+            // phone, so unlike AT/Twilio there is no sender identity to verify.
+            provider === 'textbee'
+            ? Boolean(env.textbeeApiKey)
+            : false,
+    // No senderId for textbee by design: messages carry the SIM's own number,
+    // which the backend does not know and cannot set.
     senderId:
       provider === 'twilio'
         ? env.twilioFrom || env.twilioMessagingServiceSid || undefined
-        : env.smsSenderId || undefined,
+        : provider === 'textbee'
+          ? undefined
+          : env.smsSenderId || undefined,
     autoSend: !isTest && env.smsAutoSend,
   };
 }
@@ -397,9 +447,134 @@ async function twilioSend(phoneNumber: string, message: string): Promise<SendRes
   }
 }
 
+// --- textbee (own-SIM gateway) -----------------------------------------------
+
+interface TextbeeResponse {
+  /** Queued-accept shape: { success, message, smsBatchId, recipientCount }. */
+  data?: {
+    success?: boolean;
+    message?: string;
+    /** Mongo-style id of the accepted batch — our join key in history. */
+    smsBatchId?: string;
+    recipientCount?: number;
+    /** Immediate-dispatch shape reports counts instead of an id. */
+    successCount?: number;
+    failureCount?: number;
+  };
+  message?: string;
+}
+
+/**
+ * Map a textbee response to our SendResult. Kept pure so the three quirks that
+ * matter are testable without a network:
+ *   - 200 with data.success false is a REJECTED send, not an accepted one
+ *     (textbee reports plan-limit and validation failures in the body).
+ *   - 429 is the free tier's 50/day · 300/month quota (or burst limiter) —
+ *     worded so the operator knows to retry later or upgrade, not to
+ *     reconfigure credentials.
+ *   - the immediate-dispatch response carries successCount/failureCount and
+ *     no smsBatchId, so a partial failure must not be recorded as full success.
+ */
+export function parseTextbeeResponse(body: TextbeeResponse, httpStatus: number): SendResult {
+  if (httpStatus === 429) {
+    return {
+      ok: false,
+      failureReason:
+        `textbee rate limit reached (HTTP 429): ${body.message ?? 'the free tier caps sends at 50/day and 300/month, and the phone may also throttle bursts'}. The send was not queued — retry later or upgrade the textbee plan.`,
+    };
+  }
+  if (httpStatus === 401) {
+    return {
+      ok: false,
+      failureReason: 'textbee rejected the API key (HTTP 401) — regenerate it in the textbee dashboard and update TEXTBEE_API_KEY.',
+    };
+  }
+  if (httpStatus >= 400) {
+    return { ok: false, failureReason: `textbee returned HTTP ${httpStatus}${body.message ? `: ${body.message}` : ''}` };
+  }
+
+  const data = body.data;
+  if (!data) {
+    return { ok: false, failureReason: 'textbee returned no data — the send was not queued.' };
+  }
+  // Immediate-dispatch shape: count the failures rather than trusting the status.
+  if (typeof data.failureCount === 'number') {
+    if (data.failureCount > 0 && !data.successCount) {
+      return { ok: false, failureReason: `textbee reported ${data.failureCount} recipient(s) failed to send.` };
+    }
+    return {
+      ok: true,
+      providerMessageId: data.smsBatchId ?? `TEXTBEE-${Date.now()}`,
+    };
+  }
+  if (data.success === false) {
+    return { ok: false, failureReason: data.message ?? 'textbee rejected the send (data.success=false).' };
+  }
+  return {
+    ok: true,
+    providerMessageId: data.smsBatchId ?? 'unknown',
+  };
+}
+
+async function textbeeSend(phoneNumber: string, message: string): Promise<SendResult> {
+  const { textbeeApiKey: apiKey, textbeeApiUrl, textbeeDeviceId: deviceId } = env;
+  if (!apiKey) {
+    return {
+      ok: false,
+      failureReason: 'SMS_PROVIDER=textbee but TEXTBEE_API_KEY is not set in backend/.env.',
+    };
+  }
+
+  const to = normalizePhoneNumber(phoneNumber);
+  if (!to) {
+    return { ok: false, failureReason: `Invalid phone number: "${phoneNumber}"` };
+  }
+
+  // Strip trailing slashes here, not only in env.ts, so the endpoint can never
+  // come out as "…/v1//gateway/send-sms" — a self-hosted TEXTBEE_API_URL pasted
+  // with a trailing slash is the obvious way to hit that.
+  const apiUrl = textbeeApiUrl.replace(/\/+$/, '');
+
+  // textbee wants E.164 recipients and a message — no `from` field at all,
+  // which is the whole point: the SIM in the phone is the sender.
+  const payload: Record<string, unknown> = { recipients: [to], message };
+  if (deviceId) payload.deviceId = deviceId;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TEXTBEE_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${apiUrl}/gateway/send-sms`, {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    let body: TextbeeResponse | undefined;
+    try {
+      body = (await res.json()) as TextbeeResponse;
+    } catch {
+      // Non-JSON error body (HTML error page, empty 5xx body…)
+    }
+    return parseTextbeeResponse(body ?? {}, res.status);
+  } catch (err) {
+    if (controller.signal.aborted) {
+      return { ok: false, failureReason: `textbee request timed out after ${TEXTBEE_TIMEOUT_MS / 1000}s — is the phone online and the gateway app running?` };
+    }
+    return { ok: false, failureReason: `textbee request failed: ${(err as Error).message}` };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function sendSms(opts: { phoneNumber: string; message: string }): Promise<SendResult> {
-  const { provider } = getSmsConfig();
+  const { provider } = await getSmsConfig();
   if (provider === 'mock') return mockSend();
   if (provider === 'twilio') return twilioSend(opts.phoneNumber, opts.message);
+  if (provider === 'textbee') return textbeeSend(opts.phoneNumber, opts.message);
   return africasTalkingSend(opts.phoneNumber, opts.message);
 }

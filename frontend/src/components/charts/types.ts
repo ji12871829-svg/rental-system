@@ -14,17 +14,6 @@ export interface AxisConfig {
   tickFormatter?: TickFormatter;
 }
 
-export interface SeriesConfig {
-  dataKey: DataKey;
-  name?: string;
-  fill?: string;
-  stroke?: string;
-  label?: boolean | ((datum: ChartDatum) => ReactNode);
-  outerRadius?: number;
-  nameKey?: DataKey;
-  type?: string;
-}
-
 export interface CellConfig {
   fill?: string;
 }

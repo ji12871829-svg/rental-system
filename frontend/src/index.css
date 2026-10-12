@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  /* Form-panel / card section headings: a level-2 heading with the standard
+     panel spacing so every panel gets the same mb-4 without repeating it.
+     Use on h2 headings that open a bordered panel, modal section, or form group.
+     Override spacing with a more specific class when a panel wants tighter rhythm. */
+  h2.card-heading {
+    @apply mb-4 text-base font-semibold text-gray-900;
+  }
+}
+
 html {
   -webkit-font-smoothing: antialiased;
 }
@@ -420,18 +430,27 @@ html.dark .bg-emerald-50 { background-color: rgb(6 78 59 / 0.26); }
 html.dark .bg-emerald-100 { background-color: rgb(6 78 59 / 0.45); }
 html.dark .bg-red-100 { background-color: rgb(127 29 29 / 0.45); }
 html.dark .bg-amber-100 { background-color: rgb(120 53 15 / 0.45); }
+html.dark .bg-cyan-50 { background-color: rgb(3 105 161 / 0.26); }
+html.dark .bg-cyan-50\/50 { background-color: rgb(3 105 161 / 0.13); }
+html.dark .bg-cyan-50\/60 { background-color: rgb(3 105 161 / 0.16); }
 html.dark .bg-green-100 { background-color: rgb(6 78 59 / 0.45); }
 html.dark .bg-blue-100 { background-color: rgb(30 58 138 / 0.45); }
-html.dark .bg-purple-100 { background-color: rgb(107 33 168 / 0.45); }
 html.dark .bg-sky-100 { background-color: rgb(3 105 161 / 0.45); }
 
 /* Opacity variants compile to their own escaped classes — remap them
    separately or they keep Tailwind's original light tones (the /50s here
    are subtle tint washes on status cards). */
-html.dark .bg-red-50\/50 { background-color: rgb(127 29 29 / 0.11); }
+html.dark .bg-red-50\/50   { background-color: rgb(127 29 29 / 0.11); }
 html.dark .bg-amber-50\/50 { background-color: rgb(120 53 15 / 0.13); }
 html.dark .bg-emerald-50\/50 { background-color: rgb(6 78 59 / 0.13); }
-html.dark .bg-gray-100\/70 { background-color: rgb(255 255 255 / 0.07); }
+html.dark .bg-gray-100\/70  { background-color: rgb(255 255 255 / 0.07); }
+
+/* /60 row-highlight tint washes that pages apply to table rows and status
+   strips. The /50 overrides above only cover /50, so /60 would otherwise
+   keep Tailwind's light tint over dark cards. Keep the /60 value a touch
+   stronger than /50 so it still reads as a highlight on the dark card tone. */
+html.dark .bg-red-50\/60   { background-color: rgb(127 29 29 / 0.16); }
+html.dark .bg-amber-50\/60 { background-color: rgb(120 53 15 / 0.16); }
 
 /* Interactive states also compile to separate classes (hover:bg-gray-50 is
    NOT .bg-gray-50) — without these, button/card hovers flash Tailwind's
@@ -503,9 +522,14 @@ html.dark {
 
 /* Dark-mode status TEXT: the darkened colored surfaces above pair with
    lighter text so alerts/badges keep AA contrast instead of turning
-   dark-on-dark. */
+   dark-on-dark. The KPI/primitive design-system tints use the -600 shade in
+   light mode (warn = text-amber-600, good = text-emerald-600) while the
+   dark block only remapped -700/-800/-900 — so remap -600 too; otherwise
+   warn/good KPI text keeps Tailwind's light value over the dark card. */
 html.dark .text-red-700,
 html.dark .text-red-600 { color: #fca5a5; }
+html.dark .text-amber-600  { color: #fcd34d; }
+html.dark .text-emerald-600 { color: #6ee7b7; }
 html.dark .text-emerald-700 { color: #6ee7b7; }
 html.dark .text-green-700 { color: #86efac; }
 html.dark .text-amber-800,
@@ -514,10 +538,11 @@ html.dark .text-blue-800 { color: #93c5fd; }
 html.dark .text-brand-700 { color: #b0e6ff; }
 html.dark .text-brand-600 { color: #7ad4ff; }
 html.dark .text-amber-900 { color: #fcd34d; }
+html.dark .text-cyan-800,
+html.dark .text-cyan-700 { color: #67e8f9; }
 html.dark .text-red-800,
 html.dark .text-red-900 { color: #fca5a5; }
 html.dark .text-emerald-800,
 html.dark .text-emerald-900 { color: #6ee7b7; }
 html.dark .text-green-800 { color: #86efac; }
-html.dark .text-purple-800 { color: #d8b4fe; }
 html.dark .text-blue-900 { color: #93c5fd; }
