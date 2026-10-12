@@ -38,7 +38,8 @@ const listQuerySchema = baseListQuerySchema.extend({
 
 // Current SMS mode so the UI can label sends honestly (no secrets returned).
 router.get('/config', asyncHandler(async (_req, res) => {
-  res.json({ data: getSmsConfig() });
+  const cfg = await getSmsConfig();
+  res.json({ data: cfg });
 }));
 
 // Provider wallet balance + low-balance evaluation for the SMS page's

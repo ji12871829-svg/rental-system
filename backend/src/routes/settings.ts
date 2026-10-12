@@ -24,12 +24,16 @@ const updateSchema = z.object({
   ownerEmail: z.string().trim().email().max(255).optional(),
   ownerPhone: z.string().trim().max(30).optional(),
   managementFeePercent: z.number().min(0).max(100).optional(),
+  // Runtime SMS provider override. null/empty clears the override so the
+  // .env SMS_PROVIDER becomes effective again.
+  smsProvider: z.enum(['mock', 'africastalking', 'twilio', 'textbee']).nullable().optional(),
 });
 
 router.put('/', managerOrAdmin, validateBody(updateSchema), asyncHandler(async (req, res) => {
   const body = req.body as {
     reportingYear?: number; currency?: string; waterRate?: number; retentionYears?: number;
     ownerName?: string; ownerEmail?: string; ownerPhone?: string; managementFeePercent?: number;
+    smsProvider?: string | null;
   };
   const settings = await updateSettings({
     reportingYear: body.reportingYear,
@@ -41,6 +45,8 @@ router.put('/', managerOrAdmin, validateBody(updateSchema), asyncHandler(async (
     ownerEmail: body.ownerEmail === undefined ? undefined : (body.ownerEmail || null),
     ownerPhone: body.ownerPhone === undefined ? undefined : (body.ownerPhone || null),
     managementFeePercent: body.managementFeePercent,
+    // null = clear the override (fall back to .env); omitted = leave as-is.
+    smsProvider: body.smsProvider === undefined ? undefined : (body.smsProvider || null),
   }, req.user!.userId);
   res.json({ data: settings });
 }));

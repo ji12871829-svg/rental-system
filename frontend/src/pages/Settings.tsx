@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CheckCircle2, CircleDashed, ImageUp, Trash2 } from 'lucide-react';
-import { Button, Field, PageHeader, Skeleton, TextInput, useFetch, useShake, useToast } from '../components/ui';
+import { Button, Field, PageHeader, Select, Skeleton, TextInput, useFetch, useShake, useToast } from '../components/ui';
 import { BrandLogo } from '../components/BrandLogo';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -40,6 +40,17 @@ interface SmsConfigView {
   senderId?: string;
   autoSend: boolean;
 }
+
+/** Provider names offered by the SMS provider selector (Africa's Talking is
+    the main route; textbee is the own-SIM low-cost alternative). */
+type SmsProviderChoice = 'africastalking' | 'textbee' | 'mock' | 'twilio';
+
+const SMS_PROVIDER_LABELS: Record<SmsProviderChoice, string> = {
+  africastalking: "Africa's Talking (main — wallet credits)",
+  textbee: 'textbee (own-SIM gateway — carrier bundle)',
+  mock: 'Simulated (no real sends)',
+  twilio: 'Twilio (global)',
+};
 
 interface SmsBalanceView {
   state: 'unknown' | 'unavailable' | 'ok' | 'low' | 'empty';
@@ -343,6 +354,27 @@ export default function Settings() {
     }
   }
 
+  // --- SMS provider runtime switch --------------------------------------------
+  // Local selection state; smsCfg.provider shows what is currently effective.
+  const [smsProviderChoice, setSmsProviderChoice] = useState<SmsProviderChoice | ''>('');
+  const [smsProviderBusy, setSmsProviderBusy] = useState(false);
+
+  async function saveSmsProvider(choice: SmsProviderChoice) {
+    setSmsProviderBusy(true);
+    setSmsError(null);
+    try {
+      await api.put('/api/settings', { smsProvider: choice });
+      const label = SMS_PROVIDER_LABELS[choice];
+      toast('success', `SMS provider switched to ${label}. New sends use it immediately.`);
+      refreshSmsCfg();
+      refreshSmsBalance();
+    } catch (err) {
+      toast('error', (err as Error).message);
+    } finally {
+      setSmsProviderBusy(false);
+    }
+  }
+
   // Flattens the balance union once — TS loses both the state narrowing and
   // `balance` presence across the JSX ternary chain otherwise. In the ok/low/
   // empty states the backend always carries `balance` (getSmsBalance).
@@ -614,7 +646,9 @@ export default function Settings() {
         <div className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
           <h2 className="card-heading">SMS provider</h2>
           <p className="mt-1 mb-4 text-sm text-gray-500">
-            Receipt SMS and notifications are sent through this provider. Send a test SMS to verify the
+            Receipt SMS and notifications are sent through this provider. Pick the main route
+            (Africa's Talking) or the low-cost own-SIM alternative (textbee) below — the switch
+            takes effect on the next send, no redeploy needed. Send a test SMS to verify the
             configuration end-to-end — the provider's own response is shown below.
           </p>
           <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-gray-600">
@@ -628,8 +662,32 @@ export default function Settings() {
                 {balanceInfo.state === 'empty' && <span className="text-red-700"> — empty</span>}
               </span>
             ) : smsBalance?.state === 'unavailable' ? (
-              <span className="text-amber-700" title={smsBalance.reason}>Balance: unavailable</span>
-            ) : null}
+              <span className="text-amber-700" title={smsBalance.reason}>Balance: unavailable</span>              ) : null}
+          </div>
+          {/* Provider selector — Africa's Talking is the main route; textbee is the
+              selectable second option. Requires .env credentials for the chosen
+              provider; the live badge above reflects whether they are present. */}
+          <div className="mb-4 flex flex-wrap items-end gap-3">
+            <div className="w-72">
+              <Field label="Provider" hint="Switching updates the dashboard banner and balance readout immediately.">
+                <Select
+                  value={smsProviderChoice || ''}
+                  onChange={(e) => {
+                    const choice = e.target.value as SmsProviderChoice;
+                    setSmsProviderChoice(choice);
+                    if (choice) void saveSmsProvider(choice);
+                  }}
+                  disabled={smsProviderBusy}
+                >
+                  <option value="">— choose provider —</option>
+                  {(Object.keys(SMS_PROVIDER_LABELS) as SmsProviderChoice[]).map((name) => (
+                    <option key={name} value={name}>
+                      {SMS_PROVIDER_LABELS[name]}{smsCfg?.provider === name ? '  ✓ current' : ''}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
           </div>
           <div className="flex flex-wrap items-end gap-3">
             <div className="w-64">

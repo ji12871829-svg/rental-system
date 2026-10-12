@@ -46,22 +46,25 @@ async function main() {
       startTenantRetentionJob();
       startStaleUnmatchedAlertJob();
       startRecurringExpenseJob();
-      const sms = getSmsConfig();
-      if (sms.provider === 'mock') {
-        // eslint-disable-next-line no-console
-        console.log('SMS: simulated mode — sends are recorded, not delivered (set SMS_PROVIDER=africastalking or twilio in backend/.env to go live).');
-      } else if (!sms.live) {
-        // eslint-disable-next-line no-console
-        console.warn(
-          sms.provider === 'twilio'
-            ? 'SMS: provider is twilio but TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN and a sender (TWILIO_FROM or TWILIO_MESSAGING_SERVICE_SID) are missing — sends will FAIL until configured.'
-            : 'SMS: provider is africastalking but SMS_USERNAME/SMS_API_KEY are missing — sends will FAIL until configured.'
-        );
-      } else {
-        const label = sms.provider === 'twilio' ? 'Twilio' : "Africa's Talking";
-        // eslint-disable-next-line no-console
-        console.log(`SMS: live via ${label}${sms.senderId ? ` (sender: ${sms.senderId})` : ''}.`);
-      }
+      // Fire-and-forget boot log: getSmsConfig is async now (it may read the
+      // DB override) and the listener callback must not block on it.
+      void getSmsConfig().then((sms) => {
+        if (sms.provider === 'mock') {
+          // eslint-disable-next-line no-console
+          console.log('SMS: simulated mode — sends are recorded, not delivered (choose a provider in Settings → SMS provider, or set SMS_PROVIDER in backend/.env to go live).');
+        } else if (!sms.live) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            sms.provider === 'twilio'
+              ? 'SMS: provider is twilio but TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN and a sender (TWILIO_FROM or TWILIO_MESSAGING_SERVICE_SID) are missing — sends will FAIL until configured.'
+              : 'SMS: provider is africastalking but SMS_USERNAME/SMS_API_KEY are missing — sends will FAIL until configured.'
+          );
+        } else {
+          const label = sms.provider === 'twilio' ? 'Twilio' : sms.provider === 'textbee' ? 'textbee (own-SIM)' : "Africa's Talking";
+          // eslint-disable-next-line no-console
+          console.log(`SMS: live via ${label}${sms.senderId ? ` (sender: ${sms.senderId})` : ''}.`);
+        }
+      });
     });
   } catch (err) {
     // eslint-disable-next-line no-console

@@ -1,7 +1,11 @@
 // SMS provider abstraction. This is the ONLY file that knows about a real
 // provider (spec §34/§41: credentials live in env vars — never in code or DB).
 //
-// Selection is env-driven via backend/.env:
+// Selection is two-tier:
+//   1. the DB override — settings.sms_provider (set/changed live from the
+//      Settings page without a redeploy; NULL = fall through), then
+//   2. the env var SMS_PROVIDER in backend/.env, which keeps its historical
+//      role as the default/fallback so existing deployments behave unchanged.
 //   SMS_PROVIDER=mock            (default) simulated send — no network call,
 //                                message recorded with a MOCK-<id> reference
 //   SMS_PROVIDER=africastalking  real delivery via Africa's Talking (Kenya)
@@ -33,6 +37,7 @@
 //   - A live provider with missing credentials records a FAILED row with a
 //     clear reason instead of crashing or silently pretending success.
 import { env, isTest } from '../config/env';
+import { getSmsProviderOverride } from './settingsService';
 
 export interface SendResult {
   ok: boolean;
@@ -43,7 +48,7 @@ export interface SendResult {
 }
 
 export interface SmsConfig {
-  provider: 'mock' | 'africastalking' | 'twilio' | 'textbee';
+  provider: SmsProviderName;
   live: boolean;
   senderId?: string;
   /** Receipt SMS are auto-sent when a payment is recorded (never in tests). */
@@ -59,13 +64,31 @@ const TWILIO_TIMEOUT_MS = 15_000;
 // delivery. It stays generous because a self-hosted instance may be remote.
 const TEXTBEE_TIMEOUT_MS = 15_000;
 
+// Local (not exported): the provider union lives with its validation here —
+// knip's unused-export gate keeps every export honest.
+type SmsProviderName = 'mock' | 'africastalking' | 'twilio' | 'textbee';
+
+/**
+ * Resolve the raw provider choice: DB override → .env → 'mock'. Pure input
+ * mapping so it is testable without a DB — getSmsConfig() layers the rest of
+ * the safety rules (test forcing, mock fallback) around it.
+ */
+async function resolveProviderChoice(): Promise<SmsProviderName> {
+  if (isTest) return 'mock';
+  const override = await getSmsProviderOverride();
+  if (override === 'mock' || override === 'africastalking' || override === 'twilio' || override === 'textbee') {
+    return override;
+  }
+  return (
+    env.smsProvider === 'africastalking' ||
+    env.smsProvider === 'twilio' ||
+    env.smsProvider === 'textbee'
+  ) ? env.smsProvider : 'mock';
+}
+
 // Current mode, safe to expose to the UI — contains no secrets.
-export function getSmsConfig(): SmsConfig {
-  const provider: SmsConfig['provider'] =
-    !isTest &&
-    (env.smsProvider === 'africastalking' || env.smsProvider === 'twilio' || env.smsProvider === 'textbee')
-      ? env.smsProvider
-      : 'mock';
+export async function getSmsConfig(): Promise<SmsConfig> {
+  const provider: SmsConfig['provider'] = await resolveProviderChoice();
   const twilioReady =
     Boolean(env.twilioAccountSid && env.twilioAuthToken) &&
     Boolean(env.twilioFrom || env.twilioMessagingServiceSid);
@@ -549,7 +572,7 @@ async function textbeeSend(phoneNumber: string, message: string): Promise<SendRe
 }
 
 export async function sendSms(opts: { phoneNumber: string; message: string }): Promise<SendResult> {
-  const { provider } = getSmsConfig();
+  const { provider } = await getSmsConfig();
   if (provider === 'mock') return mockSend();
   if (provider === 'twilio') return twilioSend(opts.phoneNumber, opts.message);
   if (provider === 'textbee') return textbeeSend(opts.phoneNumber, opts.message);

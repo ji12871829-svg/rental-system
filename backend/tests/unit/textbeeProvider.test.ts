@@ -17,6 +17,13 @@ jest.mock('../../src/config/env', () => {
   };
 });
 
+// Pose as a runtime with no DB provider-override: this file stays unit-level
+// (no DB, no network). A real query would stall under test 127's fake timers
+// until the jest timeout — which also leaked real timers into later tests.
+jest.mock('../../src/services/settingsService', () => ({
+  getSmsProviderOverride: jest.fn().mockResolvedValue(null),
+}));
+
 import { env } from '../../src/config/env';
 import { getSmsConfig, parseTextbeeResponse, sendSms } from '../../src/services/smsProvider';
 
@@ -42,17 +49,17 @@ function textbeeQueued(overrides: Record<string, unknown> = {}, status = 200) {
 }
 
 describe('getSmsConfig (textbee)', () => {
-  it('is live with only an API key — no sender ID exists to verify', () => {
-    expect(getSmsConfig()).toMatchObject({ provider: 'textbee', live: true });
+  it('is live with only an API key — no sender ID exists to verify', async () => {
+    expect(await getSmsConfig()).toMatchObject({ provider: 'textbee', live: true });
   });
 
-  it('exposes no senderId: the SIM in the phone is the sender, not an ID we set', () => {
-    expect(getSmsConfig().senderId).toBeUndefined();
+  it('exposes no senderId: the SIM in the phone is the sender, not an ID we set', async () => {
+    expect((await getSmsConfig()).senderId).toBeUndefined();
   });
 
-  it('is not live without an API key', () => {
+  it('is not live without an API key', async () => {
     (env as { textbeeApiKey: string }).textbeeApiKey = '';
-    expect(getSmsConfig().live).toBe(false);
+    expect((await getSmsConfig()).live).toBe(false);
     (env as { textbeeApiKey: string }).textbeeApiKey = 'tb_test_key_123';
   });
 });
@@ -131,13 +138,16 @@ describe('sendSms (textbee)', () => {
       }),
     );
     jest.useFakeTimers();
-    const pending = sendSms({ phoneNumber: '+254711000002', message: 'x' });
-    jest.advanceTimersByTime(15_000);
-    const result = await pending;
-    jest.useRealTimers();
-    expect(result.ok).toBe(false);
-    expect(result.failureReason).toContain('timed out');
-    expect(result.failureReason).toContain('phone online');
+    try {
+      const pending = sendSms({ phoneNumber: '+254711000002', message: 'x' });
+      await jest.advanceTimersByTimeAsync(15_000);
+      const result = await pending;
+      expect(result.ok).toBe(false);
+      expect(result.failureReason).toContain('timed out');
+      expect(result.failureReason).toContain('phone online');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('fails fast with a clear reason when the API key is missing (no network)', async () => {

@@ -27,6 +27,22 @@ export interface SettingsInput {
   ownerEmail?: string | null;
   ownerPhone?: string | null;
   managementFeePercent?: number | null;
+  // Runtime SMS provider override (null = clear → the .env SMS_PROVIDER
+  // becomes the effective provider again). 'africastalking' is the main
+  // live route; 'textbee' is the own-SIM low-cost alternative.
+  smsProvider?: string | null;
+}
+
+/**
+ * The effective SMS provider: the DB override when set, else the .env
+ * value. Read through here (not straight off the settings row) everywhere a
+ * send decision is made, so UI-driven switches take effect on the next send.
+ */
+export async function getSmsProviderOverride(): Promise<string | null> {
+  const row = await queryOne<{ sms_provider: string | null }>(
+    'SELECT sms_provider FROM settings WHERE id = 1'
+  );
+  return row?.sms_provider ?? null;
 }
 
 export async function updateSettings(
@@ -47,7 +63,10 @@ export async function updateSettings(
            owner_name            = COALESCE($5, owner_name),
            owner_email           = COALESCE($6, owner_email),
            owner_phone           = COALESCE($7, owner_phone),
-           management_fee_percent = COALESCE($8, management_fee_percent)
+           management_fee_percent = COALESCE($8, management_fee_percent),
+           -- SMS provider: same pattern. Undefined keeps; empty string maps to
+           -- null (clear the override) before reaching this query.
+           sms_provider = COALESCE($9, sms_provider)
        WHERE id = 1
        RETURNING *`,
       [
@@ -59,6 +78,7 @@ export async function updateSettings(
         input.ownerEmail ?? null,
         input.ownerPhone ?? null,
         input.managementFeePercent ?? null,
+        input.smsProvider ?? null,
       ]
     );
     return res.rows[0] as SettingsRow;
@@ -74,12 +94,14 @@ export async function updateSettings(
       currency: before.currency,
       waterRate: toNumber(before.water_rate),
       retentionYears: before.retention_years,
+      smsProvider: before.sms_provider ?? null,
     },
     newValue: {
       reportingYear: updated.reporting_year,
       currency: updated.currency,
       waterRate: toNumber(updated.water_rate),
       retentionYears: updated.retention_years,
+      smsProvider: updated.sms_provider ?? null,
     },
   });
   return updated;

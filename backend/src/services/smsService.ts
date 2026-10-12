@@ -428,7 +428,7 @@ export async function applyDeliveryReport(report: AtDeliveryReport): Promise<Del
 // The endpoint never throws — failures degrade to 'unavailable' with the
 // provider's reason, and the UI shows the mode banner instead of a warning.
 export async function getSmsBalance(): Promise<BalanceStatus> {
-  const cfg = getSmsConfig();
+  const cfg = await getSmsConfig();
   if (cfg.provider === 'textbee') {
     // There is no pre-paid wallet to check: the send is relayed by a phone's
     // own SIM, so the cost is whatever the carrier bundle covers. Saying
@@ -474,7 +474,7 @@ export interface TestSmsResult {
 // audit-logged instead. Mock mode still 'sends' so the wiring itself (route,
 // normalisation, UI) can be verified without spending money.
 export async function sendTestSms(opts: { to?: string; userId: number }): Promise<TestSmsResult> {
-  const cfg = getSmsConfig();
+  const cfg = await getSmsConfig();
 
   let to = opts.to?.trim() ?? '';
   if (!to) {

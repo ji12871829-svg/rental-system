@@ -17,6 +17,14 @@ jest.mock('../../src/config/env', () => {
   };
 });
 
+// No DB provider-override for these unit tests: sendSms/getSmsConfig would
+// otherwise query settings on every call (the real DB answers today, but a
+// unit test must not depend on it — and a real query under fake timers, as
+// textbeeProvider.test.ts:127 showed, stalls straight into a jest timeout).
+jest.mock('../../src/services/settingsService', () => ({
+  getSmsProviderOverride: jest.fn().mockResolvedValue(null),
+}));
+
 import { env } from '../../src/config/env';
 import { getSmsConfig, sendSms } from '../../src/services/smsProvider';
 
@@ -40,13 +48,13 @@ function twilioSuccess(overrides: Record<string, unknown> = {}) {
 }
 
 describe('getSmsConfig (twilio)', () => {
-  it('reports the twilio provider as live when credentials and a sender exist', () => {
-    expect(getSmsConfig()).toMatchObject({ provider: 'twilio', live: true, senderId: 'MG999888777' });
+  it('reports the twilio provider as live when credentials and a sender exist', async () => {
+    expect(await getSmsConfig()).toMatchObject({ provider: 'twilio', live: true, senderId: 'MG999888777' });
   });
 
-  it('is not live without a sender (From or Messaging Service)', () => {
+  it('is not live without a sender (From or Messaging Service)', async () => {
     (env as { twilioMessagingServiceSid: string }).twilioMessagingServiceSid = '';
-    expect(getSmsConfig().live).toBe(false);
+    expect((await getSmsConfig()).live).toBe(false);
     (env as { twilioMessagingServiceSid: string }).twilioMessagingServiceSid = 'MG999888777';
   });
 });
