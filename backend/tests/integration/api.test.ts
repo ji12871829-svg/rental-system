@@ -149,6 +149,34 @@ describe('Deploy-gap liveness', () => {
       if (prev !== undefined) process.env.RENDER_GIT_COMMIT = prev;
     }
   });
+
+  // Regression: the summary query once selected a non-existent `recipient`
+  // column from sms_notifications (shipped 3aa0f5e), so the topbar bell 500'd
+  // in production while this suite stayed green — the mounted-modules test
+  // above only proves the file is imported, never that its SQL runs. This
+  // test EXECUTES the endpoint against the real schema so any bad column
+  // reference fails here first.
+  it('GET /api/reports/notifications-summary executes and returns the feed shape', async () => {
+    const res = await request(app)
+      .get('/api/reports/notifications-summary')
+      .set(auth(adminToken));
+    expect(res.status).toBe(200);
+    const data = res.body.data as {
+      unread: number;
+      unreadCounts: { sms: { unread: number }; email: { unread: number } };
+      feed: Array<{ channel: string; subject: string | null; recipient: string }>;
+    };
+    expect(typeof data.unread).toBe('number');
+    expect(typeof data.unreadCounts.sms.unread).toBe('number');
+    expect(typeof data.unreadCounts.email.unread).toBe('number');
+    expect(Array.isArray(data.feed)).toBe(true);
+    // SMS rows carry the phone as recipient; subject may be null (the panel
+    // falls back to "SMS message") — never a missing-column 500.
+    for (const item of data.feed) {
+      expect(['SMS', 'EMAIL']).toContain(item.channel);
+      expect(typeof item.recipient).toBe('string');
+    }
+  });
 });
 
 describe('Security', () => {

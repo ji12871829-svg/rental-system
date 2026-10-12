@@ -38,7 +38,10 @@ router.get('/notifications-summary', asyncHandler(async (_req, res) => {
   // Terminal SENT rows are included in the feed (they still render as history),
   // but they do not count toward the unread badge.
   const rows = await query<{ channel: 'SMS' | 'EMAIL'; id: number; status: string; subject: string | null; recipient: string; created_at: string | null; failure_reason: string | null; provider_message_id: string | null }>(
-    `SELECT 'SMS' AS channel, id, status, recipient AS subject, phone_number AS recipient, created_at, failure_reason, NULL::text AS provider_message_id
+    // sms_notifications has no `recipient`/`subject` column (subject is an
+    // email-only concept); the frontend falls back to "SMS message" when
+    // subject is null, and recipient is always the phone_number.
+    `SELECT 'SMS' AS channel, id, status, NULL::text AS subject, phone_number AS recipient, created_at, failure_reason, NULL::text AS provider_message_id
      FROM sms_notifications
      UNION ALL
      SELECT 'EMAIL' AS channel, id, status, subject, email_address AS recipient, created_at, failure_reason, provider_message_id
