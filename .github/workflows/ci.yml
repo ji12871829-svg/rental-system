@@ -270,7 +270,12 @@ jobs:
   #
   # Runs on PRs and pushes (not the weekly sweep). Skips when the frontend
   # build would be skipped (schedule events).
-  ci:visual:
+  # Job ids may only contain letters, digits, - and _ — a colon (as in the
+  # original "ci:visual") makes GitHub reject the ENTIRE workflow file at
+  # trigger time: the run fails with zero jobs, so no check ever reports and
+  # a protected branch can never merge. Found the hard way: PR #5 sat with
+  # "8 of 8 required checks expected" and nothing running.
+  ci-visual:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     defaults:
