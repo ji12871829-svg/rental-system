@@ -80,6 +80,27 @@ export function createApp() {
   app.use(csrfProtection);
   app.use(globalLimiter);
 
+  // API responses carry tenant PII and session-derived state — mark them
+  // uncacheable so browsers and shared proxies never store them (2026-10-13
+  // security review, low-severity hardening). Static frontend assets below
+  // set their own Cache-Control; nothing in the SPA relies on API caching.
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'private, no-store');
+    next();
+  });
+
+  // Browser features this app never uses stay disabled at the policy level.
+  // helmet (v8) has no Permissions-Policy middleware, and its default CSP +
+  // Referrer-Policy: no-referrer already cover script/object/frame hardening
+  // and referrer leakage — this is the one header that needed a hand roll.
+  app.use((_req, res, next) => {
+    res.setHeader(
+      'Permissions-Policy',
+      'camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()'
+    );
+    next();
+  });
+
   // Response-envelope guard — wraps res.json for EVERY /api request. Mounted
   // BEFORE the routers: an app.use after them would never run for handled
   // responses (the router's res.json ends the traversal). Asserts the shared

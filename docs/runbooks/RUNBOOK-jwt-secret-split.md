@@ -4,9 +4,10 @@
 tenant→staff token confusion (finding F1) by pinning JWT audiences. The
 deeper hardening is giving each token population its **own signing key**, so
 even a lost audience check could never let one side's tokens pass the other's
-verifier. The code now supports `JWT_STAFF_SECRET` and `JWT_PORTAL_SECRET`;
-until they are set, both fall back to `JWT_SECRET` and production logs a
-startup warning.
+verifier. The code supports `JWT_STAFF_SECRET` and `JWT_PORTAL_SECRET`; dev
+and test fall back to `JWT_SECRET`, but **production hard-requires both** —
+a boot without them fails fast with `Production configuration is invalid:
+JWT_STAFF_SECRET and JWT_PORTAL_SECRET (see docs/runbooks/RUNBOOK-jwt-secret-split.md)`.
 
 **Prerequisite:** the security-fix deploy is live (it contains the
 key-split code). The steps below only supply configuration — no further
@@ -23,11 +24,18 @@ deploy needed after setting the variables.
 | `JWT_STAFF_SECRET` | `JWT_SECRET` | staff login/refresh signing, `requireAuth` verification |
 | `JWT_PORTAL_SECRET` | `JWT_SECRET` | portal login/refresh signing, `requireTenant` verification |
 
-While unset, both populations sign **and** verify with `JWT_SECRET` — exactly
-today's behavior, with the audience claim still enforced. That property makes
-the rollout order-free: set the variables whenever, and the moment each
-secret becomes distinct, all old tokens of the *other* population simply stop
-verifying on that side (which is the point).
+While unset, dev/test both populations sign **and** verify with `JWT_SECRET` —
+exactly the old behavior, with the audience claim still enforced. That
+property makes the rollout order-free in dev: set the variables whenever,
+and the moment each secret becomes distinct, all old tokens of the *other*
+population simply stop verifying on that side (which is the point).
+
+> **Production change:** since the fail-fast hardening, `NODE_ENV=production`
+> refuses to boot while either variable is unset or shorter than 32
+> characters. **Set both variables on Render BEFORE deploying a build that
+> contains that check** — otherwise the deploy fails and the previous release
+> keeps serving (Render's failed-start behavior), which is safe but not a
+> rollout plan.
 
 ## Step 1 — Generate two distinct secrets
 
@@ -46,13 +54,14 @@ Render dashboard → **rpms** web service → **Environment**:
 - `JWT_STAFF_SECRET` = `<staff hex>`
 - `JWT_PORTAL_SECRET` = `<portal hex>`
 
-**Save changes** (one redeploy). Verify in the boot log that the warning
+**Save changes** (one redeploy). If either variable was missing, the failed
+deploy's boot log shows the fail-fast error naming it:
 
 ```
-[config] JWT_STAFF_SECRET / JWT_PORTAL_SECRET are not both set — staff and portal tokens share one signing key. …
+Production configuration is invalid: JWT_STAFF_SECRET and JWT_PORTAL_SECRET (see docs/runbooks/RUNBOOK-jwt-secret-split.md)
 ```
 
-is **gone**, and the two long-standing warnings are **not** present:
+On the healthy deploy, the two long-standing warnings are **not** present:
 `JWT_SECRET`-set check and the 32-character check are both satisfied because
 each split secret is ≥ 32 chars.
 

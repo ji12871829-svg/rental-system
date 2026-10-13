@@ -125,10 +125,16 @@ jobs:
   # real admin credentials) and set VERIFY_SKIP_AUTH to '0' to enable them.
   # To repoint at a recreated service (e.g. the Frankfurt one), set the
   # RENDER_URL repository variable — same variable the keep-warm job uses.
+  #
+  # Push-to-main ONLY (2026-10-13 security review): the job checks out the
+  # triggering revision and runs scripts/verify-live.mjs WITH repo secrets in
+  # env — on pull_request that is PR-branch-controlled code executing with
+  # secrets (exfiltration vector for anyone who can push a branch). Fork PRs
+  # get no secrets anyway; same-repo PRs now get no run either. Deploy
+  # verification only makes sense against a deploy Render actually shipped,
+  # and Render ships main — PR build coverage is the render-build job's job.
   verify-live:
-    # Explicit guard (would auto-skip via needs anyway): prod verification is
-    # a deploy-time check, not part of the weekly sweep.
-    if: github.event_name != 'schedule'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [backend, frontend, render-build]
     runs-on: ubuntu-latest
     env:
@@ -152,10 +158,9 @@ jobs:
         env:
           VERIFY_SKIP_AUTH: '1'
           # The revision the deploy-identity checks must find live (see
-          # scripts/verify-live.mjs). On pull_request, github.sha is a
-          # merge-preview commit Render never deploys — the PR branch head is
-          # what autoDeploy ships.
-          VERIFY_TARGET_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          # scripts/verify-live.mjs): the pushed commit, which is what
+          # Render's autoDeploy ships from main.
+          VERIFY_TARGET_COMMIT: ${{ github.sha }}
         run: node scripts/verify-live.mjs "$BASE_URL"
 
   # Dead-code detector (knip): blocks on unused files, dependencies, exports

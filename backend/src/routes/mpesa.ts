@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { env } from '../config/env';
+import { env, isProd } from '../config/env';
 import { asyncHandler } from '../utils/asyncHandler';
 import { parseC2bCallback, parseStkCallback } from '../services/mpesaProvider';
 import { markStkFailure, processMpesaPayment, processPaybillPayment } from '../services/mpesaService';
@@ -15,10 +15,12 @@ const router = Router();
 // These endpoints are hit by Safaricom's Daraja platform, which cannot
 // authenticate as a user and cannot set custom headers — so the shared secret
 // (env MPESA_CALLBACK_TOKEN) is carried as a query parameter on the registered
-// callback URL and verified here timing-safely. While the token is unset
-// (dev/test, or prod before the ops step), the endpoints stay open for the
-// local mock provider; production logs a startup warning until the token is
-// configured. The shortcode check below still rejects payloads naming a till
+// callback URL and verified here timing-safely. While the token is unset the
+// endpoints stay open ONLY outside production, for the local mock provider;
+// production fails closed (404 on every callback — the same response as a
+// wrong token) because an unauthenticated confirm posts payments straight to
+// the rent ledger. env.ts logs a startup warning until the ops step sets the
+// token. The shortcode check below still rejects payloads naming a till
 // we do not operate, and the limiter blunts brute-forcing the secret.
 // ---------------------------------------------------------------------------
 const callbackLimiter = rateLimit({
@@ -34,6 +36,15 @@ router.use(callbackLimiter);
 
 function verifyCallbackToken(req: Request, res: Response, next: NextFunction): void {
   if (!env.mpesaCallbackToken) {
+    // Fail closed in production: with no shared secret every callback is
+    // forgeable, and a forged C2B confirm posts rent to the ledger. Real
+    // Safaricom callbacks are rejected too — they are indistinguishable from
+    // forgeries — until MPESA_CALLBACK_TOKEN is configured. Dev/test stay
+    // open so the local mock provider keeps working.
+    if (isProd) {
+      res.status(404).json({ ResultCode: 1, ResultDesc: 'Invalid callback URL.' });
+      return;
+    }
     return next();
   }
   const provided = Buffer.from(String(req.query.token ?? ''));

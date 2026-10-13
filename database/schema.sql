@@ -525,6 +525,10 @@ CREATE TABLE IF NOT EXISTS tenant_portal_access (
   tenant_id      INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   email          VARCHAR(255) NOT NULL,
   password_hash  VARCHAR(255) NOT NULL,
+  -- One-time setup link (migration 016): hash + expiry only; the plaintext
+  -- token lives in the emailed link and is cleared on completion.
+  setup_token_hash       TEXT,
+  setup_token_expires_at TIMESTAMPTZ,
   status         VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'
                    CHECK (status IN ('ACTIVE', 'DISABLED')),
   last_login_at  TIMESTAMPTZ,

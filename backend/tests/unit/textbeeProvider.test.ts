@@ -29,12 +29,19 @@ import { getSmsConfig, parseTextbeeResponse, sendSms } from '../../src/services/
 
 const fetchMock = jest.fn();
 
+// jest 30: the sandbox `global` serves `fetch` from the host realm through a
+// proxy — it is NOT an own property, so jest.spyOn(...)+restoreAllMocks()
+// deletes it permanently instead of restoring it. Assign/restore directly.
+const GLOBAL = global as unknown as { fetch: typeof fetch };
+const realFetch = GLOBAL.fetch;
+
 beforeEach(() => {
   fetchMock.mockReset();
-  jest.spyOn(global, 'fetch').mockImplementation(fetchMock);
+  GLOBAL.fetch = fetchMock as unknown as typeof fetch;
 });
 
 afterEach(() => {
+  GLOBAL.fetch = realFetch;
   jest.restoreAllMocks();
 });
 

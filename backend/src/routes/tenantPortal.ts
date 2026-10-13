@@ -16,6 +16,7 @@ import {
   setPortalCookies,
 } from '../utils/authCookies';
 import {
+  completePortalSetup,
   getPortalIdentity,
   getPortalPaymentInstructions,
   getPortalPaymentTimeline,
@@ -123,6 +124,24 @@ router.post('/register', loginLimiter, validateBody(portalRegisterSchema), async
   res.status(201).json({ data: { name: tenant.full_name, email: normalized } });
 }));
 
+// One-time setup link (2026-10-13 security review, OWASP #7/#2): the tenant
+// opens the emailed link and chooses their own password instead of receiving
+// a generated one. Public like /register — the 256-bit single-use token IS
+// the credential — and rate-limited against token guessing. CSRF: the global
+// csrfProtection middleware passes any request carrying no session cookie
+// (a signed-out tenant has none); when a portal session cookie does exist,
+// the portal client attaches the csrf header like every other write.
+const portalSetupSchema = z.object({
+  token: z.string().min(32).max(128),
+  password: z.string().min(8, 'Password must be at least 8 characters.').max(128),
+});
+
+router.post('/setup', loginLimiter, validateBody(portalSetupSchema), asyncHandler(async (req, res) => {
+  const { token, password } = req.body as z.infer<typeof portalSetupSchema>;
+  await completePortalSetup(token, password);
+  res.json({ data: { message: 'Password set. You can now sign in.' } });
+}));
+
 router.post('/login', loginLimiter, validateBody(portalLoginSchema), asyncHandler(async (req, res) => {
   const { email, password } = req.body as z.infer<typeof portalLoginSchema>;
   const result = await portalLogin(email, password);
@@ -208,8 +227,9 @@ router.post('/refresh', asyncHandler(async (req, res) => {
   try {
     // ignoreExpiration is safe only because the portal key AND audience are
     // both checked here — the grace path must stay unreachable for any
-    // token minted outside the portal population.
-    payload = jwt.verify(token, env.jwtPortalSecret, { ignoreExpiration: true }) as unknown as { sub: number; email?: string; name?: string; exp?: number; aud?: string };
+    // token minted outside the portal population. algorithms pins HS256
+    // (algorithm-confusion hardening — see routes/auth.ts refresh-grace path).
+    payload = jwt.verify(token, env.jwtPortalSecret, { ignoreExpiration: true, algorithms: ['HS256'] }) as unknown as { sub: number; email?: string; name?: string; exp?: number; aud?: string };
     if (payload.aud !== PORTAL_JWT_AUDIENCE) throw new Error('wrong audience');
   } catch {
     throw unauthorized('Invalid portal session.');

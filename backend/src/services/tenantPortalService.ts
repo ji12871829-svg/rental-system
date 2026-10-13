@@ -14,7 +14,7 @@
 //     (requireTenant re-checks the row each time — the staff user cache
 //     pattern is deliberately not reused, tenant disablement must be instant).
 import bcrypt from 'bcryptjs';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { queryOne, query } from '../config/db';
 import { env } from '../config/env';
 import { getSettings } from './settingsService';
@@ -24,15 +24,29 @@ import { tenantStatementPdf } from './financeService';
 import { conflict, forbidden, notFound, unauthorized } from '../utils/httpError';
 import { kenyaDateParts } from '../utils/kenyaTime';
 
-// Generated when staff issue access without supplying a password. Formatted
-// for reading aloud over the phone: groups, no visually ambiguous characters
-// (no 0/O, 1/l/I). The plaintext is returned once to the issuing staff user —
-// only the hash is stored.
-function generatePortalPassword(): string {
-  const alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  const bytes = randomBytes(12);
-  const chars = Array.from(bytes, (b) => alphabet[b % alphabet.length]);
-  return `${chars.slice(0, 4).join('')}-${chars.slice(4, 8).join('')}-${chars.slice(8, 12).join('')}`;
+// One-time setup links replace emailed plaintext passwords (2026-10-13
+// security review, OWASP #7/#2): issuing access without a custom password
+// mints a random token, stores only its SHA-256 hash + expiry here, and the
+// tenant picks their own password through the emailed link. Single use —
+// completing setup (or re-issuing) clears the token. The password_hash set
+// at issue time is a placeholder nobody knows (a random blob hashed with
+// bcrypt) so login is impossible until setup completes.
+export const SETUP_TOKEN_TTL_HOURS = 72;
+
+function hashSetupToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+// PORTAL_URL points at the portal login page; the setup page lives beside
+// it. Only the origin is reused so a custom PORTAL_PATH never leaks into the
+// link. Exported because the issuing route embeds it in the email + response.
+export function portalSetupUrl(token: string): string {
+  try {
+    const url = new URL(env.portalUrl);
+    return `${url.origin}/portal/setup?token=${encodeURIComponent(token)}`;
+  } catch {
+    return `/portal/setup?token=${encodeURIComponent(token)}`;
+  }
 }
 
 export interface PortalAccessRow {
@@ -49,7 +63,7 @@ export async function issuePortalAccess(
   userId: number,
   email?: string,
   password?: string
-): Promise<PortalAccessRow & { tenantName: string; generatedPassword?: string }> {
+): Promise<PortalAccessRow & { tenantName: string; setupToken?: string }> {
   const tenant = await queryOne<
     { id: number; status: string; full_name: string; email: string | null }
   >(
@@ -61,8 +75,7 @@ export async function issuePortalAccess(
     throw conflict('Portal access can only be issued for an active tenant.', 'TENANT_INACTIVE');
   }
 
-  // Defaults: the tenant's own email (a portal login must belong to them) and
-  // a generated password the staff user reads out / sends to the tenant.
+  // Defaults: the tenant's own email (a portal login must belong to them).
   const finalEmail = (email ?? tenant.email ?? '').trim().toLowerCase();
   if (!finalEmail) {
     throw conflict(
@@ -70,37 +83,79 @@ export async function issuePortalAccess(
       'TENANT_NO_EMAIL'
     );
   }
-  const finalPassword = password ?? generatePortalPassword();
+
+  // Custom password (staff-chosen): known to the issuer, no setup link.
+  // Otherwise the tenant gets a one-time setup link and picks their own —
+  // nothing guessable is ever emailed or shown. The stored hash is a
+  // placeholder nobody knows, so login is impossible until setup completes.
+  const customPassword = password !== undefined && password !== '';
+  const passwordHash = customPassword
+    ? await bcrypt.hash(password!, env.bcryptSaltRounds)
+    : await bcrypt.hash(randomBytes(32).toString('hex'), env.bcryptSaltRounds);
+  const setupToken = customPassword ? undefined : randomBytes(32).toString('hex');
+  // Re-issuing always rotates the token: any previously emailed link dies.
+  const setupHash = setupToken ? hashSetupToken(setupToken) : null;
+  const setupExpires = setupToken ? new Date(Date.now() + SETUP_TOKEN_TTL_HOURS * 3_600_000) : null;
 
   const existing = await queryOne<PortalAccessRow>(
     'SELECT * FROM tenant_portal_access WHERE tenant_id = $1',
     [tenantId]
   );
-  const passwordHash = await bcrypt.hash(finalPassword, env.bcryptSaltRounds);
 
   if (existing) {
     // Re-issue rotates the credentials and re-enables a previously disabled
     // account — one idempotent "give this tenant access" action for staff.
     const row = await queryOne<PortalAccessRow>(
       `UPDATE tenant_portal_access
-       SET email = $2, password_hash = $3, status = 'ACTIVE'
+       SET email = $2, password_hash = $3, status = 'ACTIVE',
+           setup_token_hash = $4, setup_token_expires_at = $5
        WHERE tenant_id = $1
        RETURNING id, tenant_id, email, status, last_login_at, created_at`,
-      [tenantId, finalEmail, passwordHash]
+      [tenantId, finalEmail, passwordHash, setupHash, setupExpires]
     );
     await logAudit({ userId, action: 'TENANT_PORTAL_ISSUED', entity: 'tenant_portal_access', entityId: row!.id });
-    return { ...row!, tenantName: tenant.full_name, generatedPassword: password ? undefined : finalPassword };
+    return { ...row!, tenantName: tenant.full_name, setupToken };
   }
 
   const row = await queryOne<PortalAccessRow>(
-    `INSERT INTO tenant_portal_access (tenant_id, email, password_hash)
-     VALUES ($1, $2, $3)
+    `INSERT INTO tenant_portal_access (tenant_id, email, password_hash, setup_token_hash, setup_token_expires_at)
+     VALUES ($1, $2, $3, $4, $5)
      RETURNING id, tenant_id, email, status, last_login_at, created_at`,
-    [tenantId, finalEmail, passwordHash]
+    [tenantId, finalEmail, passwordHash, setupHash, setupExpires]
   );
   if (!row) throw new Error('Portal access creation failed.');
   await logAudit({ userId, action: 'TENANT_PORTAL_ISSUED', entity: 'tenant_portal_access', entityId: row.id });
-  return { ...row, tenantName: tenant.full_name, generatedPassword: password ? undefined : finalPassword };
+  return { ...row, tenantName: tenant.full_name, setupToken };
+}
+
+// Completes a one-time setup link: the hashed token must match an unexpired
+// row; the tenant's chosen password replaces the placeholder hash and the
+// token is cleared, so the link can never be replayed.
+export async function completePortalSetup(token: string, password: string): Promise<void> {
+  const row = await queryOne<{ id: number }>(
+    `SELECT id FROM tenant_portal_access
+     WHERE setup_token_hash = $1 AND setup_token_expires_at > NOW()`,
+    [hashSetupToken(token)]
+  );
+  if (!row) {
+    throw conflict(
+      'This setup link is invalid or has expired. Ask your property manager to send a new one.',
+      'PORTAL_SETUP_INVALID'
+    );
+  }
+  const passwordHash = await bcrypt.hash(password, env.bcryptSaltRounds);
+  await query(
+    `UPDATE tenant_portal_access
+     SET password_hash = $2, setup_token_hash = NULL, setup_token_expires_at = NULL
+     WHERE id = $1`,
+    [row.id, passwordHash]
+  );
+  await logAudit({
+    userId: null,
+    action: 'TENANT_PORTAL_SETUP_COMPLETED',
+    entity: 'tenant_portal_access',
+    entityId: row.id,
+  });
 }
 
 export async function disablePortalAccess(tenantId: number, userId: number): Promise<void> {

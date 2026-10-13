@@ -5,14 +5,14 @@ import { validateBody, validateParams, validateQuery, listQuerySchema as baseLis
 import { asyncHandler } from '../utils/asyncHandler';
 import { getSettings } from '../services/settingsService';
 import { createTenant, deleteTenant, getTenant, listTenants, moveOutTenant, transferTenant, updateTenant, type TenantInput } from '../services/tenantService';
-import { disablePortalAccess, getPortalAccess, issuePortalAccess } from '../services/tenantPortalService';
+import { disablePortalAccess, getPortalAccess, issuePortalAccess, portalSetupUrl, SETUP_TOKEN_TTL_HOURS } from '../services/tenantPortalService';
 import {
   buildDataRequestLetter,
   eraseTenantPersonalData,
   exportTenantPersonalData,
   exportTenantPersonalDataCsv,
 } from '../services/privacyService';
-import { prepareForDataRequestLetter, prepareForPortalCredentials, sendEmailNotification } from '../services/emailService';
+import { prepareForDataRequestLetter, prepareForPortalSetupEmail, sendEmailNotification } from '../services/emailService';
 import { autoSendEnabled, dispatchAutoSend } from '../services/smsService';
 import { NOTICE_KINDS, prepareReminder, type ReminderChannel, type ReminderKind } from '../services/reminderService';
 import { renderDataLetterEmail, renderDataLetterPdf, dataEnclosureName, dataLetterPdfName } from '../utils/dataRequestLetter';
@@ -157,19 +157,19 @@ router.post('/:id/sms-reminder', managerOrAdmin, validateParams(paramsSchema), v
 
 // --- Tenant portal access (manager/admin) ------------------------------------
 // Credentials for the tenant-facing self-service portal. Issuing is
-// idempotent — it rotates the password and re-enables a disabled account, so
-// "forgot password" and "grant access" are the same action. Disabling is
+// idempotent — it rotates the credentials and re-enables a disabled account,
+// so "forgot password" and "grant access" are the same action. Disabling is
 // soft (the row stays for the audit trail) and takes effect on the tenant's
 // very next request.
 const portalAccessSchema = z.object({
   // Both optional: omit them and the route issues access with the tenant's
-  // own email and a generated one-time password (the common case — one click
-  // from the Tenants page). Passing them allows a custom login or password.
+  // own email and a one-time setup link (the common case — one click from
+  // the Tenants page). Passing them allows a custom login or password.
   email: z.string().email().optional(),
   // Minimum length only — complexity rules just push tenants toward
   // predictable patterns; the portal is rate-limited and staff-issued.
   password: z.string().min(8, 'Password must be at least 8 characters.').optional(),
-  // Default true: the generated one-time password is emailed to the tenant
+  // Default true: the one-time setup link is emailed to the tenant
   // automatically. Only skipped when staff choose "share it myself" — or
   // when a custom password is supplied (staff already knows it).
   deliverEmail: z.boolean().optional(),
@@ -184,22 +184,26 @@ router.post('/:id/portal-access', managerOrAdmin, validateParams(paramsSchema), 
     body.password
   );
 
-  // Credential delivery: the generated one-time password goes straight to
-  // the tenant's login email so it never needs manual sharing. A custom
-  // password (staff-chosen) is deliberately not emailed — the issuer already
-  // has it. Delivery is recorded in email_notifications with the same
-  // PENDING/SENT/FAILED lifecycle as every other email; a failure never
-  // undoes the access grant, but IS reported back so staff can fall back to
-  // showing the password or resending from the email history.
+  // Setup-link delivery: the one-time link goes straight to the tenant's
+  // login email so it never needs manual sharing — the tenant opens it and
+  // chooses their own password (no plaintext password ever crosses email,
+  // 2026-10-13 security review). A custom password (staff-chosen) is
+  // deliberately not emailed — the issuer already has it. Delivery is
+  // recorded in email_notifications with the same PENDING/SENT/FAILED
+  // lifecycle as every other email; a failure never undoes the access grant,
+  // but IS reported back so staff can fall back to sharing the link manually
+  // or resending from the email history.
+  const setupUrl = row.setupToken ? portalSetupUrl(row.setupToken) : undefined;
   let credentialsEmailed: 'sent' | 'pending' | 'failed' | 'skipped' = 'skipped';
-  const shouldDeliver = (body.deliverEmail ?? true) && row.generatedPassword !== undefined;
+  const shouldDeliver = (body.deliverEmail ?? true) && setupUrl !== undefined;
   if (shouldDeliver) {
     try {
-      const pending = await prepareForPortalCredentials({
+      const pending = await prepareForPortalSetupEmail({
         tenantId: row.tenant_id,
         tenantName: row.tenantName,
         loginEmail: row.email,
-        password: row.generatedPassword!,
+        setupUrl: setupUrl!,
+        expiresHours: SETUP_TOKEN_TTL_HOURS,
       });
       try {
         const sent = await sendEmailNotification(pending.id);
@@ -209,7 +213,7 @@ router.post('/:id/portal-access', managerOrAdmin, validateParams(paramsSchema), 
       }
     } catch (err) {
       credentialsEmailed = 'failed';
-      console.error(`[portal] credential email failed for tenant ${row.tenant_id}: ${(err as Error).message}`);
+      console.error(`[portal] setup email failed for tenant ${row.tenant_id}: ${(err as Error).message}`);
     }
   }
 
@@ -220,9 +224,11 @@ router.post('/:id/portal-access', managerOrAdmin, validateParams(paramsSchema), 
       email: row.email,
       status: row.status,
       lastLoginAt: row.last_login_at,
-      // Present only when the server generated the password. Never stored in
-      // plaintext — shown once to the issuing staff user and gone.
-      temporaryPassword: row.generatedPassword,
+      // Present only when no custom password was supplied: the one-time
+      // setup link, so staff can share it manually when deliverEmail is off.
+      // The token itself is never stored in plaintext server-side — only its
+      // SHA-256 hash — and completing setup (or re-issuing) kills it.
+      setupUrl,
       credentialsEmailed,
     },
   });

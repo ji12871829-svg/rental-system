@@ -46,8 +46,9 @@ export async function requireTenant(req: Request, _res: Response, next: NextFunc
     try {
       // Pinned key + pinned audience: both halves of the portal-token trust
       // boundary live here, so a staff-signed or foreign-audience token can
-      // never satisfy portal auth.
-      payload = jwt.verify(token, env.jwtPortalSecret, { audience: PORTAL_JWT_AUDIENCE }) as unknown as PortalTokenPayload;
+      // never satisfy portal auth. algorithms pins HS256 (algorithm-confusion
+      // hardening — see routes/auth.ts refresh-grace path).
+      payload = jwt.verify(token, env.jwtPortalSecret, { audience: PORTAL_JWT_AUDIENCE, algorithms: ['HS256'] }) as unknown as PortalTokenPayload;
     } catch {
       return next(unauthorized('Invalid or expired portal session.'));
     }

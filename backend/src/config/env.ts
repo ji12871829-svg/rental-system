@@ -22,9 +22,8 @@ export const env = {
   // has its own key so a leaked or mis-verified token from one side cannot be
   // replayed against the other even if an audience check is ever lost.
   // Backward compatibility: when the specific key is unset it falls back to
-  // JWT_SECRET, so existing deployments keep working unchanged (same key as
-  // today, audience still enforced). Set both in production to harden —
-  // see the startup warning below.
+  // JWT_SECRET so dev/test keep working unchanged (audience still enforced).
+  // Production hard-requires both keys — see the startup validation below.
   jwtStaffSecret: process.env.JWT_STAFF_SECRET || process.env.JWT_SECRET || 'dev-only-secret-change-me',
   jwtPortalSecret: process.env.JWT_PORTAL_SECRET || process.env.JWT_SECRET || 'dev-only-secret-change-me',
   // Clerk (staff sign-in): when CLERK_SECRET_KEY is set the backend accepts
@@ -128,29 +127,26 @@ if (env.nodeEnv === 'production') {
   if (!process.env.DATABASE_URL) missing.push('DATABASE_URL');
   if (!process.env.JWT_SECRET || env.jwtSecret === 'dev-only-secret-change-me') missing.push('JWT_SECRET');
   if (env.jwtSecret.length < 32) missing.push('JWT_SECRET (must be at least 32 characters)');
+  // Split signing keys ARE the staff/portal trust boundary (see jwtStaffSecret
+  // above): production must run on two distinct keys, not the JWT_SECRET
+  // fallback, so a key leak or a lost audience check can never cross domains.
+  if (!process.env.JWT_STAFF_SECRET || !process.env.JWT_PORTAL_SECRET) {
+    missing.push('JWT_STAFF_SECRET and JWT_PORTAL_SECRET (see docs/runbooks/RUNBOOK-jwt-secret-split.md)');
+  } else if (env.jwtStaffSecret.length < 32 || env.jwtPortalSecret.length < 32) {
+    missing.push('JWT_STAFF_SECRET / JWT_PORTAL_SECRET (each must be at least 32 characters)');
+  }
   if (missing.length > 0) {
     throw new Error(`Production configuration is invalid: ${missing.join(', ')}`);
   }
-  // MPESA_CALLBACK_TOKEN is not hard-required: flipping it on is an ops
+  // MPESA_CALLBACK_TOKEN is not boot-required: flipping it on is an ops
   // change (the Daraja callback URL must be updated to carry ?token=…), and
   // booting the app down until that happens would take rent collection
-  // offline. Warn instead — routes/mpesa.ts enforces the token whenever it
-  // is set, and the security runbook calls out setting it.
+  // offline. Warn instead — routes/mpesa.ts now FAILS CLOSED in production
+  // without the token (every /api/mpesa/* callback 404s, so forged payments
+  // cannot post), and the security runbook calls out setting the token.
   if (!process.env.MPESA_CALLBACK_TOKEN) {
     // eslint-disable-next-line no-console
-    console.warn('[config] MPESA_CALLBACK_TOKEN is not set — /api/mpesa/* callbacks accept unauthenticated POSTs. Set the token and append ?token=<value> to the Daraja callback URL to lock this down.');
-  }
-  // Split JWT keys: warn while the two token populations still share one
-  // secret (either explicitly or via fallback). Not hard-required — the
-  // audience claim already separates the domains, and forcing a two-secret
-  // deploy on every install buys nothing for single-operator setups.
-  if (!process.env.JWT_STAFF_SECRET || !process.env.JWT_PORTAL_SECRET) {
-    // eslint-disable-next-line no-console
-    console.warn('[config] JWT_STAFF_SECRET / JWT_PORTAL_SECRET are not both set — staff and portal tokens share one signing key. Set two distinct secrets to fully harden the auth boundary (see docs/runbooks/RUNBOOK-jwt-secret-split.md).');
-  }
-  if (env.jwtStaffSecret.length < 32 || env.jwtPortalSecret.length < 32) {
-    // eslint-disable-next-line no-console
-    console.warn('[config] JWT_STAFF_SECRET / JWT_PORTAL_SECRET should each be at least 32 characters.');
+    console.warn('[config] MPESA_CALLBACK_TOKEN is not set — production refuses every /api/mpesa/* callback (fail-closed; forged payments cannot post, but real Daraja callbacks wait too). Set the token and append ?token=<value> to the Daraja callback URL to re-enable them.');
   }
 }
 

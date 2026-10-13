@@ -50,12 +50,21 @@ describe('getSmsConfig / sendSms (provider selection)', () => {
   });
 
   it('mock provider records a MOCK reference without any network call', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch');
-    const result = await sendSms({ phoneNumber: '+254711000002', message: 'Test receipt' });
-    expect(result.ok).toBe(true);
-    expect(result.providerMessageId).toMatch(/^MOCK-\d+$/);
-    expect(fetchSpy).not.toHaveBeenCalled();
-    fetchSpy.mockRestore();
+    // jest 30: global.fetch is proxy-served (not an own property of the
+    // sandbox global) — spyOn's restore deletes it permanently. Assign and
+    // restore directly instead.
+    const GLOBAL = global as unknown as { fetch: typeof fetch };
+    const fetchMock = jest.fn();
+    const realFetch = GLOBAL.fetch;
+    GLOBAL.fetch = fetchMock as unknown as typeof fetch;
+    try {
+      const result = await sendSms({ phoneNumber: '+254711000002', message: 'Test receipt' });
+      expect(result.ok).toBe(true);
+      expect(result.providerMessageId).toMatch(/^MOCK-\d+$/);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      GLOBAL.fetch = realFetch;
+    }
   });
 });
 

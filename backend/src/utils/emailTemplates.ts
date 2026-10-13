@@ -55,40 +55,43 @@ function textSignOff(identity: IdentityFields): string {
 // The receipt email's composition lives in receiptDocument.ts (already a pure
 // renderer) — emailService composes that kind from there directly.
 
-// --- Portal credentials -------------------------------------------------------
+// --- Portal setup link --------------------------------------------------------
+//
+// Replaces the old credentials email that carried a generated plaintext
+// password (2026-10-13 security review, OWASP #7/#2): the tenant now opens a
+// one-time link and chooses their own password. The link is single-use and
+// expires server-side, so storing a faithful copy in email history is safe.
 
-export function composePortalCredentialsEmail(input: {
+export function composePortalSetupEmail(input: {
   tenantName: string;
   loginEmail: string;
-  password: string;
-  portalUrl: string;
+  setupUrl: string;
+  expiresHours: number;
   identity: IdentityFields;
 }): ComposedEmail {
   const name = input.identity.name?.trim() || 'Property Management';
-  const subject = `Your tenant portal access — ${name}`;
+  const subject = `Set up your tenant portal access — ${name}`;
   const text = [
     `Dear ${input.tenantName},`,
     '',
-    'Portal access for your tenancy has been set up. Sign in at:',
-    input.portalUrl,
+    'Portal access for your tenancy has been set up. Open this link to',
+    `choose your own password (it works once and expires in ${input.expiresHours} hours):`,
+    input.setupUrl,
     '',
     `Login email: ${input.loginEmail}`,
-    `Password: ${input.password}`,
     '',
-    'This password was generated for you — please keep this email safe,',
-    'or ask the office to issue a new one if it is ever compromised.',
+    'If the link has expired, ask the office to issue a new one.',
     '',
     textSignOff(input.identity),
   ].join('\n');
   const html = frame(
     `<p style="margin:0 0 16px">Dear ${escapeHtml(input.tenantName)},</p>
 <p style="margin:0 0 16px">Portal access for your tenancy has been set up.
-<a href="${escapeHtml(input.portalUrl)}" style="color:#1d6fd6">Sign in here</a> to view your balance, payments, water charges and statement, and to pay rent via M-Pesa.</p>
+<a href="${escapeHtml(input.setupUrl)}" style="color:#1d6fd6">Choose your password</a> to sign in and view your balance, payments, water charges and statement, and to pay rent via M-Pesa. The link works once and expires in ${input.expiresHours} hours.</p>
 <table style="width:100%;border-collapse:collapse;margin:0 0 16px">
 <tr><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px">Login email</td><td style="padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:14px;font-weight:600">${escapeHtml(input.loginEmail)}</td></tr>
-<tr><td style="padding:8px 0;font-size:14px">Password</td><td style="padding:8px 0;font-size:14px;font-weight:600;font-family:monospace">${escapeHtml(input.password)}</td></tr>
 </table>
-<p style="margin:0 0 16px;color:#6b7280;font-size:13px">This password was generated for you — please keep this email safe, or ask the office to issue a new one if it is ever compromised.</p>`,
+<p style="margin:0 0 16px;color:#6b7280;font-size:13px">If the link has expired, ask the office to issue a new one.</p>`,
     input.identity
   );
   return { subject, html, text };

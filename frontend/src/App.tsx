@@ -55,6 +55,7 @@ const PublicVacancies = lazy(routeChunks.publicVacancies);
 // Tenant portal — a separate, public-facing app shell with its own auth
 // context; entirely outside the staff RequireAuth tree.
 const PortalLogin = lazy(() => import('./pages/portal/PortalLogin'));
+const PortalSetup = lazy(() => import('./pages/portal/PortalSetup'));
 const PortalLayout = lazy(() => import('./pages/portal/PortalLayout'));
 const PortalHome = lazy(() => import('./pages/portal/PortalHome'));
 const PortalPayments = lazy(() => import('./pages/portal/PortalPayments'));
@@ -129,6 +130,7 @@ const TITLES: Record<string, string> = {
   '/portal/water': 'Portal · Water',
   '/portal/statement': 'Portal · Statement',
   '/portal/login': 'Portal Sign in',
+  '/portal/setup': 'Portal · Set up access',
 };
 
 function TitleManager() {
@@ -266,6 +268,16 @@ export default function App() {
             element={
               <PortalAuthProvider>
                 <PortalLogin />
+              </PortalAuthProvider>
+            }
+          />
+          {/* One-time setup link from the credentials email — public like the
+              login page, the emailed token is the credential. */}
+          <Route
+            path="/portal/setup"
+            element={
+              <PortalAuthProvider>
+                <PortalSetup />
               </PortalAuthProvider>
             }
           />

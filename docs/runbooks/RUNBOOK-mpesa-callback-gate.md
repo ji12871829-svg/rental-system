@@ -28,8 +28,11 @@ the steps below only supply its configuration.
   put the token in that env var's value and STK callbacks arrive
   pre-tokenized. The C2B URLs are registered by hand in the Daraja portal,
   so you add the same `?token=` suffix there yourself.
-- While the token is unset the endpoints stay open (documented mock-mode
-  behavior for dev/test) — that is why the warning exists.
+- While the token is unset the endpoints stay open only in dev/test
+  (documented mock-mode behavior). **Production fails closed**: every
+  callback gets the same `404` as a wrong token until `MPESA_CALLBACK_TOKEN`
+  is configured (an unauthenticated confirm would post payments straight to
+  the ledger) — that is why the startup warning matters.
 
 ---
 
