@@ -15,8 +15,18 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const args = process.argv.slice(2).length
-  ? process.argv.slice(2)
+// lint-staged hands tasks absolute paths (it resolves them against cwd), but
+// oxlint resolves file arguments against its own working directory and reports
+// "No files found to lint" for anything that doesn't match that way. Rewrite
+// args that live inside the repo to root-relative form; anything else is left
+// alone so shell-supplied paths keep working.
+const rawArgs = process.argv.slice(2);
+const args = rawArgs.length
+  ? rawArgs.map((arg) => {
+      if (!path.isAbsolute(arg)) return arg;
+      const rel = path.relative(root, arg);
+      return rel && !rel.startsWith('..') ? rel.split(path.sep).join('/') : arg;
+    })
   : ['shared', 'backend/src', 'backend/tests', 'frontend/src', 'scripts', '--config=.oxlintrc.json'];
 
 const npm = spawnSync('npx', ['--no-install', 'oxlint', ...args], {

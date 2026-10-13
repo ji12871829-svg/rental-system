@@ -17,16 +17,28 @@ import { monthlyWaterSummary, waterSummary } from '../services/waterService';
 const router = Router();
 router.use(requireAuth);
 
-const yearQuery = z.object({ year: z.coerce.number().int().min(2000).max(2100).optional() });
+// `year` is optional and an empty string means "not specified yet" — the
+// Dashboard builds its URL as `?year=${reportingYear ?? ''}` while the summary
+// is still loading. Coercing '' gives 0, which the min would reject, so treat
+// blank as absent and let each route fall back to settings.reporting_year.
+// Anything else non-numeric is still a genuine validation error.
+const yearQuery = z.object({
+  year: z
+    .preprocess(
+      (value) => (value === '' || value === null || value === undefined ? undefined : value),
+      z.coerce.number().int().min(2000).max(2100).optional(),
+    )
+    .optional(),
+});
 
-router.get('/dashboard', asyncHandler(async (req, res) => {
+router.get('/dashboard', validateQuery(yearQuery), asyncHandler(async (req, res) => {
   const q = yearQuery.parse(req.query);
   const settings = await getSettings();
   const data = await dashboard(q.year ?? settings.reporting_year);
   res.json({ data });
 }));
 
-router.get('/arrears', asyncHandler(async (req, res) => {
+router.get('/arrears', validateQuery(yearQuery), asyncHandler(async (req, res) => {
   const q = yearQuery.parse(req.query);
   const settings = await getSettings();
   const data = await arrears(q.year ?? settings.reporting_year);
@@ -34,7 +46,7 @@ router.get('/arrears', asyncHandler(async (req, res) => {
 }));
 
 // Cashflow: collections vs expenses per month (ported from the legacy system).
-router.get('/cashflow', asyncHandler(async (req, res) => {
+router.get('/cashflow', validateQuery(yearQuery), asyncHandler(async (req, res) => {
   const q = yearQuery.parse(req.query);
   const settings = await getSettings();
   const data = await cashflow(q.year ?? settings.reporting_year);
@@ -54,7 +66,7 @@ router.get('/arrears.pdf', validateQuery(yearQuery), asyncHandler(async (req, re
 }));
 
 // Combined rent + water monthly summary (§27 + §24 together).
-router.get('/monthly', asyncHandler(async (req, res) => {
+router.get('/monthly', validateQuery(yearQuery), asyncHandler(async (req, res) => {
   const q = yearQuery.parse(req.query);
   const settings = await getSettings();
   const data = await combinedMonthlySummary(q.year ?? settings.reporting_year);
@@ -62,7 +74,7 @@ router.get('/monthly', asyncHandler(async (req, res) => {
 }));
 
 // Rent-only monthly summary.
-router.get('/monthly/rent', asyncHandler(async (req, res) => {
+router.get('/monthly/rent', validateQuery(yearQuery), asyncHandler(async (req, res) => {
   const q = yearQuery.parse(req.query);
   const settings = await getSettings();
   const data = await monthlyRentSummary(q.year ?? settings.reporting_year);
@@ -70,7 +82,7 @@ router.get('/monthly/rent', asyncHandler(async (req, res) => {
 }));
 
 // Water-only monthly summary.
-router.get('/monthly/water', asyncHandler(async (req, res) => {
+router.get('/monthly/water', validateQuery(yearQuery), asyncHandler(async (req, res) => {
   const q = yearQuery.parse(req.query);
   const settings = await getSettings();
   const data = await monthlyWaterSummary(q.year ?? settings.reporting_year);
@@ -78,7 +90,7 @@ router.get('/monthly/water', asyncHandler(async (req, res) => {
 }));
 
 // Water financial performance (§22 / §47).
-router.get('/water', asyncHandler(async (req, res) => {
+router.get('/water', validateQuery(yearQuery), asyncHandler(async (req, res) => {
   const q = yearQuery.parse(req.query);
   const settings = await getSettings();
   const data = await waterSummary(q.year ?? settings.reporting_year);
@@ -119,7 +131,7 @@ router.post('/monthly/email', managerOrAdmin, validateQuery(yearQuery), validate
 
 const paramsSchema = z.object({ id: z.coerce.number().int().positive() });
 
-router.get('/tenant/:id', validateParams(paramsSchema), asyncHandler(async (req, res) => {
+router.get('/tenant/:id', validateParams(paramsSchema), validateQuery(yearQuery), asyncHandler(async (req, res) => {
   const q = yearQuery.parse(req.query);
   const settings = await getSettings();
   const data = await tenantLedger(Number(req.params.id), q.year ?? settings.reporting_year);
