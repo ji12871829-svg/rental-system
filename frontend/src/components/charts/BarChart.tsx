@@ -100,6 +100,9 @@ export function BarChart(props: {
 
   const catKey = catAxis?.props.dataKey;
   const catFmt = catAxis?.props.tickFormatter;
+  // Value-axis tick formatter (recharts <YAxis tickFormatter={…}>). Without it
+  // the axis falls back to fmtTick's plain-number rendering.
+  const numFmt = numAxis?.props.tickFormatter;
   const catLabel = (d: ChartDatum) => {
     const raw = getVal(d, catKey);
     return catFmt ? catFmt(raw, 0) : String(raw ?? '');
@@ -220,9 +223,9 @@ export function BarChart(props: {
                 </g>
               ) : null,
             )}
-            {(yTicks ?? []).map((t) => (
+            {(yTicks ?? []).map((t, i) => (
               <text key={t} x={marginLeft - 6} y={val2px(t) + 3.5} textAnchor="end" fontSize={11} fill="var(--chart-tick)">
-                {fmtTick(t)}
+                {numFmt ? numFmt(t, i) : fmtTick(t)}
               </text>
             ))}
           </g>
@@ -235,9 +238,9 @@ export function BarChart(props: {
                 {catFmt ? catFmt(getVal(d, catKey), i) : String(getVal(d, catKey) ?? '')}
               </text>
             ))}
-            {(xTicks ?? []).map((t) => (
+            {(xTicks ?? []).map((t, i) => (
               <text key={t} x={val2px(t)} y={marginTop + plotH + 17} textAnchor="middle" fontSize={11} fill="var(--chart-tick)">
-                {fmtTick(t)}
+                {numFmt ? numFmt(t, i) : fmtTick(t)}
               </text>
             ))}
           </g>
