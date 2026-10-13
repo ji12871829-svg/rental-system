@@ -43,6 +43,17 @@ export function ExecWatchlist({ rows, loading, error, currency }: ExecWatchlistP
   }, [rows, query, status]);
 
   const openCount = (rows ?? []).filter((r) => r.totalOutstanding > 0).length;
+  // Distinguish "nothing to chase" from "your filter hid it". Both look
+  // identical in the table, but they call for different actions — telling an
+  // operator to clear a search that never ran, or to loosen a status that is
+  // already on "Open balances", is a dead end. This block only renders once
+  // rows exist, and the subtitle above already states the true count, so the
+  // empty state has to agree with it.
+  const filtering = query.trim().length > 0 || status.length > 0;
+  const emptyMessage =
+    !filtering && openCount === 0
+      ? 'No open balances right now — every tenant on the books is paid up.'
+      : 'No rows match this filter — try a different status or clear the search.';
 
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -142,7 +153,7 @@ export function ExecWatchlist({ rows, loading, error, currency }: ExecWatchlistP
           </table>
           {visible.length === 0 && (
             <div className="p-6">
-              <EmptyState message="No rows match this filter — try a different status or clear the search." />
+              <EmptyState message={emptyMessage} />
             </div>
           )}
         </div>
