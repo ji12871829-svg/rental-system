@@ -1,4 +1,4 @@
-import { query, queryOne, withTransaction } from '../config/db';
+import { queryOne, withTransaction } from '../config/db';
 import { paginate } from './paginate';
 import type { Pagination } from '../types';
 import { conflict, notFound, unprocessable } from '../utils/httpError';
@@ -224,7 +224,9 @@ export async function moveOutTenant(id: number, moveOutDate: string, userId: num
 }
 
 export async function deleteTenant(id: number, userId: number): Promise<void> {
-  const existing = await queryOne<{ id: number }>('SELECT id FROM tenants WHERE id = $1', [id]);
+  const existing = await queryOne<{ id: number; unit_id: number | null }>(
+    'SELECT id, unit_id FROM tenants WHERE id = $1', [id]
+  );
   if (!existing) throw notFound('Tenant not found.');
   const references = await queryOne<{ count: string }>(
     `SELECT (SELECT COUNT(*) FROM rent_payments WHERE tenant_id = $1) +
@@ -234,6 +236,23 @@ export async function deleteTenant(id: number, userId: number): Promise<void> {
   if (Number(references?.count ?? 0) > 0) {
     throw conflict('Tenant has payment history and cannot be deleted. Mark them as moved out instead.', 'TENANT_HAS_HISTORY');
   }
-  await query('DELETE FROM tenants WHERE id = $1', [id]);
-  await logAudit({ userId, action: 'TENANT_DELETED', entity: 'tenants', entityId: id });
+  // Free the unit in the SAME transaction as the row delete: skipping it left
+  // units.occupancy_status at OCCUPIED with tenant_id NULL — a ghost room the
+  // vacancy views count but nobody can be let into. A MOVED_OUT tenant keeps
+  // its unit_id after the room has been re-let, so the unit is only released
+  // when no other ACTIVE tenant still holds it (the guard updateTenant uses
+  // when re-assigning).
+  await withTransaction(async (client) => {
+    await client.query('DELETE FROM tenants WHERE id = $1', [id]);
+    if (existing.unit_id) {
+      const stillOccupied = await client.query(
+        `SELECT 1 FROM tenants WHERE unit_id = $1 AND status = 'ACTIVE' LIMIT 1`,
+        [existing.unit_id]
+      );
+      if (stillOccupied.rows.length === 0) {
+        await client.query(`UPDATE units SET occupancy_status = 'VACANT' WHERE id = $1`, [existing.unit_id]);
+      }
+    }
+    await logAudit({ userId, action: 'TENANT_DELETED', entity: 'tenants', entityId: id });
+  });
 }
