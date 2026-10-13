@@ -12,10 +12,14 @@ services:
     name: rpms
     runtime: node
     plan: free
-    # Co-locate with the Neon database (eu-central-1). Without this the
-    # service lands in Oregon and every DB query pays a transatlantic
-    # round-trip (~300ms) — the single biggest latency cost in the app.
-    region: frankfurt
+    # Region must match the DEPLOYED service (oregon). Render rejects region
+    # changes on an existing service, so any other value makes every blueprint
+    # sync fail ("changing region not supported") — which silently blocks
+    # autoDeploy and env-var updates from ever applying (2026-10-14 outage of
+    # the auto-deploy pipeline). Original goal was Frankfurt (co-locate with
+    # Neon eu-central-1): to get there, recreate the service in Frankfurt and
+    # change this line in the same PR.
+    region: oregon
     # Build the frontend first (outputs frontend/dist), then compile the API.
     # --include=dev on BOTH installs: TypeScript must be installed to build (Render
     # defaults NODE_ENV=production, which would skip devDependencies otherwise).
