@@ -36,21 +36,21 @@ export interface NotifSummary {
 function itemTone(status: NotifFeedItem['status']): { dot: string; text: string; icon: React.ReactNode } {
   if (status === 'SENT') {
     return {
-      dot: 'bg-emerald-500',
+      dot: 'bg-emerald-50',
       text: 'text-gray-600',
       icon: <CheckCheck size={15} strokeWidth={2} className="shrink-0 text-emerald-600" aria-hidden />,
     };
   }
   if (status === 'PENDING') {
     return {
-      dot: 'bg-amber-500',
+      dot: 'bg-amber-50',
       text: 'text-gray-900',
       icon: <Smartphone size={15} strokeWidth={2} className="shrink-0 text-amber-600" aria-hidden />,
     };
   }
   if (status === 'FAILED') {
     return {
-      dot: 'bg-red-500',
+      dot: 'bg-red-50',
       text: 'text-red-700',
       icon: <Smartphone size={15} strokeWidth={2} className="shrink-0 text-red-600" aria-hidden />,
     };
@@ -182,7 +182,11 @@ export function NotifPanel({
   const unreadCount = summary?.unread ?? unread;
 
   return (
-    <>
+    // Positioning context for BOTH the trigger and the panel: the panel used
+    // to be a sibling with no positioned ancestor of its own, so it resolved
+    // against some higher wrapper and landed at top:-189px / right:1398px —
+    // clipped above the viewport and off the right edge.
+    <div className="relative">
       {/* Bell trigger — xampp RMS `.topbar-btn` bell pattern, with an
           absolute badge dot when there are unread items. Visible at every
           breakpoint: this is the only bell in the app (the badge below is a
@@ -209,19 +213,28 @@ export function NotifPanel({
         )}
       </div>
 
-      {/* Panel — xampp RMS `.notif-panel` + `.notif-panel.show` : absolute,
-          right-aligned, 320px, shadow-lg, hidden until open. */}
+      {/* Panel — xampp RMS `.notif-panel` + `.notif-panel.show`: anchored
+          top-full (directly under the bell), 320px, own surface. It used to
+          ship with no background, shadow or radius at all — a 442px-tall
+          transparent box floating over the page. */}
       {open && (
         <div
           ref={panelRef}
-          className="absolute right-0 mt-2 w-80 animate-in fade-in duration-150 md:right-auto md:w-72 md:animate-in md:slide-in-from-top-2"
+          className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] animate-in fade-in zoom-in-95 duration-150"
           role="region"
           aria-label="Notifications"
         >
-          <div className="z-50">
+          <div className="flex max-h-[min(70vh,420px)] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
             {/* Header — xampp RMS `.notif-header` : title + "Mark all read". */}
-            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-              <h4 className="text-sm font-semibold text-gray-900">Notifications</h4>
+            <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-2.5">
+              <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                Notifications
+                {unreadCount > 0 && (
+                  <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold text-gray-600">
+                    {unreadCount}
+                  </span>
+                )}
+              </h4>
               <button
                 type="button"
                 onClick={handleMarkAllRead}
@@ -236,8 +249,10 @@ export function NotifPanel({
               <div className="px-4 py-2 text-xs text-red-600">{markReadError}</div>
             )}
 
-            {/* List — xampp RMS `.notif-list` : max-height + scroll. */}
-            <div className="max-h-[320px] overflow-y-auto">
+            {/* List — xampp RMS `.notif-list` : scrollable, and it is the flex
+                child that absorbs the surface's max-h so header + footer stay
+                pinned instead of the whole panel growing unbounded. */}
+            <div className="min-h-0 flex-1 overflow-y-auto">
               {summary === null && feed.length === 0 && (
                 <div className="flex items-center justify-center py-8 text-sm text-gray-400">
                   Loading…
@@ -255,13 +270,13 @@ export function NotifPanel({
                 return (
                   <div
                     key={`${item.channel}-${item.id}`}
-                    className={`border-b border-gray-50 px-4 py-3 transition-colors duration-100 ${
+                    className={`border-b border-gray-50 px-3.5 py-2.5 transition-colors duration-100 ${
                       item.unread ? 'bg-brand-50/40' : ''
                     }`}
                   >
-                    <div className="flex gap-3">
-                      {/* Icon slot — xampp RMS `.ni-icon`, recolored by status. */}
-                      <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${tone.dot} border-transparent`}>
+                    <div className="flex gap-2.5">
+                      {/* Icon slot — xampp RMS `.ni-icon`, tinted by status. */}
+                      <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${tone.dot} border-transparent`}>
                         {tone.icon}
                       </div>
                       <div className={`min-w-0 flex-1 ${tone.text}`}>
@@ -278,7 +293,13 @@ export function NotifPanel({
                             ? `To ${item.recipient}`
                             : item.recipient}
                           {item.failureReason && (
-                            <span className="ml-1 text-red-500">· {item.failureReason}</span>
+                            // Neutral, not red: the status icon already carries
+                            // severity, and red-on-every-failed-row made the
+                            // whole list read as an alarm. The full reason is
+                            // one click away on the history pages.
+                            <span className="ml-1 text-gray-400" title={item.failureReason}>
+                              · {item.failureReason}
+                            </span>
                           )}
                         </div>
                       </div>
@@ -288,13 +309,13 @@ export function NotifPanel({
               })}
             </div>
 
-            {/* Footer — deep links to the full history pages
-                (xampp RMS has these as sidebar nav; we surface them here too). */}
-            <div className="border-t border-gray-100 px-4 py-2 space-y-1">
+            {/* Footer — deep links to the full history pages, side by side
+                (they used to stack, adding a row of height to every open). */}
+            <div className="flex gap-1 border-t border-gray-100 p-2">
               <button
                 type="button"
                 onClick={() => { close(); navigate('/sms'); }}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-gray-500 transition-colors duration-150 hover:bg-gray-50 hover:text-gray-700"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-gray-500 transition-colors duration-150 hover:bg-gray-50 hover:text-gray-700"
               >
                 <Smartphone size={13} strokeWidth={2} aria-hidden />
                 Review SMS
@@ -302,7 +323,7 @@ export function NotifPanel({
               <button
                 type="button"
                 onClick={() => { close(); navigate('/emails'); }}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-gray-500 transition-colors duration-150 hover:bg-gray-50 hover:text-gray-700"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-gray-500 transition-colors duration-150 hover:bg-gray-50 hover:text-gray-700"
               >
                 <MessageSquare size={13} strokeWidth={2} aria-hidden />
                 Review Emails
@@ -311,6 +332,6 @@ export function NotifPanel({
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

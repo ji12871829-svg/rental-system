@@ -17,7 +17,7 @@ describe('SMS templates (spec §34)', () => {
       currency: 'KSh',
     });
     expect(msg).toBe(
-      'RENT RECEIPT: Dear John, KSh 9000 received for Unit 15, September 2026 rent. Balance: KSh 0. Receipt: RC-2026-0001. Thank you.'
+      'RENT RECEIPT: Dear John, we have received KSh 9000 for Unit 15 rent, September 2026. Your balance is now clear. Receipt: RC-2026-0001. Thank you.'
     );
   });
 
@@ -32,7 +32,7 @@ describe('SMS templates (spec §34)', () => {
       receiptNumber: 'RC-2026-0001',
       currency: 'KSh',
     });
-    expect(msg).toContain('Outstanding balance: KSh 5000');
+    expect(msg).toContain('Your outstanding balance is KSh 5000');
   });
 
   it('builds a combined rent + water receipt message', () => {
@@ -48,7 +48,7 @@ describe('SMS templates (spec §34)', () => {
       receiptNumber: 'RWC-2026-0001',
       currency: 'KSh',
     });
-    expect(msg).toContain('KSh 10600 received for Unit 15 for September 2026');
+    expect(msg).toContain('we have received KSh 10600 for Unit 15, September 2026');
     expect(msg).toContain('(Rent KSh 9000 + Water KSh 1600)');
     expect(msg).toContain('Receipt: RWC-2026-0001');
   });
@@ -64,7 +64,7 @@ describe('SMS templates (spec §34)', () => {
       receiptNumber: 'WC-2026-0001',
       currency: 'KSh',
     });
-    expect(msg).toContain('KSh 1000 received for Unit 15 water, February 2026');
+    expect(msg).toContain('we have received KSh 1000 for Unit 15 water, February 2026');
     expect(msg).toContain('Outstanding balance: KSh 600');
   });
 

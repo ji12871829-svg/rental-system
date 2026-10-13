@@ -56,8 +56,8 @@ describe('buildMessage — env-configured business identity + contact line', () 
 
   it('keeps the receipt body itself in the spec §34 format', () => {
     const msg = buildMessage(receipt, { tenantName: 'Peter Otieno', unitNumber: '1', currency: 'KSh' });
-    expect(msg.startsWith('RENT RECEIPT: Dear Peter Otieno, KSh 9000 received for Unit 1, September 2026 rent.')).toBe(true);
-    expect(msg).toContain('Balance: KSh 0. Receipt: RC-2026-0001. Thank you.');
+    expect(msg.startsWith('RENT RECEIPT: Dear Peter Otieno, we have received KSh 9000 for Unit 1 rent, September 2026.')).toBe(true);
+    expect(msg).toContain('Your balance is now clear. Receipt: RC-2026-0001. Thank you.');
   });
 
   it('never introduces non-GSM characters (em dash would double SMS cost)', () => {

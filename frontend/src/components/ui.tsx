@@ -434,27 +434,38 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-[calc(100vw-2rem)] max-w-80 flex-col gap-2">
+      {/* Toasts — deliberately quiet: a white card with a coloured icon and a
+          hairline, not a full-bleed red slab. The container has no fixed width
+          so a short message stays short (it used to be forced to
+          calc(100vw-2rem), which looked unfinished on phones). */}
+      <div className="pointer-events-none fixed bottom-4 right-4 z-[60] flex max-w-80 flex-col gap-2">
         {toasts.map((t) => (
           <div
             key={t.id}
             role={t.type === 'success' ? 'status' : 'alert'}
-            className={`pointer-events-auto flex items-start gap-2.5 rounded-xl px-4 py-3 text-sm font-medium text-white shadow-lg animate-in slide-in-from-right-4 duration-200 ${
-              t.type === 'success' ? 'bg-emerald-700' : 'bg-red-600'
+            className={`pointer-events-auto flex w-fit max-w-full items-start gap-2 rounded-xl border bg-white px-3.5 py-2.5 text-sm shadow-lg animate-in slide-in-from-right-4 duration-200 ${
+              t.type === 'success' ? 'border-gray-200' : 'border-red-400'
             }`}
           >
             {t.type === 'success'
-              ? <CheckCircle2 size={17} strokeWidth={2} className="mt-0.5 shrink-0" aria-hidden />
-              : <AlertCircle size={17} strokeWidth={2} className="mt-0.5 shrink-0" aria-hidden />}
-            <span>
+              ? <CheckCircle2 size={16} strokeWidth={2} className="mt-0.5 shrink-0 text-emerald-600" aria-hidden />
+              : <AlertCircle size={16} strokeWidth={2} className="mt-0.5 shrink-0 text-red-600" aria-hidden />}
+            <span className="text-gray-900">
               {t.message}
               {t.action && (
-                // Block display so the link always sits on its own line.
-                <Link to={t.action.to} className="mt-1 block font-semibold text-white underline underline-offset-2">
+                <Link to={t.action.to} className="mt-1 block font-semibold text-brand-600 transition-colors duration-150 hover:text-brand-700">
                   {t.action.label}
                 </Link>
               )}
             </span>
+            <button
+              type="button"
+              onClick={() => setToasts((list) => list.filter((x) => x.id !== t.id))}
+              aria-label="Dismiss notification"
+              className="-mr-1 shrink-0 rounded-md p-1 text-gray-400 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-600"
+            >
+              <X size={13} strokeWidth={2} aria-hidden />
+            </button>
           </div>
         ))}
       </div>

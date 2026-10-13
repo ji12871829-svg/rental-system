@@ -1,4 +1,4 @@
-// User-editable message templates (9 kinds) with mail-merge support.
+// User-editable message templates (14 kinds) with mail-merge support.
 //
 // A `message_templates` row exists ONLY for a template someone customized:
 // every send path (smsService receipt SMS + reminders + WhatsApp composes,
@@ -21,6 +21,9 @@ export type TemplateKind =
   | 'SMS_OVERDUE'
   | 'SMS_LANDLORD_ALERT'
   | 'SMS_RENT_DUE_SOON'
+  | 'SMS_WATER_BILLING'
+  | 'SMS_LATE_FEE'
+  | 'SMS_WELCOME'
   | 'WHATSAPP_BALANCE_DUE'
   | 'WHATSAPP_OVERDUE'
   | 'WHATSAPP_PAYMENT_CONFIRMATION'
@@ -48,7 +51,7 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'RENT RECEIPT: Dear {{name}}, {{currency}} {{amount}} received for Unit {{unit}}, {{month}} {{year}} rent. Balance: {{currency}} {{balance}}. Receipt: {{receipt}}. Thank you.',
+      'RENT RECEIPT: Dear {{name}}, we have received {{currency}} {{amount}} for Unit {{unit}} rent, {{month}} {{year}}. Your outstanding balance is {{currency}} {{balance}}. Receipt: {{receipt}}. Thank you.',
   },
   {
     kind: 'SMS_WATER_RECEIPT',
@@ -59,7 +62,7 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'WATER RECEIPT: Dear {{name}}, {{currency}} {{amount}} received for Unit {{unit}} water, {{month}} {{year}}. Outstanding balance: {{currency}} {{balance}}. Receipt: {{receipt}}. Thank you.',
+      'WATER RECEIPT: Dear {{name}}, we have received {{currency}} {{amount}} for Unit {{unit}} water, {{month}} {{year}}. Outstanding balance: {{currency}} {{balance}}. Receipt: {{receipt}}. Thank you.',
   },
   {
     kind: 'SMS_COMBINED_RECEIPT',
@@ -70,7 +73,7 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'PAYMENT RECEIPT: Dear {{name}}, {{currency}} {{total}} received for Unit {{unit}} for {{month}} {{year}} (Rent {{currency}} {{rent}} + Water {{currency}} {{water}}). Outstanding balance: {{currency}} {{balance}}. Receipt: {{receipt}}. Thank you.',
+      'PAYMENT RECEIPT: Dear {{name}}, we have received {{currency}} {{total}} for Unit {{unit}}, {{month}} {{year}} (Rent {{currency}} {{rent}} + Water {{currency}} {{water}}). Outstanding balance: {{currency}} {{balance}}. Receipt: {{receipt}}. Thank you.',
   },
   {
     kind: 'SMS_BALANCE_DUE',
@@ -81,7 +84,7 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, your statement for {{month}} {{year}} for Unit {{unit}} is ready. Total Due: {{currency}} {{total_due}}. Account: {{account}}. Pay via {{payment_method}}.',
+      'Dear {{name}}, your rent statement for {{month}} {{year}} (Unit {{unit}}) is ready. Total Due: {{currency}} {{total_due}}. To pay, use {{payment_method}} with account {{account}}.',
   },
   {
     kind: 'SMS_OVERDUE',
@@ -92,7 +95,7 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Hi {{name}}, Unit {{unit}} has an overdue balance of {{currency}} {{amount_due}}. Please clear this immediately to avoid late fees. Total Balance: {{currency}} {{total_due}}.',
+      'Dear {{name}}, the rent for Unit {{unit}} is overdue by {{currency}} {{amount_due}}. Kindly settle this amount to avoid a late payment fee. Your total balance is {{currency}} {{total_due}}. Thank you.',
   },
   {
     kind: 'SMS_LANDLORD_ALERT',
@@ -104,7 +107,7 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'PAYMENT RECEIVED: {{currency}} {{amount}} from {{name}} (Unit {{unit}}) for {{month}} {{year}}. Receipt: {{receipt}}. Balance: {{currency}} {{balance}}.',
+      'PAYMENT RECEIVED: {{currency}} {{amount}} from {{name}}, Unit {{unit}}, for {{month}} {{year}} rent. Receipt: {{receipt}}. Balance: {{currency}} {{balance}}.',
   },
   {
     kind: 'SMS_RENT_DUE_SOON',
@@ -116,7 +119,43 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, a reminder that {{next_month}} rent of {{currency}} {{amount}} for Unit {{unit}} is due. Pay via {{payment_method}}. Thank you.',
+      'Dear {{name}}, a friendly reminder that {{next_month}} rent of {{currency}} {{amount}} for Unit {{unit}} falls due on the 1st. Please pay via {{payment_method}}, quoting your unit number as the account reference. Thank you.',
+  },
+  {
+    kind: 'SMS_WATER_BILLING',
+    label: 'Water Billing Notice',
+    channel: 'SMS' as const,
+    description:
+      'Tells the tenant the month\'s water charge has been billed to their ledger. Sent only when an operator sends it — billing water never spends SMS credit on its own.',
+    fields: ['name', 'unit', 'month', 'year', 'amount', 'payment_method', 'currency', 'business'],
+    hasSubject: false,
+    defaultSubject: null,
+    defaultBody:
+      'Dear {{name}}, your water charge for Unit {{unit}} for {{month}} {{year}} is {{currency}} {{amount}}. It appears on your statement and can be paid together with your rent via {{payment_method}}.',
+  },
+  {
+    kind: 'SMS_LATE_FEE',
+    label: 'Late Payment Fee',
+    channel: 'SMS' as const,
+    description:
+      'Informs the tenant that a late fee now sits on top of their overdue rent. Sent only when an operator sends it.',
+    fields: ['name', 'unit', 'amount_due', 'currency', 'business'],
+    hasSubject: false,
+    defaultSubject: null,
+    defaultBody:
+      'Dear {{name}}, a late payment fee now applies to the overdue rent of {{currency}} {{amount_due}} on Unit {{unit}}. Kindly settle the full amount, including the fee, to avoid further charges. Thank you.',
+  },
+  {
+    kind: 'SMS_WELCOME',
+    label: 'New Tenant Welcome',
+    channel: 'SMS' as const,
+    description:
+      'A one-time welcome when a tenancy starts: when rent falls due and how to pay it. Sent only when an operator sends it.',
+    fields: ['name', 'unit', 'amount', 'payment_method', 'currency', 'business'],
+    hasSubject: false,
+    defaultSubject: null,
+    defaultBody:
+      'Dear {{name}}, welcome to Unit {{unit}}! Rent of {{currency}} {{amount}} falls due on the 1st of each month. Pay via {{payment_method}}, quoting your unit number as the account reference. We wish you a comfortable stay.',
   },
   {
     kind: 'WHATSAPP_BALANCE_DUE',
