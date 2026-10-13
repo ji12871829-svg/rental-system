@@ -47,6 +47,9 @@ export function LineChart(props: {
   const tooltipFormatter = tooltips[0]?.props.formatter;
   const catKey = catAxis?.props.dataKey;
   const catLabel = (d: ChartDatum) => String(getVal(d, catKey) ?? '');
+  // Value-axis tick formatter (recharts <YAxis tickFormatter={…}>); without it
+  // the axis falls back to fmtTick's plain-number rendering.
+  const numFmt = yAxis?.props.tickFormatter;
 
   const ticks = useMemo(() => {
     const keys = series.map((s) => s.key);
@@ -97,9 +100,9 @@ export function LineChart(props: {
             </text>
           ) : null,
         )}
-        {ticks.map((t) => (
+        {ticks.map((t, i) => (
           <text key={t} x={marginLeft - 6} y={py(t) + 3.5} textAnchor="end" fontSize={11} fill="var(--chart-tick)">
-            {fmtTick(t)}
+            {numFmt ? numFmt(t, i) : fmtTick(t)}
           </text>
         ))}
 

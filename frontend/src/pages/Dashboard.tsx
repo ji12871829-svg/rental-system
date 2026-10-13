@@ -1,30 +1,32 @@
-// Dashboard page: owns the live-polling state machine only. Every visual
-// band is a presentational component under components/dashboard/ — now
-// modeled on the xampp RMS dashboard sections (design-system.css) so the
-// local dashboard reads like the xampp RMS dashboard: onboarding card,
-// metric row (arrears + advance), stats row (rent collection donut +
-// occupancy donut), content row (arrears table + quick actions), balance
-// row (net position + SMS balance), and financial-trends bar chart.
+// Dashboard page: owns the live-polling state machine and the two payloads
+// every band below renders. The visual layout follows the Executive Portfolio
+// Overview design:
 //
-// The shared DashboardData contract (backend dashboard() → @rpms/shared)
-// carries everything these sections need; the new `cashflow` chart field was
-// added to the shared type so the financial-trends chart and the backend
-// cannot drift apart.
-import { PageHeader, useFetch, SkeletonDashboard } from '../components/ui';
+//   1. Header      — title, current-cycle badge, date range, Export Pack
+//   2. KPI row     — Collected (MTD) · Overdue Arrears · Prepayments · Occupancy
+//   3. Chart row   — Cash Flow & Collection Trajectory + Bulk Operations
+//   4. Watchlist   — high-priority arrears with per-row actions
+//   5. Feed row    — Live Payment Gateway Stream + Unit Turnovers & Repairs
+//   6. Delivery    — SMS/email health strip (self-gating: silent when healthy)
+//
+// The shared DashboardData contract (backend dashboard() → @rpms/shared) feeds
+// bands 1–3 and 5; the arrears report is fetched once here and handed to both
+// the KPI row and the watchlist so their totals can never disagree.
+import { SkeletonDashboard, useFetch } from '../components/ui';
 import {
-  XrmOnboardingCard,
-  XrmArrearsMetricCards,
-  XrmStatsDonutCards,
-  XrmContentRow,
-  QuickActionsCard,
-  XrmBalanceRow,
-  XrmFinancialTrends,
-  XrmDeliveryStrip,
-} from '../components/dashboard/XrmSections';
+  ExecOverviewHeader,
+  ExecKpiRow,
+  ExecTrajectory,
+  ExecBulkOps,
+  ExecWatchlist,
+  ExecPaymentStream,
+  ExecTurnovers,
+} from '../components/dashboard/ExecSections';
+import { XrmDeliveryStrip } from '../components/dashboard/XrmDeliveryStrip';
 import type { DashboardData } from '@rpms/shared';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ArrearRow } from './Arrears';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
-import { useAuth } from '../lib/auth';
 
 // Live-poll cadence for the dashboard strip. Quiet by design: failed polls
 // keep the last good data on screen (the next tick retries silently),
@@ -33,19 +35,24 @@ import { useAuth } from '../lib/auth';
 const POLL_MS = 60_000;
 
 export default function Dashboard() {
-  const { user } = useAuth();
   const { data: latest, loading, error, refresh } = useFetch<DashboardData>(() =>
     api.get<{ data: DashboardData }>('/api/reports/dashboard').then((r) => r.data),
   []);
-  const templatesData = useFetch(() => api.templateKinds(), []);
-  const cardTemplates = templatesData.data?.data ?? [];
-  const cardSelectedKinds = useMemo(() => ({
-    sms: cardTemplates.filter((t) => t.channel === 'SMS' && t.customized).sort((a, b) => a.label.localeCompare(b.label)),
-    email: cardTemplates.filter((t) => t.channel === 'EMAIL' && t.customized).sort((a, b) => a.label.localeCompare(b.label)),
-  }), [cardTemplates]);
   const [data, setData] = useState<DashboardData | null>(null);
   const [fatalError, setFatalError] = useState<string | null>(null);
   const lastJsonRef = useRef<string>('');
+
+  // Arrears report — fetched once per reporting year (it is a per-tenant
+  // computation, not something to re-run every poll) and shared by the KPI
+  // row and the watchlist.
+  const arrears = useFetch<ArrearRow[]>(
+    () =>
+      api
+        .get<{ data: ArrearRow[] }>(`/api/reports/arrears?year=${data?.reportingYear ?? ''}`)
+        .then((r) => r.data),
+    [data?.reportingYear],
+    { enabled: !!data },
+  );
 
   useEffect(() => {
     if (!latest) return;
@@ -82,83 +89,42 @@ export default function Dashboard() {
     return null;
   }
 
-  const { reportingYear, currency, property, charts, sms, email, combined } = data;
-
-  // xampp RMS-style dashboard section order:
-  //   1. Onboarding card (hidden at 100%)
-  //   2. Metric row — Tenant Arrears + Tenant Advance
-  //   3. Stats row — Rent Collection donut + Portfolio Occupancy donut
-  //   4. Content row — Arrears table + Quick Actions card
-  //   5. Balance row — Net Position + SMS Balance
-  //   6. Financial trends bar chart (payments / invoices / expenses)
-  //   7. Delivery strip (SMS + email health) — compact, replaces the local
-  //      HealthCards; tucked under the balance row.
-  const outstandingRentUnits = charts.outstandingRentByUnit.filter((r) => r.outstanding > 0).length;
+  const { reportingYear, currency, property, sms, email } = data;
 
   return (
     <div>
-      <PageHeader
-        title="Dashboard"
-        subtitle={`Reporting year ${reportingYear} — everything below updates automatically from recorded transactions`}
-      />
+      {/* 1. Header — cycle badge + range + Export Pack (→ /monthly) */}
+      <ExecOverviewHeader reportingYear={reportingYear} />
 
-      {/* 1. Onboarding card — xampp RMS .onboarding-card */}
-      <div className="rise-in">
-        <XrmOnboardingCard reportingYear={reportingYear} sms={sms} email={email} totalUnits={property.totalUnits} />
-      </div>
+      {/* 2. KPI row — collected MTD, arrears, prepayments, occupancy */}
+      <ExecKpiRow data={data} arrears={arrears.data} />
 
-      {/* 2. Metric row — xampp RMS .metric-row (Tenant Arrears + Tenant Advance) */}
-      <div className="mt-5 rise-in" style={{ animationDelay: '40ms' }}>
-        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
-          <span className="h-1.5 w-1.5 rounded-full bg-gray-300" /> Tenant Overview
-        </div>
-        <XrmArrearsMetricCards data={{ combined, currency, reportingYear, outstandingRentUnits }} />
-      </div>
-
-      {/* 3. Stats row — xampp RMS .stats-row (Rent Collection donut + Occupancy donut) */}
-      <div className="mt-5 rise-in" style={{ animationDelay: '80ms' }}>
-        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
-          <span className="h-1.5 w-1.5 rounded-full bg-gray-300" /> KPIs
-        </div>
-        <XrmStatsDonutCards data={{ property, currency, reportingYear }} />
-      </div>
-
-      {/* 4. Content row — xampp RMS .content-row (Arrears table + Quick Actions card) */}
+      {/* 3. Chart row — trajectory (2/3) + bulk operations (1/3) */}
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <div className="rise-in lg:col-span-2" style={{ animationDelay: '120ms' }}>
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500 mb-3">
-            <span className="h-1.5 w-1.5 rounded-full bg-gray-300" /> Arrears
-          </div>
-          <XrmContentRow reportingYear={reportingYear} />
+        <div className="lg:col-span-2">
+          <ExecTrajectory data={data} />
         </div>
-        <div className="rise-in" style={{ animationDelay: '120ms' }}>
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500 mb-3">
-            <span className="h-1.5 w-1.5 rounded-full bg-gray-300" /> Quick Actions
-          </div>
-          <QuickActionsCard userRole={user?.role ?? 'STAFF'} selectedSmsKinds={cardSelectedKinds.sms} selectedEmailKinds={cardSelectedKinds.email} />
-        </div>
+        <ExecBulkOps data={data} arrears={arrears.data} />
       </div>
 
-      {/* 5. Balance row — xampp RMS .balance-row (Net Position + SMS Balance) */}
-      <div className="mt-5 rise-in" style={{ animationDelay: '160ms' }}>
-        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500 mb-3">
-          <span className="h-1.5 w-1.5 rounded-full bg-gray-300" /> Balances
-        </div>
-        <XrmBalanceRow data={{ sms, combined, currency, reportingYear }} />
+      {/* 4. Watchlist — highest open balances first, actions per row */}
+      <div className="mt-5">
+        <ExecWatchlist
+          rows={arrears.data}
+          loading={arrears.loading}
+          error={arrears.error}
+          currency={currency}
+        />
       </div>
 
-      {/* 6. Financial trends — xampp RMS .chart-card financial-trends bar chart */}
-      <div className="mt-5 rise-in" style={{ animationDelay: '200ms' }}>
-        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500 mb-3">
-          <span className="h-1.5 w-1.5 rounded-full bg-gray-300" /> Financial Trends
-        </div>
-        <XrmFinancialTrends charts={charts} currency={currency} />
+      {/* 5. Feed row — latest receipts + repairs/vacancies */}
+      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <ExecPaymentStream currency={currency} />
+        <ExecTurnovers vacantUnits={property.vacantUnits} />
       </div>
 
-      {/* 7. Delivery strip — compact SMS + email health (replaces local HealthCards) */}
-      <div className="mt-5 rise-in" style={{ animationDelay: '220ms' }}>
-        <XrmDeliveryStrip data={{ sms, email }} />
-      </div>
+      {/* 6. Delivery strip — SMS + email health; renders nothing when healthy */}
+      <XrmDeliveryStrip data={{ sms, email }} />
     </div>
   );
 }

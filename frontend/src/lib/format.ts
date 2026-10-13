@@ -22,6 +22,15 @@ export function number(value: number | string | null | undefined): string {
   return Number(value ?? 0).toLocaleString('en-KE', { maximumFractionDigits: 2 });
 }
 
+/**
+ * Count-aware noun for UI copy: `plural(1, 'tenant')` → "1 tenant",
+ * `plural(3, 'tenant')` → "3 tenants". Pass `pluralForm` for irregulars
+ * (plural(2, 'month', 'months') is the same, but e.g. 'status' needs it).
+ */
+export function plural(count: number, singular: string, pluralForm?: string): string {
+  return `${count} ${count === 1 ? singular : (pluralForm ?? `${singular}s`)}`;
+}
+
 export function formatDate(value: string | null | undefined): string {
   if (!value) return '—';
   const d = new Date(value);

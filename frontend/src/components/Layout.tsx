@@ -379,12 +379,9 @@ export default function Layout() {
             <ThemeToggle />
             {/* Notification bell — xampp RMS `.topbar-btn`#notifBtn pattern,
                 mirrored here with a live unread badge from the summary poll.
-                Desktop bell sits between the theme toggle and the date; the
-                mobile bell is in the chevron group to the left. */}
+                One instance for every breakpoint, between the theme toggle and
+                the date (the date itself drops out under 400px). */}
             <div className="flex items-center gap-2">
-              {/* Mobile-only chevron group: the bell is part of the top row
-                  (menu + logo + bell) so the header stays one row under 640px. */}
-              <div className="hidden sm:flex" />
               <NotifPanel
                 key={notifSummary?.unread ?? 0}
                 unread={notifSummary?.unread ?? 0}
