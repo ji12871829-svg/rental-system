@@ -11,12 +11,113 @@ interface TenantOption {
   status: string;
 }
 
+type MessageKey = 'bulk' | 'warning' | 'water' | 'latefee' | 'welcome';
+
+// Ready-made drafts behind the "Message type" dropdown. `{{name}}` and
+// `{{unit}}` are substituted per tenant by the backend (composeCampaignEmail),
+// so one draft personalises for every recipient — they work in the subject
+// line too, not just the body. Picking a type only prefills the composer: the
+// tenant-facing copy stays fully editable before sending.
+const TEMPLATES: Record<MessageKey, { subject: string; message: string }> = {
+  bulk: {
+    subject: 'Notice from Olbano Plaza — Unit {{unit}}',
+    message: [
+      'Dear {{name}},',
+      '',
+      'We hope you are well. Please take note of the following regarding your tenancy at Unit {{unit}}:',
+      '',
+      '• [Write your notice here]',
+      '',
+      'For clarification, kindly reach the management office during working hours.',
+      '',
+      'Thank you for your continued cooperation.',
+      '',
+      'Kind regards,',
+      'Olbano Plaza Management',
+    ].join('\n'),
+  },
+  warning: {
+    subject: 'Rent reminder — Unit {{unit}}',
+    message: [
+      'Dear {{name}},',
+      '',
+      'This is a friendly reminder that your rent account for Unit {{unit}} requires attention. Kindly settle the outstanding balance at your earliest convenience.',
+      '',
+      'To pay via M-Pesa, use your unit number ({{unit}}) as the account reference.',
+      '',
+      'If you have already paid, please disregard this notice — payments reflect within 24 hours. If you would prefer to arrange a payment plan, please contact the management office.',
+      '',
+      'Thank you.',
+      '',
+      'Kind regards,',
+      'Olbano Plaza Management',
+    ].join('\n'),
+  },
+  water: {
+    subject: 'Water billing — Unit {{unit}}',
+    message: [
+      'Dear {{name}},',
+      '',
+      'Your monthly water charge for Unit {{unit}} has been billed to your account for the current month.',
+      '',
+      'Water is billed monthly from the reading recorded for your unit, and appears on your statement alongside rent. It can be paid together with your rent via M-Pesa, using your unit number ({{unit}}) as the account reference.',
+      '',
+      'If you believe the reading is incorrect, please contact the management office within 7 days of this notice.',
+      '',
+      'Kind regards,',
+      'Olbano Plaza Management',
+    ].join('\n'),
+  },
+  latefee: {
+    subject: 'Late payment fee — Unit {{unit}}',
+    message: [
+      'Dear {{name}},',
+      '',
+      'Our records show that rent for Unit {{unit}} was not received by the due date, so a late payment fee has been applied to your account in line with your tenancy agreement.',
+      '',
+      'To avoid further charges, please settle the full amount — including the late fee — as soon as possible, using your unit number ({{unit}}) as the M-Pesa account reference.',
+      '',
+      'If you are having difficulty meeting your rent, please contact the management office early so that we can discuss an arrangement.',
+      '',
+      'Kind regards,',
+      'Olbano Plaza Management',
+    ].join('\n'),
+  },
+  welcome: {
+    subject: 'Welcome to Olbano Plaza — Unit {{unit}}',
+    message: [
+      'Dear {{name}},',
+      '',
+      'Welcome to Olbano Plaza, and thank you for choosing to make Unit {{unit}} your home.',
+      '',
+      'A few things worth noting:',
+      '',
+      '• Rent is due on the 1st of each month. Pay via M-Pesa using your unit number ({{unit}}) as the account reference.',
+      '• Your monthly statement is available from the management office on request.',
+      '• For maintenance requests or questions, contact the office during working hours.',
+      '',
+      'We wish you a comfortable stay.',
+      '',
+      'Kind regards,',
+      'Olbano Plaza Management',
+    ].join('\n'),
+  },
+};
+
+const TEMPLATE_LABELS: Record<MessageKey, string> = {
+  bulk: 'General notice',
+  warning: 'Rent payment reminder',
+  water: 'Water billing notice',
+  latefee: 'Late payment fee',
+  welcome: 'New tenant welcome',
+};
+
 export default function EmailCampaign() {
   const { toast } = useToast();
-  const [mode, setMode] = useState<'bulk' | 'warning'>('bulk');
+  const [mode, setMode] = useState<MessageKey>('bulk');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [subject, setSubject] = useState('Olbano Plaza update');
-  const [message, setMessage] = useState('Dear {{name}},\n\nWe have an important update for you.\n\nRegards,\nOlbano Plaza');
+  const [subject, setSubject] = useState(TEMPLATES.bulk.subject);
+  const [message, setMessage] = useState(TEMPLATES.bulk.message);
   const [busy, setBusy] = useState(false);
   const [shakeRef, fireShake] = useShake();
   const { data, loading, error } = useFetch(() => api.list<TenantOption>('/api/tenants?status=ACTIVE&limit=100'), []);
@@ -24,15 +125,10 @@ export default function EmailCampaign() {
   const emailTenants = useMemo(() => tenants.filter((tenant) => tenant.email), [tenants]);
   const selectedCount = selectedIds.length === 0 ? emailTenants.length : selectedIds.length;
 
-  function chooseMode(value: 'bulk' | 'warning') {
+  function chooseMode(value: MessageKey) {
     setMode(value);
-    if (value === 'warning') {
-      setSubject('Rent payment reminder - Olbano Plaza');
-      setMessage('Dear {{name}},\n\nThis is a reminder that your rent account requires attention. Please contact management or make payment using your unit number as the M-Pesa account reference.\n\nRegards,\nOlbano Plaza');
-    } else {
-      setSubject('Olbano Plaza update');
-      setMessage('Dear {{name}},\n\nWe have an important update for you.\n\nRegards,\nOlbano Plaza');
-    }
+    setSubject(TEMPLATES[value].subject);
+    setMessage(TEMPLATES[value].message);
   }
 
   function toggleTenant(id: number) {
@@ -72,9 +168,10 @@ export default function EmailCampaign() {
           </div>
           <div className="space-y-4">
             <Field label="Message type">
-              <Select value={mode} onChange={(event) => chooseMode(event.target.value as 'bulk' | 'warning')}>
-                <option value="bulk">Bulk tenant update</option>
-                <option value="warning">Rent payment warning</option>
+              <Select value={mode} onChange={(event) => chooseMode(event.target.value as MessageKey)}>
+                {(Object.keys(TEMPLATE_LABELS) as MessageKey[]).map((key) => (
+                  <option key={key} value={key}>{TEMPLATE_LABELS[key]}</option>
+                ))}
               </Select>
             </Field>
             <Field label="Subject"><TextInput value={subject} onChange={(event) => setSubject(event.target.value)} /></Field>

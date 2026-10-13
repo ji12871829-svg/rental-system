@@ -554,6 +554,8 @@ CREATE TABLE IF NOT EXISTS message_templates (
              CHECK (kind IN (
                'SMS_RENT_RECEIPT', 'SMS_WATER_RECEIPT', 'SMS_COMBINED_RECEIPT',
                'SMS_BALANCE_DUE', 'SMS_OVERDUE',
+               'SMS_LANDLORD_ALERT', 'SMS_RENT_DUE_SOON',
+               'SMS_WATER_BILLING', 'SMS_LATE_FEE', 'SMS_WELCOME',
                'WHATSAPP_BALANCE_DUE', 'WHATSAPP_OVERDUE',
                'WHATSAPP_PAYMENT_CONFIRMATION',
                'EMAIL_CAMPAIGN'

@@ -147,9 +147,11 @@ export function rentReceiptMessage(opts: {
 }): string {
   const { tenantName, unitNumber, monthName, year, rentPaid, balance, receiptNumber, currency } = opts;
   if (balance > 0) {
-    return withIdentity(`RENT RECEIPT: Dear ${tenantName}, ${currency} ${rentPaid} received for Unit ${unitNumber}, ${monthName} ${year} rent. Outstanding balance: ${currency} ${balance}. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
+    return withIdentity(`RENT RECEIPT: Dear ${tenantName}, we have received ${currency} ${rentPaid} for Unit ${unitNumber} rent, ${monthName} ${year}. Your outstanding balance is ${currency} ${balance}. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
   }
-  return withIdentity(`RENT RECEIPT: Dear ${tenantName}, ${currency} ${rentPaid} received for Unit ${unitNumber}, ${monthName} ${year} rent. Balance: ${currency} 0. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
+  // A settled account says so plainly — "Balance: KSh 0" reads like a figure
+  // the tenant has to act on, when the opposite is true.
+  return withIdentity(`RENT RECEIPT: Dear ${tenantName}, we have received ${currency} ${rentPaid} for Unit ${unitNumber} rent, ${monthName} ${year}. Your balance is now clear. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
 }
 
 export function waterReceiptMessage(opts: {
@@ -164,7 +166,7 @@ export function waterReceiptMessage(opts: {
   businessIdentity?: string | string[];
 }): string {
   const { tenantName, unitNumber, monthName, year, waterPaid, balance, receiptNumber, currency } = opts;
-  return withIdentity(`WATER RECEIPT: Dear ${tenantName}, ${currency} ${waterPaid} received for Unit ${unitNumber} water, ${monthName} ${year}. Outstanding balance: ${currency} ${balance}. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
+  return withIdentity(`WATER RECEIPT: Dear ${tenantName}, we have received ${currency} ${waterPaid} for Unit ${unitNumber} water, ${monthName} ${year}. Outstanding balance: ${currency} ${balance}. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
 }
 
 export function combinedReceiptMessage(opts: {
@@ -182,9 +184,9 @@ export function combinedReceiptMessage(opts: {
 }): string {
   const { tenantName, unitNumber, monthName, year, rentPaid, waterPaid, totalPaid, balance, receiptNumber, currency } = opts;
   if (waterPaid > 0) {
-    return withIdentity(`PAYMENT RECEIPT: Dear ${tenantName}, ${currency} ${totalPaid} received for Unit ${unitNumber} for ${monthName} ${year} (Rent ${currency} ${rentPaid} + Water ${currency} ${waterPaid}). Outstanding balance: ${currency} ${balance}. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
+    return withIdentity(`PAYMENT RECEIPT: Dear ${tenantName}, we have received ${currency} ${totalPaid} for Unit ${unitNumber}, ${monthName} ${year} (Rent ${currency} ${rentPaid} + Water ${currency} ${waterPaid}). Outstanding balance: ${currency} ${balance}. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
   }
-  return withIdentity(`PAYMENT RECEIPT: Dear ${tenantName}, ${currency} ${totalPaid} received for Unit ${unitNumber} for ${monthName} ${year} rent. Outstanding balance: ${currency} ${balance}. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
+  return withIdentity(`PAYMENT RECEIPT: Dear ${tenantName}, we have received ${currency} ${totalPaid} for Unit ${unitNumber} rent, ${monthName} ${year}. Outstanding balance: ${currency} ${balance}. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
 }
 
 // --- Tenant reminder templates ----------------------------------------------
@@ -207,13 +209,15 @@ export function monthlyBalanceDueMessage(opts: {
 }): string {
   const { tenantName, unitNumber, monthName, year, totalDue, accountNumber, paymentMethod, currency } = opts;
   return withIdentity(
-    `Dear ${tenantName}, your statement for ${monthName} ${year} for Unit ${unitNumber} is ready. Total Due: ${currency} ${totalDue}. Account: ${accountNumber}. Pay via ${paymentMethod}.`,
+    `Dear ${tenantName}, your rent statement for ${monthName} ${year} (Unit ${unitNumber}) is ready. Total Due: ${currency} ${totalDue}. To pay, use ${paymentMethod} with account ${accountNumber}.`,
     opts.businessIdentity,
   );
 }
 
-// "Overdue Notice": firmer tone for a past-due balance. Amount_Due is what is
-// owed NOW; Total_Balance is the full-year position so the tenant sees both.
+// "Overdue Notice": firmer tone for a past-due balance, without the curt
+// "clear this immediately" phrasing the first version used — the fee is named
+// as the consequence, which is what actually motivates payment. Amount_Due is
+// what is owed NOW; Total_Balance is the full-year position.
 export function overdueNoticeMessage(opts: {
   tenantName: string;
   unitNumber: string;
@@ -224,7 +228,7 @@ export function overdueNoticeMessage(opts: {
 }): string {
   const { tenantName, unitNumber, amountDue, totalBalance, currency } = opts;
   return withIdentity(
-    `Hi ${tenantName}, Unit ${unitNumber} has an overdue balance of ${currency} ${amountDue}. Please clear this immediately to avoid late fees. Total Balance: ${currency} ${totalBalance}.`,
+    `Dear ${tenantName}, the rent for Unit ${unitNumber} is overdue by ${currency} ${amountDue}. Kindly settle this amount to avoid a late payment fee. Your total balance is ${currency} ${totalBalance}. Thank you.`,
     opts.businessIdentity,
   );
 }
@@ -247,7 +251,7 @@ export function landlordAlertMessage(opts: {
 }): string {
   const { tenantName, unitNumber, monthName, year, amountPaid, receiptNumber, balance, currency } = opts;
   return withIdentity(
-    `PAYMENT RECEIVED: ${currency} ${amountPaid} from ${tenantName} (Unit ${unitNumber}) for ${monthName} ${year}. Receipt: ${receiptNumber}. Balance: ${currency} ${balance}.`,
+    `PAYMENT RECEIVED: ${currency} ${amountPaid} from ${tenantName}, Unit ${unitNumber}, for ${monthName} ${year} rent. Receipt: ${receiptNumber}. Balance: ${currency} ${balance}.`,
     opts.businessIdentity,
   );
 }
@@ -269,7 +273,71 @@ export function rentDueSoonMessage(opts: {
 }): string {
   const { tenantName, unitNumber, nextMonthName, year, rentAmount, paymentMethod, currency } = opts;
   return withIdentity(
-    `Dear ${tenantName}, a reminder that ${nextMonthName} ${year} rent of ${currency} ${rentAmount} for Unit ${unitNumber} is due. Pay via ${paymentMethod}. Thank you.`,
+    `Dear ${tenantName}, a friendly reminder that ${nextMonthName} ${year} rent of ${currency} ${rentAmount} for Unit ${unitNumber} falls due on the 1st. Please pay via ${paymentMethod}, quoting your unit number as the account reference. Thank you.`,
+    opts.businessIdentity,
+  );
+}
+
+// --- Operator-sendable notices ------------------------------------------------
+// The newer message types. Unlike the reminders above these are not derived
+// from an "amount owed" narrative — they report an event (water billed, a fee
+// applied, a tenancy starting) — but they compose from the same live ledger
+// figures and follow the same GSM-7 / identity-line rules. They only send
+// when an operator sends them; nothing here fires on its own, so a tenancy
+// or a billing run can never spend SMS credit unattended.
+
+// "Water Billing": the month's water charge on the tenant's ledger. Wording
+// states the charge rather than claiming it was "billed in full" — the figure
+// carried here is the water balance, so after a part-payment it is what is
+// left, and that is what the message must say.
+export function waterBillingNoticeMessage(opts: {
+  tenantName: string;
+  unitNumber: string;
+  monthName: string;
+  year: number;
+  amount: number;
+  paymentMethod: string;
+  currency: string;
+  businessIdentity?: string | string[];
+}): string {
+  const { tenantName, unitNumber, monthName, year, amount, paymentMethod, currency } = opts;
+  return withIdentity(
+    `Dear ${tenantName}, your water charge for Unit ${unitNumber} for ${monthName} ${year} is ${currency} ${amount}. It appears on your statement and can be paid together with your rent via ${paymentMethod}.`,
+    opts.businessIdentity,
+  );
+}
+
+// "Late Payment Fee": a penalty now sits on top of the overdue rent. Names the
+// fee as the reason to settle, and keeps the firm-but-polite register of the
+// overdue notice rather than repeating it verbatim.
+export function lateFeeNoticeMessage(opts: {
+  tenantName: string;
+  unitNumber: string;
+  amountDue: number;
+  currency: string;
+  businessIdentity?: string | string[];
+}): string {
+  const { tenantName, unitNumber, amountDue, currency } = opts;
+  return withIdentity(
+    `Dear ${tenantName}, a late payment fee now applies to the overdue rent of ${currency} ${amountDue} on Unit ${unitNumber}. Kindly settle the full amount, including the fee, to avoid further charges. Thank you.`,
+    opts.businessIdentity,
+  );
+}
+
+// "New Tenant Welcome": sent once when a tenancy starts. Carries the two facts
+// a new tenant needs on day one — when rent falls due and how to pay — so the
+// office does not repeat them by phone.
+export function welcomeMessage(opts: {
+  tenantName: string;
+  unitNumber: string;
+  rentAmount: number;
+  paymentMethod: string;
+  currency: string;
+  businessIdentity?: string | string[];
+}): string {
+  const { tenantName, unitNumber, rentAmount, paymentMethod, currency } = opts;
+  return withIdentity(
+    `Dear ${tenantName}, welcome to Unit ${unitNumber}! Rent of ${currency} ${rentAmount} falls due on the 1st of each month. Pay via ${paymentMethod}, quoting your unit number as the account reference. We wish you a comfortable stay.`,
     opts.businessIdentity,
   );
 }

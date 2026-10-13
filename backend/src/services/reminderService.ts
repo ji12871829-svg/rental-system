@@ -14,19 +14,22 @@
 import { queryOne } from '../config/db';
 import { MONTH_NAMES } from '../types';
 import {
+  lateFeeNoticeMessage,
   monthlyBalanceDueMessage,
   overdueNoticeMessage,
   rentDueSoonMessage,
+  waterBillingNoticeMessage,
+  welcomeMessage,
   whatsappBalanceDueMessage,
   whatsappOverdueMessage,
 } from '../utils/businessRules';
-import { notFound } from '../utils/httpError';
+import { badRequest, notFound } from '../utils/httpError';
 import { logAudit } from './auditService';
 import { getBusinessIdentity, getPaybillInstructions } from './brandingService';
 import { getSettings } from './settingsService';
 import { composeRentStatementEmail } from '../utils/emailTemplates';
-import { getCustomTemplate } from './templateService';
-import { renderMergeFields } from '../utils/mergeFields';
+import { getCustomTemplate, type TemplateKind } from './templateService';
+import { renderMergeFields, type MergeVars } from '../utils/mergeFields';
 import { tenantBalances } from './tenantLedger';
 import { queuePreparedEmail } from './emailService';
 import { queueSms } from './smsService';
@@ -118,7 +121,11 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
   };
 }
 
-export type ReminderKind = 'BALANCE_DUE' | 'OVERDUE' | 'DUE_SOON';
+export type ReminderKind = 'BALANCE_DUE' | 'OVERDUE' | 'DUE_SOON' | 'WATER_BILLING' | 'LATE_FEE' | 'WELCOME';
+// The three notice kinds report an event rather than an amount owed, and are
+// SMS-only: WhatsApp and email have no composition for them, so the route
+// refuses the combination instead of silently falling back to a statement.
+export const NOTICE_KINDS: ReadonlySet<ReminderKind> = new Set<ReminderKind>(['WATER_BILLING', 'LATE_FEE', 'WELCOME']);
 export type ReminderChannel = 'SMS' | 'WHATSAPP' | 'EMAIL';
 export interface ReminderResult {
   message: string;
@@ -139,6 +146,21 @@ export async function prepareReminder(
   opts: { userId?: number | null; templateKind?: string | null } = {},
 ): Promise<ReminderResult | null> {
   const f = await gatherReminderFigures(tenantId);
+  // The notice kinds are SMS-only — refuse the other channels rather than
+  // silently sending a balance statement the operator did not ask for.
+  if (NOTICE_KINDS.has(kind) && channel !== 'SMS') {
+    throw badRequest('This notice is only available as an SMS.');
+  }
+  // A notice reports an event, so refuse to compose one that never happened.
+  // The modal queues the row as soon as it opens, so without these a click on
+  // "water billing" for a tenant with no water would queue (and, with
+  // auto-send on, send) a notice announcing a charge of KSh 0.
+  if (kind === 'WATER_BILLING' && f.waterBalance <= 0) {
+    throw badRequest('This tenant has no water charge this month.');
+  }
+  if (kind === 'LATE_FEE' && f.rentBalance <= 0) {
+    throw badRequest('This tenant has no overdue rent, so there is no late fee to report.');
+  }
   // DUE_SOON is the scheduler's SMS-only nudge; the manual channels treat it
   // as the neutral BALANCE_DUE statement rather than mislabeling it.
   const channelKind: ReminderKind = kind === 'DUE_SOON' ? 'BALANCE_DUE' : kind;
@@ -279,11 +301,9 @@ async function smsReminder(
   templateKind: string | null = null,
 ): Promise<ReminderResult | null> {
   if (!f.phoneNumber) return null;
-  // A customized Message Templates row (SMS_BALANCE_DUE / SMS_OVERDUE /
-  // SMS_RENT_DUE_SOON) overrides the hardcoded wording; merge fields resolve
-  // per tenant.
-  const templateKindName =
-    kind === 'BALANCE_DUE' ? 'SMS_BALANCE_DUE' : kind === 'DUE_SOON' ? 'SMS_RENT_DUE_SOON' : 'SMS_OVERDUE';
+  // A customized Message Templates row overrides the hardcoded wording for
+  // every kind; merge fields resolve per tenant from the same figures.
+  const templateKindName: TemplateKind = TEMPLATE_KIND_BY_REMINDER[kind];
   const custom = await getCustomTemplate(templateKindName);
   // DUE_SOON speaks about NEXT month (it is sent on the last day of this one).
   const nextMonth = f.month === 12 ? 1 : f.month + 1;
@@ -297,59 +317,8 @@ async function smsReminder(
     business: f.identityName ?? '',
   };
   const message = custom
-    ? renderMergeFields(
-        custom.body,
-        kind === 'BALANCE_DUE'
-          ? {
-              ...baseVars,
-              total_due: Math.max(f.combinedBalance, 0),
-              account: f.accountNumber,
-              payment_method: f.paymentMethod,
-            }
-          : kind === 'DUE_SOON'
-            ? {
-                ...baseVars,
-                next_month: MONTH_NAMES[nextMonth - 1],
-                amount: Math.max(f.currentRent, 0),
-                payment_method: f.paymentMethod,
-              }
-            : {
-                ...baseVars,
-                amount_due: Math.max(f.rentBalance, 0),
-                total_due: Math.max(f.combinedBalance, 0),
-              },
-      )
-    : kind === 'BALANCE_DUE'
-    ? monthlyBalanceDueMessage({
-        tenantName: f.tenantName,
-        unitNumber: f.unitNumber,
-        monthName: f.monthName,
-        year: f.year,
-        totalDue: Math.max(f.combinedBalance, 0),
-        accountNumber: f.accountNumber,
-        paymentMethod: f.paymentMethod,
-        currency: f.currency,
-        businessIdentity: f.identityName ?? undefined,
-      })
-    : kind === 'DUE_SOON'
-    ? rentDueSoonMessage({
-        tenantName: f.tenantName,
-        unitNumber: f.unitNumber,
-        nextMonthName: MONTH_NAMES[nextMonth - 1],
-        year: nextYear,
-        rentAmount: Math.max(f.currentRent, 0),
-        paymentMethod: f.paymentMethod,
-        currency: f.currency,
-        businessIdentity: f.identityName ?? undefined,
-      })
-    : overdueNoticeMessage({
-        tenantName: f.tenantName,
-        unitNumber: f.unitNumber,
-        amountDue: Math.max(f.rentBalance, 0),
-        totalBalance: Math.max(f.combinedBalance, 0),
-        currency: f.currency,
-        businessIdentity: f.identityName ?? undefined,
-      });
+    ? renderMergeFields(custom.body, mergeVarsFor(kind, f, baseVars, nextMonth))
+    : fallbackSmsMessage(kind, f, nextMonth, nextYear);
   const smsId = await queueSms({ tenantId, phoneNumber: f.phoneNumber, message, templateKind });
   await logAudit({
     userId,
@@ -359,4 +328,77 @@ async function smsReminder(
     newValue: { kind, smsId },
   });
   return { message, smsId, emailId: null, whatsappUrl: null };
+}
+
+// Reminder kind -> the Message Templates kind whose customization overrides
+// it. A map rather than a chain of ternaries on purpose: adding a kind here
+// is what wires up both the override and the fallback, so a new notice cannot
+// be half-registered and silently fall through to another kind's wording.
+const TEMPLATE_KIND_BY_REMINDER: Record<ReminderKind, TemplateKind> = {
+  BALANCE_DUE: 'SMS_BALANCE_DUE',
+  DUE_SOON: 'SMS_RENT_DUE_SOON',
+  OVERDUE: 'SMS_OVERDUE',
+  WATER_BILLING: 'SMS_WATER_BILLING',
+  LATE_FEE: 'SMS_LATE_FEE',
+  WELCOME: 'SMS_WELCOME',
+};
+
+// Merge fields for a customized template — exactly the fields the Message
+// Templates editor offers for that kind, resolved from the live ledger.
+function mergeVarsFor(kind: ReminderKind, f: ReminderFigures, baseVars: MergeVars, nextMonth: number): MergeVars {
+  switch (kind) {
+    case 'BALANCE_DUE':
+      return { ...baseVars, total_due: Math.max(f.combinedBalance, 0), account: f.accountNumber, payment_method: f.paymentMethod };
+    case 'DUE_SOON':
+      return { ...baseVars, next_month: MONTH_NAMES[nextMonth - 1], amount: Math.max(f.currentRent, 0), payment_method: f.paymentMethod };
+    case 'WATER_BILLING':
+      return { ...baseVars, amount: Math.max(f.waterBalance, 0), payment_method: f.paymentMethod };
+    case 'LATE_FEE':
+      return { ...baseVars, amount_due: Math.max(f.rentBalance, 0) };
+    case 'WELCOME':
+      return { ...baseVars, amount: Math.max(f.currentRent, 0), payment_method: f.paymentMethod };
+    case 'OVERDUE':
+    default:
+      return { ...baseVars, amount_due: Math.max(f.rentBalance, 0), total_due: Math.max(f.combinedBalance, 0) };
+  }
+}
+
+// The hardcoded builders, used when nobody has customized that kind — same six
+// kinds as above, so an untouched install sends exactly the default wording.
+function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: number, nextYear: number): string {
+  const identity = f.identityName ?? undefined;
+  switch (kind) {
+    case 'BALANCE_DUE':
+      return monthlyBalanceDueMessage({
+        tenantName: f.tenantName, unitNumber: f.unitNumber, monthName: f.monthName, year: f.year,
+        totalDue: Math.max(f.combinedBalance, 0), accountNumber: f.accountNumber,
+        paymentMethod: f.paymentMethod, currency: f.currency, businessIdentity: identity,
+      });
+    case 'DUE_SOON':
+      return rentDueSoonMessage({
+        tenantName: f.tenantName, unitNumber: f.unitNumber, nextMonthName: MONTH_NAMES[nextMonth - 1], year: nextYear,
+        rentAmount: Math.max(f.currentRent, 0), paymentMethod: f.paymentMethod, currency: f.currency, businessIdentity: identity,
+      });
+    case 'WATER_BILLING':
+      return waterBillingNoticeMessage({
+        tenantName: f.tenantName, unitNumber: f.unitNumber, monthName: f.monthName, year: f.year,
+        amount: Math.max(f.waterBalance, 0), paymentMethod: f.paymentMethod, currency: f.currency, businessIdentity: identity,
+      });
+    case 'LATE_FEE':
+      return lateFeeNoticeMessage({
+        tenantName: f.tenantName, unitNumber: f.unitNumber, amountDue: Math.max(f.rentBalance, 0),
+        currency: f.currency, businessIdentity: identity,
+      });
+    case 'WELCOME':
+      return welcomeMessage({
+        tenantName: f.tenantName, unitNumber: f.unitNumber, rentAmount: Math.max(f.currentRent, 0),
+        paymentMethod: f.paymentMethod, currency: f.currency, businessIdentity: identity,
+      });
+    case 'OVERDUE':
+    default:
+      return overdueNoticeMessage({
+        tenantName: f.tenantName, unitNumber: f.unitNumber, amountDue: Math.max(f.rentBalance, 0),
+        totalBalance: Math.max(f.combinedBalance, 0), currency: f.currency, businessIdentity: identity,
+      });
+  }
 }

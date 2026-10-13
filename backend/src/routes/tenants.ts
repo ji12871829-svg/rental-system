@@ -14,7 +14,7 @@ import {
 } from '../services/privacyService';
 import { prepareForDataRequestLetter, prepareForPortalCredentials, sendEmailNotification } from '../services/emailService';
 import { autoSendEnabled, dispatchAutoSend } from '../services/smsService';
-import { prepareReminder } from '../services/reminderService';
+import { NOTICE_KINDS, prepareReminder, type ReminderChannel, type ReminderKind } from '../services/reminderService';
 import { renderDataLetterEmail, renderDataLetterPdf, dataEnclosureName, dataLetterPdfName } from '../utils/dataRequestLetter';
 
 const router = Router();
@@ -113,13 +113,24 @@ router.delete('/:id', adminOnly, validateParams(paramsSchema), asyncHandler(asyn
 //     reviews and sends from WhatsApp itself (no provider, no cost)
 //   EMAIL — PENDING email_notifications row with the formal statement breakdown
 // 202: accepted (queued or composed), not yet delivered.
-const reminderSchema = z.object({
-  kind: z.enum(['BALANCE_DUE', 'OVERDUE']),
-  channel: z.enum(['SMS', 'WHATSAPP', 'EMAIL']).default('SMS'),
-});
+// Reminder + notice kinds the operator can send by hand. DUE_SOON is absent on
+// purpose: it is the scheduler's own month-end nudge, not something staff
+// trigger. The three notice kinds are event reports (water billed, a fee
+// applied, a tenancy starting) rather than amount-owed statements, and are
+// SMS-only — WhatsApp and email have no composition for them, so the channel
+// is refused here instead of silently sending a different message.
+const reminderSchema = z
+  .object({
+    kind: z.enum(['BALANCE_DUE', 'OVERDUE', 'WATER_BILLING', 'LATE_FEE', 'WELCOME']),
+    channel: z.enum(['SMS', 'WHATSAPP', 'EMAIL']).default('SMS'),
+  })
+  .refine((value) => (NOTICE_KINDS.has(value.kind) ? value.channel === 'SMS' : true), {
+    message: 'This notice is only available as an SMS.',
+    path: ['channel'],
+  });
 
 router.post('/:id/sms-reminder', managerOrAdmin, validateParams(paramsSchema), validateBody(reminderSchema), asyncHandler(async (req, res) => {
-  const { kind, channel } = (req.body as { kind: 'BALANCE_DUE' | 'OVERDUE'; channel: 'SMS' | 'WHATSAPP' | 'EMAIL' });
+  const { kind, channel } = req.body as { kind: ReminderKind; channel: ReminderChannel };
   const result = await prepareReminder(Number(req.params.id), kind, channel, {
     userId: req.user!.userId,
   });
