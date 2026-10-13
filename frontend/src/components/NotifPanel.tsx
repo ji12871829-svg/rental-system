@@ -100,6 +100,11 @@ export function NotifPanel({
   const [markingRead, setMarkingRead] = useState(false);
   const [markReadError, setMarkReadError] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  // The trigger lives OUTSIDE panelRef, so an outside-click on the bell would
+  // close the panel a beat before the button's own onClick toggled it open
+  // again — the panel then looked impossible to dismiss. Track the trigger
+  // separately and let its onClick own that element.
+  const triggerRef = useRef<HTMLDivElement | null>(null);
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -108,7 +113,10 @@ export function NotifPanel({
   useEffect(() => {
     if (!open) return;
     const onPointer = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) close();
+      const target = e.target as Node;
+      if (panelRef.current?.contains(target)) return;
+      if (triggerRef.current?.contains(target)) return; // the button's onClick handles it
+      close();
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close();
@@ -176,12 +184,15 @@ export function NotifPanel({
   return (
     <>
       {/* Bell trigger — xampp RMS `.topbar-btn` bell pattern, with an
-          absolute badge dot when there are unread items. */}
-      <div className="relative">
+          absolute badge dot when there are unread items. Visible at every
+          breakpoint: this is the only bell in the app (the badge below is a
+          sibling span, not a button), so hiding the trigger at md+ used to
+          leave an unclickable "9+" floating next to the date. */}
+      <div className="relative" ref={triggerRef}>
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 transition-colors duration-150 hover:bg-gray-100 active:scale-95 md:hidden"
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 transition-colors duration-150 hover:bg-gray-100 active:scale-95"
           aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
           aria-expanded={open}
           aria-haspopup="true"
