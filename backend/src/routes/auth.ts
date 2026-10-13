@@ -94,8 +94,10 @@ router.post(
       // staff session for whatever users.id its sub collides with.
       // ignoreExpiration is safe only because the staff key AND audience are
       // both pinned here — the grace path must stay unreachable for any
-      // token minted outside the staff population.
-      payload = jwt.verify(token, env.jwtStaffSecret, { ignoreExpiration: true, audience: STAFF_JWT_AUDIENCE }) as unknown as { sub: number; exp?: number };
+      // token minted outside the staff population. algorithms pins HS256
+      // (what jwt.sign mints) so no algorithm-confusion variant is ever
+      // accepted even if this secret is later reused as a key elsewhere.
+      payload = jwt.verify(token, env.jwtStaffSecret, { ignoreExpiration: true, audience: STAFF_JWT_AUDIENCE, algorithms: ['HS256'] }) as unknown as { sub: number; exp?: number };
     } catch {
       throw unauthorized('Invalid session.');
     }

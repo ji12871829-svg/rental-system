@@ -5,7 +5,7 @@ import {
   composeCampaignEmail,
   composeDataLetterEmail,
   composeMonthlyReportEmail,
-  composePortalCredentialsEmail,
+  composePortalSetupEmail,
   composeStatementEmail,
   composeTestEmail,
   composeUnmatchedPaymentEmail,
@@ -106,31 +106,43 @@ describe('emailTemplates', () => {
     });
   });
 
-  describe('composePortalCredentialsEmail', () => {
-    it('includes credentials, portal url and identity sign-off', () => {
-      const c = composePortalCredentialsEmail({
+  describe('composePortalSetupEmail', () => {
+    it('includes the one-time setup link, login email and identity sign-off', () => {
+      const c = composePortalSetupEmail({
         tenantName: 'Jane Doe',
         loginEmail: 'jane@example.com',
-        password: 'secret-pw',
-        portalUrl: 'https://app.example.com/portal/login',
+        setupUrl: 'https://app.example.com/portal/setup?token=abc123',
+        expiresHours: 72,
         identity,
       });
       expect(c.subject).toContain('portal access');
       expect(c.text).toContain('jane@example.com');
-      expect(c.text).toContain('secret-pw');
-      expect(c.text).toContain('https://app.example.com/portal/login');
+      expect(c.text).toContain('https://app.example.com/portal/setup?token=abc123');
+      expect(c.text).toContain('72 hours');
       expect(c.text).toContain('Test Estates · Reg. No. REG-001');
-      // html escapes tenant-supplied values and links the portal
-      expect(c.html).toContain('Sign in here');
-      expect(c.html).toContain('secret-pw');
+      // html escapes tenant-supplied values and links the setup page
+      expect(c.html).toContain('Choose your password');
+      expect(c.html).toContain('portal/setup?token=abc123');
+    });
+
+    it('never carries a password — the tenant chooses their own', () => {
+      const c = composePortalSetupEmail({
+        tenantName: 'Jane Doe',
+        loginEmail: 'jane@example.com',
+        setupUrl: 'https://app.example.com/portal/setup?token=abc123',
+        expiresHours: 72,
+        identity,
+      });
+      expect(c.text).not.toMatch(/password:/i);
+      expect(c.html).not.toMatch(/password<\/td>/i);
     });
 
     it('escapes tenant input in html', () => {
-      const c = composePortalCredentialsEmail({
+      const c = composePortalSetupEmail({
         tenantName: 'Jane <script>alert(1)</script>',
         loginEmail: 'jane@example.com',
-        password: 'p',
-        portalUrl: 'https://x.test',
+        setupUrl: 'https://x.test/portal/setup?token=t',
+        expiresHours: 72,
         identity,
       });
       expect(c.html).not.toContain('<script>alert(1)</script>');
@@ -138,11 +150,11 @@ describe('emailTemplates', () => {
     });
 
     it('falls back to a generic name when identity is empty', () => {
-      const c = composePortalCredentialsEmail({
+      const c = composePortalSetupEmail({
         tenantName: 'J',
         loginEmail: 'j@x.test',
-        password: 'p',
-        portalUrl: 'u',
+        setupUrl: 'u',
+        expiresHours: 72,
         identity: { name: null },
       });
       expect(c.subject).toContain('Property Management');

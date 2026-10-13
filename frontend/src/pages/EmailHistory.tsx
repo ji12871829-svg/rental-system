@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import DOMPurify from 'dompurify';
 import { Info } from 'lucide-react';
 import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { api, qs } from '../lib/api';
@@ -30,15 +31,21 @@ interface EmailConfigInfo {
   autoSend: boolean;
 }
 
-// Strip styles/scripts and render the stored HTML copy as plain-ish text —
-// the modal is a faithful record of what went out, not a live web page.
+// Sanitize the stored HTML copy before rendering — the modal is a faithful
+// record of what went out, not a live web page. Scripts, styles, iframes and
+// event-handler attributes are stripped (DOMPurify's default allowlist plus
+// the FORBID list below); the remaining markup renders as stored.
 function EmailBody({ html }: { html: string }) {
+  const clean = DOMPurify.sanitize(html, {
+    FORBID_TAGS: ['style', 'script', 'iframe', 'object', 'embed', 'form'],
+  });
   return (
     <div
       className="rounded-lg bg-gray-50 p-4 text-sm leading-relaxed text-gray-800"
-      // Stored row content — operator-authored templates and tenant names, same
-      // trust level as everywhere else the history renders these fields.
-      dangerouslySetInnerHTML={{ __html: html }}
+      // Stored row content — operator-authored templates and tenant names.
+      // Tenant names are escapeHtml'd server-side; DOMPurify is the
+      // defense-in-depth backstop for anything a future template forgets.
+      dangerouslySetInnerHTML={{ __html: clean }}
     />
   );
 }

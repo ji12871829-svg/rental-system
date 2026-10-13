@@ -415,7 +415,7 @@ function PortalAccessModal({ tenant, onClose, onDone }: {
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [deliverEmail, setDeliverEmail] = useState(true);
-  const [credentials, setCredentials] = useState<{ email: string; password: string; emailed: string } | null>(null);
+  const [credentials, setCredentials] = useState<{ email: string; setupUrl?: string; emailed: string } | null>(null);
   const [shakeN, setShakeN] = useState(0);
   const bumpShake = () => setShakeN((n) => n + 1);
 
@@ -424,20 +424,22 @@ function PortalAccessModal({ tenant, onClose, onDone }: {
     setBusy(true);
     try {
       // The API wraps payloads in { data }: read res.data, not res itself.
-      // deliverEmail=true sends the generated password straight to the
-      // tenant; false keeps the old show-once-only flow.
-      const res = await api.post<{ data: { email: string; temporaryPassword?: string; credentialsEmailed?: string } }>(
+      // deliverEmail=true sends the one-time setup link straight to the
+      // tenant; false keeps the show-once flow so staff can share it
+      // themselves. No plaintext password ever crosses email — the tenant
+      // picks their own through the link.
+      const res = await api.post<{ data: { email: string; setupUrl?: string; credentialsEmailed?: string } }>(
         `/api/tenants/${tenant.id}/portal-access`,
         { deliverEmail },
       );
       const d = res.data;
-      if (d.temporaryPassword) {
-        // Keep the modal OPEN so the one-time password is actually seen —
-        // rotation has already happened server-side. The emailed flag drives
-        // the status note under the credentials.
-        setCredentials({ email: d.email, password: d.temporaryPassword, emailed: d.credentialsEmailed ?? 'skipped' });
+      if (d.setupUrl) {
+        // Keep the modal OPEN so the one-time link is actually seen — a new
+        // token has already been minted server-side (any older link is dead
+        // now). The emailed flag drives the status note under the link.
+        setCredentials({ email: d.email, setupUrl: d.setupUrl, emailed: d.credentialsEmailed ?? 'skipped' });
       } else {
-        // Custom password (or none generated): nothing to display.
+        // Custom password (staff-chosen): nothing to display, nothing emailed.
         onDone(deliverEmail
           ? 'Portal access issued. Custom passwords are not emailed — share it yourself.'
           : 'Portal access issued.');
@@ -471,8 +473,8 @@ function PortalAccessModal({ tenant, onClose, onDone }: {
     setCredentials(null);
     if (c) {
       onDone(c.emailed === 'sent'
-        ? 'Portal access issued. Credentials were emailed to the tenant.'
-        : 'Portal access issued. Share the password securely — it is shown only once.');
+        ? 'Portal access issued. The setup link was emailed to the tenant.'
+        : 'Portal access issued. Share the setup link securely — it works once.');
     } else {
       onClose();
     }
@@ -489,33 +491,36 @@ function PortalAccessModal({ tenant, onClose, onDone }: {
           </p>
           {credentials && (
             <div className="rounded-lg border border-ash bg-fog p-3">
-              <div className="font-medium text-gray-900">Share these credentials now — shown only once:</div>
+              <div className="font-medium text-gray-900">One-time setup link — share it now, it works once:</div>
               <div className="mt-2 font-mono text-xs text-gray-800">Email: {credentials.email}</div>
-              <div className="font-mono text-xs text-gray-800">Password: {credentials.password}</div>
+              {credentials.setupUrl && (
+                <div className="mt-1 break-all font-mono text-xs text-brand-700">{credentials.setupUrl}</div>
+              )}
+              <div className="mt-1 text-xs text-gray-500">The tenant opens the link and chooses their own password. No password is emailed or shown.</div>
               {credentials.emailed === 'sent' && (
-                <div className="mt-2 text-xs font-medium text-emerald-700">✓ A copy of these credentials was emailed to the tenant.</div>
+                <div className="mt-2 text-xs font-medium text-emerald-700">✓ A copy of the setup link was emailed to the tenant.</div>
               )}
               {credentials.emailed === 'pending' && (
-                <div className="mt-2 text-xs font-medium text-amber-700">The email is queued but not yet confirmed sent — if it does not arrive, share the password manually.</div>
+                <div className="mt-2 text-xs font-medium text-amber-700">The email is queued but not yet confirmed sent — if it does not arrive, share the link above manually.</div>
               )}
               {credentials.emailed === 'failed' && (
-                <div className="mt-2 text-xs font-medium text-amber-700">Email delivery failed — share the password manually, or check the email provider settings and regenerate.</div>
+                <div className="mt-2 text-xs font-medium text-amber-700">Email delivery failed — share the link above manually, or check the email provider settings and reissue.</div>
               )}
               {credentials.emailed === 'skipped' && (
-                <div className="mt-2 text-xs text-brand-700">Closing this dialog dismisses the password for good. "Regenerate password" issues a new one at any time.</div>
+                <div className="mt-2 text-xs text-brand-700">Closing this dialog dismisses the link for good. "Reissue link" mints a fresh one at any time.</div>
               )}
             </div>
           )}
           {!credentials && (
             <label className="flex items-center gap-2 text-sm text-gray-700">
               <input type="checkbox" checked={deliverEmail} onChange={(e) => setDeliverEmail(e.target.checked)} disabled={busy} />
-              Email the password to the tenant automatically
+              Email the setup link to the tenant automatically
             </label>
           )}
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={handleClose}>Close</Button>
             <Button variant="secondary" onClick={revoke} disabled={busy}><KeyRound size={14} className="mr-1" /> Revoke</Button>
-            <Button onClick={issue} disabled={busy} loading={busy}>{busy ? 'Working…' : credentials ? 'Regenerate password' : 'Issue access'}</Button>
+            <Button onClick={issue} disabled={busy} loading={busy}>{busy ? 'Working…' : credentials ? 'Reissue link' : 'Issue access'}</Button>
           </div>
         </div>
       )}

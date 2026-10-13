@@ -46,6 +46,10 @@ services:
         sync: false # pasted at deploy time — Neon pooled connection string (schema auto-applies on first boot)
       - key: JWT_SECRET
         generateValue: true # auto-generated once, kept across deploys
+      - key: JWT_STAFF_SECRET
+        generateValue: true # staff JWT signing key (≥32 chars, must differ from portal)
+      - key: JWT_PORTAL_SECRET
+        generateValue: true # portal JWT signing key (≥32 chars, must differ from staff)
       - key: SMS_PROVIDER
         value: mock
       - key: EMAIL_PROVIDER
