@@ -8,7 +8,7 @@
 // The Dashboard's "Log Reading" quick action deep-links here with ?new=1,
 // which lands on the Meter tab with its form open (same behavior the old
 // WaterMeter page had).
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Droplets, Gauge, Plus, ReceiptText, type LucideIcon } from 'lucide-react';
 import {
   Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -111,7 +111,10 @@ function MeterSection({ formOpen, setFormOpen }: { formOpen: boolean; setFormOpe
   const [editing, setEditing] = useState<Reading | null>(null);
   const reportingYear = useReportingYear();
 
-  const { data: units } = useFetch(() => api.list<UnitOption>('/api/units?waterEnabled=true&limit=100'));
+  // Refreshed after every saved reading (refreshKey) so the next-unit
+  // suggestion — the unit longest without a reading — accounts for the
+  // readings recorded earlier in this round.
+  const { data: units } = useFetch(() => api.list<UnitOption>('/api/units?waterEnabled=true&limit=100'), [refreshKey]);
   const { data, loading, error } = useFetch(
     () => api.list<Reading>(`/api/water/readings${qs({ limit: 50, unitId: unitFilter || undefined, month: monthFilter || undefined, year: reportingYear ?? undefined })}`),
     [unitFilter, monthFilter, reportingYear, refreshKey],
@@ -213,7 +216,9 @@ function MeterSection({ formOpen, setFormOpen }: { formOpen: boolean; setFormOpe
         units={waterUnits}
         prefillUnitId={prefillUnitId}
         onClose={() => setFormOpen(false)}
-        onSaved={(msg) => { setFormOpen(false); setRefreshKey((k) => k + 1); toast('success', msg); }}
+        // The form stays open across saves (round entry) — closing is the
+        // operator's explicit Cancel/Done, so onSaved only refreshes + toasts.
+        onSaved={(msg) => { setRefreshKey((k) => k + 1); toast('success', msg); }}
       />
       <ReadingEditForm
         reading={editing}
@@ -258,7 +263,14 @@ export function BillPreview({ current, previous, rate }: { current: number | nul
   );
 }
 
-function ReadingForm({ open, units, prefillUnitId, onClose, onSaved }: { open: boolean; units: UnitOption[]; prefillUnitId: number | null; onClose: () => void; onSaved: (msg: string) => void }) {
+// Readings are entered in ROUNDS: the operator walks all the meters on one
+// day, then punches the readings in unit after unit. The reading date and
+// billing month/year are set ONCE for the round and carried across saves, so
+// every tenant's reading for the month shares one uniform reading date —
+// only the unit and current reading reset per save. Editing the fields
+// mid-round applies the new values to subsequent saves; closing the form
+// ends the round. Exported for unit tests (same pattern as BillPreview).
+export function ReadingForm({ open, units, prefillUnitId, onClose, onSaved }: { open: boolean; units: UnitOption[]; prefillUnitId: number | null; onClose: () => void; onSaved: (msg: string) => void }) {
   const { toast } = useToast();
   const now = new Date();
   const [unitId, setUnitId] = useState<number | ''>(prefillUnitId ?? '');
@@ -270,6 +282,14 @@ function ReadingForm({ open, units, prefillUnitId, onClose, onSaved }: { open: b
   const [busy, setBusy] = useState(false);
   const [shakeN, setShakeN] = useState(0);
   const bumpShake = () => setShakeN((n) => n + 1);
+  // Readings saved so far in this round (reset on open). The banner below
+  // makes the fixed date/month visible while the round is in progress.
+  const [savedCount, setSavedCount] = useState(0);
+  // The unit just saved: the prefill effect below must ignore a stale
+  // suggestion equal to it (units list not yet refetched) instead of
+  // flickering the just-saved unit back into the select.
+  const justSavedRef = useRef<number | null>(null);
+  useEffect(() => { if (open) { setSavedCount(0); justSavedRef.current = null; } }, [open]);
 
   // The live multiplier for the preview — the same Settings rate the server
   // bills at, so the preview and the saved bill can never disagree.
@@ -287,9 +307,11 @@ function ReadingForm({ open, units, prefillUnitId, onClose, onSaved }: { open: b
 
   // Apply the suggested unit whenever the form opens with nothing selected —
   // covers deep-link opens (selection empty) and late-arriving unit data,
-  // without clobbering a choice the user already made.
+  // without clobbering a choice the user already made. Skips a suggestion
+  // equal to the unit just saved (stale list) — the fresh list arrives via
+  // the parent's refresh and suggests the next unread unit then.
   useEffect(() => {
-    if (open && unitId === '' && prefillUnitId !== null) setUnitId(prefillUnitId);
+    if (open && unitId === '' && prefillUnitId !== null && prefillUnitId !== justSavedRef.current) setUnitId(prefillUnitId);
   }, [open, prefillUnitId, unitId]);
 
   async function save() {
@@ -311,8 +333,14 @@ function ReadingForm({ open, units, prefillUnitId, onClose, onSaved }: { open: b
       const res = await api.post<{ data: { firstReading: boolean; reading: { water_bill: string }; waterBill: number; unitNumber: string } }>('/api/water/readings', body);
       const label = res.data.firstReading ? 'FIRST READING recorded' : 'Reading recorded';
       onSaved(`${label} for Unit ${res.data.unitNumber} — water bill ${money(res.data.waterBill)}.`);
+      // Round continues: reset per-unit fields (the prefill effect then
+      // suggests the next unread unit) but KEEP the round's date and
+      // billing month/year so the next tenant inherits them.
+      justSavedRef.current = unitId;
+      setUnitId('');
       setCurrentReading('');
       setPreviousReading('');
+      setSavedCount((c) => c + 1);
     } catch (err) {
       toast('error', (err as Error).message);
       bumpShake();
@@ -324,6 +352,11 @@ function ReadingForm({ open, units, prefillUnitId, onClose, onSaved }: { open: b
   return (
     <Modal open={open} title="Record Meter Reading" onClose={onClose} shakeSignal={shakeN}>
       <div className="space-y-4">
+        {savedCount > 0 && (
+          <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+            Round in progress — <span className="font-semibold">{savedCount} recorded</span> for {MONTHS[billingMonth - 1]} {billingYear} (read {formatDate(readingDate)}). Date and month stay fixed for the next unit; close the form to end the round.
+          </p>
+        )}
         <Field label="Unit (water-enabled only)">
           <Select value={unitId} onChange={(e) => setUnitId(e.target.value === '' ? '' : Number(e.target.value))}>
             <option value="">— Select unit —</option>
@@ -349,8 +382,8 @@ function ReadingForm({ open, units, prefillUnitId, onClose, onSaved }: { open: b
         </Field>
         <BillPreview current={currentValue} previous={effectivePrevious} rate={waterRate} />
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} disabled={busy} loading={busy}>{busy ? 'Saving…' : 'Save Reading'}</Button>
+          <Button variant="secondary" onClick={onClose}>{savedCount > 0 ? 'Done' : 'Cancel'}</Button>
+          <Button onClick={save} disabled={busy} loading={busy}>{busy ? 'Saving…' : savedCount > 0 ? 'Save & Next Unit' : 'Save Reading'}</Button>
         </div>
       </div>
     </Modal>
