@@ -16,7 +16,7 @@ import {
 import { Button, EmptyState, Field, KpiCard, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { api, authenticatedFetch, apiUrl, qs } from '../lib/api';
 import { MONTHS, formatDate, methodLabel, money } from '../lib/format';
-import { reportingYearOptions, useReportingYear } from '../lib/useReportingYear';
+import { reportingYearOptions, useReportingYear, useWaterRate } from '../lib/useReportingYear';
 import { useQueryParam, useQueryToggle } from '../lib/useQueryParam';
 
 type WaterTab = 'meter' | 'payments' | 'supply';
@@ -204,6 +204,40 @@ function MeterSection({ formOpen, setFormOpen }: { formOpen: boolean; setFormOpe
   );
 }
 
+// Live bill preview for the reading form — the same math the server applies
+// on save (computeWaterBill: units = current − previous, bill = units ×
+// rate; previous defaults to 0 on a first reading; current below previous is
+// rejected). The operator sees the charge before committing it, instead of
+// only discovering it in the toast after saving. Exported for unit tests;
+// the page uses it inside ReadingForm below.
+export function BillPreview({ current, previous, rate }: { current: number | null; previous: number | null; rate: number | null }) {
+  if (current === null || Number.isNaN(current)) {
+    return (
+      <p className="rounded-lg bg-fog px-3 py-2 text-xs text-graphite">
+        The bill is calculated as (Current − Previous) × the current water rate from Settings{rate !== null ? ` (${money(rate)})` : ''}. A current reading below the previous reading is rejected.
+      </p>
+    );
+  }
+  const prev = previous ?? 0;
+  const units = Math.round((current - prev) * 100) / 100;
+  if (units < 0) {
+    return (
+      <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+        Current reading ({current}) is below the previous reading ({prev}) — saving will be rejected. Check the meter again.
+      </p>
+    );
+  }
+  const bill = rate === null ? null : Math.round(units * rate * 100) / 100;
+  return (
+    <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+      <span className="font-semibold">{units} units used</span>
+      {' '}({current} − {prev}) × {rate === null ? '…' : money(rate)} ={' '}
+      <span className="font-semibold">{bill === null ? '…' : money(bill)}</span>
+      {previous === null && <span> — first reading, measured from zero.</span>}
+    </div>
+  );
+}
+
 function ReadingForm({ open, units, prefillUnitId, onClose, onSaved }: { open: boolean; units: UnitOption[]; prefillUnitId: number | null; onClose: () => void; onSaved: (msg: string) => void }) {
   const { toast } = useToast();
   const now = new Date();
@@ -216,6 +250,20 @@ function ReadingForm({ open, units, prefillUnitId, onClose, onSaved }: { open: b
   const [busy, setBusy] = useState(false);
   const [shakeN, setShakeN] = useState(0);
   const bumpShake = () => setShakeN((n) => n + 1);
+
+  // The live multiplier for the preview — the same Settings rate the server
+  // bills at, so the preview and the saved bill can never disagree.
+  const waterRate = useWaterRate();
+  // Latest reading for the chosen unit: the "previous" the server fills in
+  // when the operator leaves Previous empty (readings list newest-first, so
+  // limit=1 is the latest). Skipped until a unit is picked.
+  const { data: latestData } = useFetch(
+    () => (unitId === '' ? Promise.resolve(null) : api.list<Reading>(`/api/water/readings?unitId=${unitId}&limit=1`)),
+    [unitId]
+  );
+  const latestPrevious = latestData?.data[0] ? Number(latestData.data[0].current_reading) : null;
+  const effectivePrevious = previousReading !== '' ? Number(previousReading) : latestPrevious;
+  const currentValue = currentReading === '' ? null : Number(currentReading);
 
   // Apply the suggested unit whenever the form opens with nothing selected —
   // covers deep-link opens (selection empty) and late-arriving unit data,
@@ -279,9 +327,7 @@ function ReadingForm({ open, units, prefillUnitId, onClose, onSaved }: { open: b
         <Field label="Previous Reading (optional)" hint="Leave empty to use the latest reading automatically. For a FIRST READING you can establish the meter's starting value here.">
           <TextInput type="number" min={0} step={0.001} value={previousReading} onChange={(e) => setPreviousReading(e.target.value)} placeholder="Auto-filled if left empty" />
         </Field>
-        <p className="rounded-lg bg-fog px-3 py-2 text-xs text-graphite">
-          The bill is calculated as (Current − Previous) × the current water rate from Settings. A current reading below the previous reading is rejected.
-        </p>
+        <BillPreview current={currentValue} previous={effectivePrevious} rate={waterRate} />
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
           <Button onClick={save} disabled={busy} loading={busy}>{busy ? 'Saving…' : 'Save Reading'}</Button>
