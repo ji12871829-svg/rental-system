@@ -15,6 +15,7 @@ import {
 } from '../components/charts';
 import { Button, EmptyState, Field, KpiCard, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { api, authenticatedFetch, apiUrl, qs } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { MONTHS, formatDate, methodLabel, money } from '../lib/format';
 import { reportingYearOptions, useReportingYear, useWaterRate } from '../lib/useReportingYear';
 import { useQueryParam, useQueryToggle } from '../lib/useQueryParam';
@@ -103,9 +104,11 @@ interface UnitOption {
 
 function MeterSection({ formOpen, setFormOpen }: { formOpen: boolean; setFormOpen: (value: boolean) => void }) {
   const { toast } = useToast();
+  const { isAdmin } = useAuth();
   const [refreshKey, setRefreshKey] = useState(0);
   const [unitFilter, setUnitFilter] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
+  const [editing, setEditing] = useState<Reading | null>(null);
   const reportingYear = useReportingYear();
 
   const { data: units } = useFetch(() => api.list<UnitOption>('/api/units?waterEnabled=true&limit=100'));
@@ -165,7 +168,7 @@ function MeterSection({ formOpen, setFormOpen }: { formOpen: boolean; setFormOpe
               <tr>
                 <th>Date</th><th>Unit</th><th>Tenant</th><th>Month</th>
                 <th>Previous</th><th>Current</th><th>Consumed</th><th>Rate</th><th>Bill</th>
-                <th>Paid</th><th>Balance</th><th>Status</th>
+                <th>Paid</th><th>Balance</th><th>Status</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -185,6 +188,18 @@ function MeterSection({ formOpen, setFormOpen }: { formOpen: boolean; setFormOpe
                   <td>{money(r.totalWaterPaid)}</td>
                   <td className={Number(r.waterBalance) > 0 ? 'font-medium text-red-600' : 'text-gray-700'}>{money(r.waterBalance)}</td>
                   <td><StatusBadge status={r.status} /></td>
+                  <td>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" className="!px-2 !py-1 text-xs" onClick={() => setEditing(r)}>Edit</Button>
+                      {isAdmin && (
+                        <Button variant="ghost" className="!px-2 !py-1 text-xs text-red-600" onClick={async () => {
+                          if (!window.confirm(`Delete reading for Unit ${r.unit_number} (${MONTHS[r.billing_month - 1]} ${r.billing_year}, bill ${money(r.water_bill)})?`)) return;
+                          try { await api.del(`/api/water/readings/${r.id}`); toast('success', 'Reading deleted.'); setRefreshKey((k) => k + 1); }
+                          catch (err) { toast('error', (err as Error).message); }
+                        }}>Delete</Button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -199,6 +214,11 @@ function MeterSection({ formOpen, setFormOpen }: { formOpen: boolean; setFormOpe
         prefillUnitId={prefillUnitId}
         onClose={() => setFormOpen(false)}
         onSaved={(msg) => { setFormOpen(false); setRefreshKey((k) => k + 1); toast('success', msg); }}
+      />
+      <ReadingEditForm
+        reading={editing}
+        onClose={() => setEditing(null)}
+        onSaved={(msg) => { setEditing(null); setRefreshKey((k) => k + 1); toast('success', msg); }}
       />
     </>
   );
@@ -337,6 +357,73 @@ function ReadingForm({ open, units, prefillUnitId, onClose, onSaved }: { open: b
   );
 }
 
+// Correcting a bill means correcting the reading it was computed from — the
+// bill itself is derived ((current − previous) × rate) and never stored
+// independently. Previous stays fixed (it is history); only the current
+// reading, date and notes can change (PUT /api/water/readings/:id).
+function ReadingEditForm({ reading, onClose, onSaved }: { reading: Reading | null; onClose: () => void; onSaved: (msg: string) => void }) {
+  const { toast } = useToast();
+  const waterRate = useWaterRate();
+  const [currentReading, setCurrentReading] = useState('');
+  const [readingDate, setReadingDate] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [shakeN, setShakeN] = useState(0);
+  const bumpShake = () => setShakeN((n) => n + 1);
+
+  useEffect(() => {
+    if (reading) {
+      setCurrentReading(String(Number(reading.current_reading)));
+      setReadingDate(reading.reading_date.slice(0, 10));
+    }
+  }, [reading]);
+
+  async function save() {
+    if (!reading || currentReading === '' || Number(currentReading) < 0) {
+      toast('error', 'Enter a current reading of zero or more.');
+      bumpShake();
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await api.put<{ data: { water_bill: string; consumption: string } }>(`/api/water/readings/${reading.id}`, {
+        currentReading: Number(currentReading),
+        readingDate,
+      });
+      onSaved(`Reading updated for Unit ${reading.unit_number} — new bill ${money(res.data.water_bill)}.`);
+    } catch (err) {
+      toast('error', (err as Error).message);
+      bumpShake();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={reading !== null} title={reading ? `Edit Reading — Unit ${reading.unit_number}` : 'Edit Reading'} onClose={onClose} shakeSignal={shakeN}>
+      <div className="space-y-4">
+        <p className="rounded-lg bg-fog px-3 py-2 text-xs text-graphite">
+          Previous reading {reading ? money(Number(reading.previous_reading)) : '—'} is fixed history. The bill recalculates as (Current − Previous) × rate.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Current Reading">
+            <TextInput type="number" min={0} step={0.001} value={currentReading} onChange={(e) => setCurrentReading(e.target.value)} />
+          </Field>
+          <Field label="Reading Date"><TextInput type="date" value={readingDate} onChange={(e) => setReadingDate(e.target.value)} /></Field>
+        </div>
+        <BillPreview
+          current={currentReading === '' ? null : Number(currentReading)}
+          previous={reading ? Number(reading.previous_reading) : null}
+          rate={waterRate}
+        />
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button onClick={save} disabled={busy} loading={busy}>{busy ? 'Saving…' : 'Save Changes'}</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ===========================================================================
 // PAYMENTS — tenant water collections (former WaterPayments page)
 // ===========================================================================
@@ -368,6 +455,7 @@ interface WPayment {
 
 function PaymentsSection() {
   const { toast } = useToast();
+  const { isAdmin } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [monthFilter, setMonthFilter] = useState('');
@@ -429,7 +517,7 @@ function PaymentsSection() {
         <Button className="ml-auto" onClick={() => setShowForm(true)}><Plus size={16} strokeWidth={2} aria-hidden /> Record Water Payment</Button>
       </div>
 
-      {loading && <SkeletonTable cols={11} />}
+      {loading && <SkeletonTable cols={12} />}
       {error && <div className="text-sm text-red-600">{error}</div>}
       {!loading && !error && data && (
         <div className="table-scroll">
@@ -437,7 +525,7 @@ function PaymentsSection() {
             <thead>
               <tr>
                 <th>Date</th><th>Tenant</th><th>Unit</th><th>Month</th><th>Amount</th>
-                <th>Method</th><th>Bill</th><th>Total Paid</th><th>Balance</th><th>Status</th><th>Receipt</th>
+                <th>Method</th><th>Bill</th><th>Total Paid</th><th>Balance</th><th>Status</th><th>Receipt</th>{isAdmin && <th>Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -454,6 +542,15 @@ function PaymentsSection() {
                   <td className={Number(p.waterBalance) > 0 ? 'font-medium text-red-600' : 'text-gray-700'}>{money(p.waterBalance)}</td>
                   <td><StatusBadge status={p.status} /></td>
                   <td className="text-xs">{p.receipt_number ?? '—'}</td>
+                  {isAdmin && (
+                    <td>
+                      <Button variant="ghost" className="!px-2 !py-1 text-xs text-red-600" onClick={async () => {
+                        if (!window.confirm(`Delete water payment of ${money(p.amount)} by ${p.tenant_name}? To correct an amount, delete then record the right one — the balance recalculates automatically.`)) return;
+                        try { await api.del(`/api/water/payments/${p.id}`); toast('success', 'Water payment deleted.'); setRefreshKey((k) => k + 1); }
+                        catch (err) { toast('error', (err as Error).message); }
+                      }}>Delete</Button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -557,7 +654,7 @@ function WaterPaymentForm({ open, tenants, onClose, onSaved }: { open: boolean; 
           <Field label="Notes"><TextInput value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
         </div>
         <p className="rounded-lg bg-fog px-3 py-2 text-xs text-graphite">
-          A water payment can be recorded only for a unit with water billing enabled. Multiple payments per month are supported (e.g. 500 + 500 + 1,000 = PAID on a 2,000 bill).
+          A water payment can be recorded only for a unit with water billing enabled. Multiple payments per month are supported (e.g. 500 + 500 + 1,000 = PAID on a 2,000 bill). To correct a wrong amount, an admin deletes that row and records the right one — the balance recalculates automatically.
         </p>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
