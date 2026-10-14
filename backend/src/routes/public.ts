@@ -82,7 +82,10 @@ router.post(
        RETURNING id`,
       [name, normalized, phone || null, propertyName || null, unitsCount || null, message || null, ip],
     );
-    logAudit({
+    // Awaited (but never fatal): the test suite asserts the audit row right
+    // after the 201, and fire-and-forget made that a race under CI load.
+    // A logging failure still must not break the public form.
+    await logAudit({
       userId: null,
       action: 'DEMO_REQUEST',
       entity: 'demo_requests',
