@@ -102,6 +102,11 @@ export default function Units() {
       {!loading && !error && data && <Pagination page={data.pagination.page} totalPages={data.pagination.totalPages} onChange={setPage} />}
 
       <UnitForm
+        // Remount per unit (and per Add): the form's useState initializers run
+        // once per mount, so without this editing unit B after unit A (or
+        // after Add) would submit A's values — e.g. an empty unit number,
+        // which trips the "non-negative rent" guard below.
+        key={edit?.id ?? 'new'}
         open={showForm}
         unit={edit}
         onClose={() => setShowForm(false)}
@@ -132,7 +137,12 @@ function UnitForm({ open, unit, onClose, onSaved }: { open: boolean; unit: Unit 
   const bumpShake = () => setShakeN((n) => n + 1);
 
   async function save() {
-    if (!unitNumber.trim() || monthlyRent < 0) {
+    // monthlyRent is NaN when the field is cleared or half-typed ("-"):
+    // browsers expose "" for non-numeric number-input content, which we map
+    // to NaN in onChange. Note NaN < 0 is false, so the isFinite check is
+    // what stops a blank rent from sailing past this guard and arriving at
+    // the API as null (Number("") is 0 — silently saving a 0 rent).
+    if (!unitNumber.trim() || !Number.isFinite(monthlyRent) || monthlyRent < 0) {
       toast('error', 'Unit number and a non-negative rent are required.');
       bumpShake();
       return;
@@ -167,7 +177,7 @@ function UnitForm({ open, unit, onClose, onSaved }: { open: boolean; unit: Unit 
             </Select>
           </Field>
           <Field label="Monthly Rent (KSh)" hint={unit?.unit_number === '12' ? 'Room 12: may be 4,000 or 3,500 — editable here.' : undefined}>
-            <TextInput type="number" min={0} value={monthlyRent} onChange={(e) => setMonthlyRent(Number(e.target.value))} />
+            <TextInput type="number" min={0} value={Number.isFinite(monthlyRent) ? monthlyRent : ''} onChange={(e) => setMonthlyRent(e.target.value === '' ? NaN : Number(e.target.value))} />
           </Field>
         </div>
         <div className="flex gap-6">
