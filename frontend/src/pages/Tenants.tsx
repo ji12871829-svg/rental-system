@@ -324,7 +324,11 @@ export default function Tenants() {
       )}
       {!loading && !error && data && <Pagination page={data.pagination.page} totalPages={data.pagination.totalPages} onChange={setPage} />}
 
-      <TenantForm open={showForm} tenant={edit} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); refresh(); toast('success', edit ? 'Tenant updated.' : 'Tenant added.'); }} />
+      {/* Remount per tenant and per open: the form's useState initializers run
+          once per mount, so without a key editing tenant B after tenant A
+          would show — and save — A's unit selection, tripping the occupancy
+          guard ("Unit X already has an active tenant") on a plain edit. */}
+      <TenantForm key={`${edit?.id ?? 'new'}-${showForm ? 'open' : 'shut'}`} open={showForm} tenant={edit} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); refresh(); toast('success', edit ? 'Tenant updated.' : 'Tenant added.'); }} />
 
       <Modal open={detail !== null} title={detail?.full_name ?? ''} onClose={() => setDetail(null)} wide>
         {detail && (
@@ -635,7 +639,7 @@ function TenantForm({ open, tenant, onClose, onSaved }: { open: boolean; tenant:
   const [moveInDate, setMoveInDate] = useState(tenant?.move_in_date?.slice(0, 10) ?? new Date().toISOString().slice(0, 10));
   const [securityDeposit, setSecurityDeposit] = useState(tenant ? Number(tenant.security_deposit) : 0);
   const [notes, setNotes] = useState(tenant?.notes ?? '');
-  const [unitId, setUnitId] = useState<number | ''>(tenant?.unit_number ? 0 : '');
+  const [unitId, setUnitId] = useState<number | ''>('');
   const [consent, setConsent] = useState(Boolean(tenant));
   const [busy, setBusy] = useState(false);
   const [shakeN, setShakeN] = useState(0);
@@ -664,7 +668,22 @@ function TenantForm({ open, tenant, onClose, onSaved }: { open: boolean; tenant:
     }
     setBusy(true);
     try {
-      const body = { fullName: fullName.trim(), phoneNumber, email: email || undefined, moveInDate, securityDeposit, notes, unitId: unitId === '' ? null : unitId };
+      // The unit travels only when the operator actually changed it. The form
+      // resolves the tenant's current unit from the units list, so re-asserting
+      // an untouched selection — or a blank one while the list is still
+      // loading — must never hit the occupancy guard ("Unit X already has an
+      // active tenant") on a plain contact edit, and must not read as "remove
+      // the unit" either.
+      const currentUnitId = tenant?.unit_number
+        ? (units.find((u) => u.unit_number === tenant.unit_number)?.id ?? '')
+        : '';
+      const unitChanged = unitId !== currentUnitId;
+      const body = {
+        fullName: fullName.trim(), phoneNumber, email: email || undefined, moveInDate, securityDeposit, notes,
+        ...(tenant
+          ? (unitChanged ? { unitId: unitId === '' ? null : unitId } : {})
+          : { unitId: unitId === '' ? null : unitId }),
+      };
       if (tenant) await api.put(`/api/tenants/${tenant.id}`, body);
       else await api.post('/api/tenants', body);
       onSaved();
