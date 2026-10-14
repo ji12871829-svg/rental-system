@@ -1,8 +1,12 @@
-import { useState } from 'react';
-import { AlertTriangle, Info } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { AlertTriangle, Info, MessageSquareText } from 'lucide-react';
 import { Button, EmptyState, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
+import { SmsComposer, type SmsComposerTenant } from '../components/SmsComposer';
 import { api, qs } from '../lib/api';
+import { useQueryParam } from '../lib/useQueryParam';
+import { useReportingYear } from '../lib/useReportingYear';
 import { formatDate } from '../lib/format';
+import type { ArrearRow } from './Arrears';
 
 interface Sms {
   id: number;
@@ -89,6 +93,34 @@ export default function SmsNotifications() {
   const [page, setPage] = useState(1);
   const [viewMessage, setViewMessage] = useState<Sms | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Confirmation composer: the Dashboard watchlist, the Arrears page and the
+  // dashboard ops row all link here with ?compose=arrears ("Send Reminders").
+  // That opens the composer on the payment-reminder wording with every tenant
+  // carrying an open balance already checked — the operator reviews and queues.
+  const [composeParam] = useQueryParam('compose');
+  const [composerOpen, setComposerOpen] = useState(composeParam === 'arrears');
+  const reportingYear = useReportingYear();
+
+  // Composer data loads lazily — history-only visits pay for no extra fetch.
+  const { data: tenantData, loading: tenantsLoading, error: tenantsError } = useFetch(
+    () => api.list<SmsComposerTenant>('/api/tenants?status=ACTIVE&limit=100'),
+    [composerOpen],
+    { enabled: composerOpen }
+  );
+  const wantArrearsAudience = composerOpen && composeParam === 'arrears' && reportingYear !== null;
+  const { data: arrearsData, loading: arrearsLoading, error: arrearsError } = useFetch(
+    () => api.list<ArrearRow>(`/api/reports/arrears?year=${reportingYear}`),
+    [composerOpen, composeParam, reportingYear],
+    { enabled: wantArrearsAudience }
+  );
+  const arrearsIds = useMemo(
+    () => (arrearsData?.data ?? []).filter((r) => r.totalOutstanding > 0).map((r) => r.tenantId),
+    [arrearsData]
+  );
+  // Hold the composer until the arrears audience resolves (or fails — then it
+  // opens unfiltered rather than stranding the operator on the history).
+  const preselectReady = composeParam !== 'arrears' || !wantArrearsAudience || arrearsData !== null || arrearsError !== null;
 
   // api.get resolves with the response body { data: ... } — unwrap to the
   // actual config. (Reading the body directly was a latent bug: every
@@ -200,6 +232,35 @@ export default function SmsNotifications() {
           </div>
         );
       })()}
+
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <Button variant="secondary" onClick={() => setComposerOpen((v) => !v)}>
+          <MessageSquareText size={15} strokeWidth={1.75} aria-hidden />
+          {composerOpen ? 'Close composer' : 'Compose confirmation…'}
+        </Button>
+      </div>
+
+      {composerOpen && (
+        <div className="mb-6">
+          {composeParam === 'arrears' && (
+            <p className="mb-3 text-sm text-gray-500">
+              Sending payment reminders — tenants with an open balance start checked. Review the wording, adjust who receives it, then queue.
+            </p>
+          )}
+          {!preselectReady || arrearsLoading ? (
+            <SkeletonTable cols={2} rows={4} />
+          ) : (
+            <SmsComposer
+              tenants={tenantData?.data ?? []}
+              loading={tenantsLoading}
+              loadError={tenantsError}
+              initialTemplate={composeParam === 'arrears' ? 'reminder' : 'general'}
+              preselectedIds={composeParam === 'arrears' ? arrearsIds : []}
+              onSent={refresh}
+            />
+          )}
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-2">
