@@ -15,6 +15,18 @@ export function useReportingYear(): number | null {
   return data;
 }
 
+// The water rate (currency per unit, Settings) is what every meter reading
+// bills at: bill = (current − previous) × rate. Same /api/settings read as
+// above, so a form preview and the server can never disagree on the
+// multiplier. Returns null while loading.
+export function useWaterRate(): number | null {
+  const { data } = useFetch<number>(
+    () => api.get<{ data: { water_rate: string | number } }>('/api/settings').then((r) => Number(r.data.water_rate)),
+    []
+  );
+  return data;
+}
+
 // Year-filter dropdown options around the reporting year: the year itself,
 // one year back for history review, one year forward for early payments
 // (e.g. January rent received in December).
