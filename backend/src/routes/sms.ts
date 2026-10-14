@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { managerOrAdmin, requireAuth } from '../middleware/auth';
 import { validateBody, validateParams, listQuerySchema as baseListQuerySchema } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
-import { applyDeliveryReport, getSmsBalance, listSms, sendSmsNotification, sendTestSms } from '../services/smsService';
+import { applyDeliveryReport, getSmsBalance, listSms, sendSmsNotification, sendTenantSmsCampaign, sendTestSms } from '../services/smsService';
 import { getSmsConfig } from '../services/smsProvider';
 
 const router = Router();
@@ -75,6 +75,20 @@ router.get('/', asyncHandler(async (req, res) => {
   const q = listQuerySchema.parse(req.query);
   const result = await listSms({ ...q });
   res.json({ data: result.rows, pagination: result.pagination, meta: { spendByCurrency: result.spendByCurrency } });
+}));
+
+// Tenant campaign (one composition, many recipients) — mirrors
+// POST /api/emails/campaign. Queues a personalised PENDING row per ACTIVE
+// tenant ({{name}} / {{unit}} merge); rows auto-send when the pipeline is on
+// and otherwise wait on the SMS page. Responses count queueing, not delivery.
+const smsCampaignSchema = z.object({
+  tenantIds: z.array(z.number().int().positive()).max(1000).optional(),
+  message: z.string().trim().min(3).max(1000),
+});
+
+router.post('/campaign', managerOrAdmin, validateBody(smsCampaignSchema), asyncHandler(async (req, res) => {
+  const result = await sendTenantSmsCampaign({ ...(req.body as { tenantIds?: number[]; message: string }), userId: req.user!.userId });
+  res.status(201).json({ data: result });
 }));
 
 const paramsSchema = z.object({ id: z.coerce.number().int().positive() });

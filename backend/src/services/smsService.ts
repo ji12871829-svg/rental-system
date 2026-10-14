@@ -2,7 +2,7 @@ import { poolExec, query, queryOne, type SqlExec } from '../config/db';
 import { paginate } from './paginate';
 import { env } from '../config/env';
 import { MONTH_NAMES, type Pagination } from '../types';
-import { combinedReceiptMessage, landlordAlertMessage, rentReceiptMessage, waterReceiptMessage } from '../utils/businessRules';
+import { combinedReceiptMessage, landlordAlertMessage, rentReceiptMessage, waterReceiptMessage, gsm7EffectiveLength, SMS_TWO_SEGMENT_GSM7_LIMIT } from '../utils/businessRules';
 import { badRequest, notFound } from '../utils/httpError';
 import { logAudit } from './auditService';
 import { toNumber } from '../utils/money';
@@ -418,6 +418,67 @@ export async function sendSmsNotification(id: number, opts: { templateKind?: str
     [id, opts.templateKind ?? null],
   );
   return queryOne('SELECT * FROM sms_notifications WHERE id = $1', [id]);
+}
+
+// --- Tenant SMS campaign (one composition, many recipients) -------------------
+// Mirrors the tenant email campaign: one operator-typed message carrying
+// {{name}} / {{unit}} tokens, personalised and queued per ACTIVE tenant.
+// Every row goes through queueSms + dispatchAutoSend, so a campaign row
+// behaves exactly like a hand-queued reminder: auto-sent when the pipeline
+// is on, otherwise PENDING for manual send from the SMS page. Sends complete
+// after the response (fire-and-forget by design — a slow provider must never
+// hold the HTTP response), so the result counts queueing, not delivery:
+// per-recipient SENT/FAILED lands in the SMS history.
+//
+// Cost guard: each rendered message must fit the two-segment GSM-7 budget.
+// Over-long renders are counted as tooLong and never queued — a multi-part
+// blast to dozens of tenants must be a conscious edit, not an accident.
+export async function sendTenantSmsCampaign(opts: {
+  tenantIds?: number[];
+  message: string;
+  userId?: number | null;
+}): Promise<{ total: number; queued: number; skipped: number; tooLong: number }> {
+  const params: unknown[] = [];
+  const where = opts.tenantIds?.length ? `AND t.id = ANY($1::int[])` : '';
+  if (opts.tenantIds?.length) params.push(opts.tenantIds);
+  const tenants = await query<{ id: number; full_name: string; phone_number: string | null; unit_number: string | null }>(
+    `SELECT t.id, t.full_name, t.phone_number, u.unit_number
+     FROM tenants t LEFT JOIN units u ON u.id = t.unit_id
+     WHERE t.status = 'ACTIVE' ${where}
+     ORDER BY t.id`,
+    params
+  );
+  let queued = 0;
+  let skipped = 0;
+  let tooLong = 0;
+  for (const tenant of tenants) {
+    if (!tenant.phone_number?.trim()) {
+      skipped += 1;
+      continue;
+    }
+    const rendered = renderMergeFields(opts.message, {
+      name: tenant.full_name,
+      unit: tenant.unit_number ?? '',
+    });
+    if (gsm7EffectiveLength(rendered) > SMS_TWO_SEGMENT_GSM7_LIMIT) {
+      tooLong += 1;
+      continue;
+    }
+    const smsId = await queueSms({ tenantId: tenant.id, phoneNumber: tenant.phone_number, message: rendered });
+    if (smsId === null) {
+      skipped += 1;
+      continue;
+    }
+    queued += 1;
+    dispatchAutoSend(smsId);
+  }
+  await logAudit({
+    userId: opts.userId ?? null,
+    action: 'TENANT_SMS_CAMPAIGN',
+    entity: 'tenants',
+    newValue: { total: tenants.length, queued, skipped, tooLong, message: opts.message.slice(0, 160) },
+  });
+  return { total: tenants.length, queued, skipped, tooLong };
 }
 
 // Backfill for seeded receipts: creates PENDING SMS rows for any receipt
