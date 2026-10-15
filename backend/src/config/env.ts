@@ -71,6 +71,13 @@ export const env = {
     .split(',')
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean),
+  // Staff copilot LLM (Groq free tier, OpenAI-compatible REST — no SDK).
+  // Empty key = the assistant endpoints fail closed (503), never a silent
+  // mock: a fake "AI answer" next to real money figures would be worse than
+  // no answer. Model default is a free-tier id (Oct 2026); override freely.
+  groqApiKey: process.env.GROQ_API_KEY || '',
+  groqModel: process.env.GROQ_MODEL || 'openai/gpt-oss-20b',
+  groqBaseUrl: (process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1').replace(/\/+$/, ''),
   // Absolute URL of the tenant portal login page, used in credential
   // delivery emails. Must be reachable from the tenant's device.
   portalUrl: process.env.PORTAL_URL || 'http://localhost:5173/portal/login',
