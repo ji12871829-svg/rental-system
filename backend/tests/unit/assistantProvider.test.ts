@@ -1,5 +1,5 @@
 import { env } from '../../src/config/env';
-import { chatCompletion, getAssistantConfig } from '../../src/services/assistantProvider';
+import { chatCompletion, getAssistantConfig, transcribeAudio } from '../../src/services/assistantProvider';
 
 const REAL_FETCH = global.fetch;
 
@@ -109,5 +109,46 @@ describe('assistantProvider', () => {
       },
       { role: 'tool', tool_call_id: 'c1', content: '{"openCount":2}' },
     ]);
+  });
+});
+
+describe('transcribeAudio (Whisper)', () => {
+  const tinyAudio = Buffer.from('fake-opus-bytes').toString('base64');
+
+  it('refuses without a key (fail-closed like chat)', async () => {
+    await expect(transcribeAudio(tinyAudio, 'audio/webm')).rejects.toThrow(/GROQ_API_KEY is not set/);
+  });
+
+  it('rejects non-audio and oversized payloads before any network call', async () => {
+    process.env.GROQ_API_KEY = 'test-key';
+    env.groqApiKey = 'test-key';
+    const spy = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ text: 'hi' }) }));
+    global.fetch = spy as unknown as typeof fetch;
+    await expect(transcribeAudio(tinyAudio, 'text/plain')).rejects.toThrow(/Only audio/);
+    await expect(transcribeAudio('x'.repeat(3_500_001), 'audio/webm')).rejects.toThrow(/too long/);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('posts multipart audio to the transcriptions endpoint and returns trimmed text', async () => {
+    process.env.GROQ_API_KEY = 'test-key';
+    env.groqApiKey = 'test-key';
+    const seen: { url: string; init: RequestInit }[] = [];
+    global.fetch = (async (url: string, init: RequestInit) => {
+      seen.push({ url, init });
+      return { ok: true, status: 200, json: async () => ({ text: '  who has not paid rent? ' }) };
+    }) as unknown as typeof fetch;
+    const text = await transcribeAudio(tinyAudio, 'audio/webm');
+    expect(text).toBe('who has not paid rent?');
+    expect(seen[0].url).toBe('https://api.groq.com/openai/v1/audio/transcriptions');
+    expect((seen[0].init.body as FormData).get('model')).toBe('whisper-large-v3-turbo');
+  });
+
+  it('surfaces provider failures readably', async () => {
+    process.env.GROQ_API_KEY = 'test-key';
+    env.groqApiKey = 'test-key';
+    global.fetch = (async () => ({
+      ok: false, status: 401, json: async () => ({ error: { message: 'bad key' } }),
+    })) as unknown as typeof fetch;
+    await expect(transcribeAudio(tinyAudio, 'audio/webm')).rejects.toThrow(/Transcription failed \(401\)/);
   });
 });

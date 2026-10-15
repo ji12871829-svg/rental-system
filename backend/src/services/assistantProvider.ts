@@ -81,3 +81,39 @@ export async function chatCompletion(args: { system: string; messages: ChatMsg[]
   });
   return { content: message?.content ?? null, toolCalls };
 }
+
+// Speech-to-text for the mic button: recorded audio goes to Groq's Whisper
+// (far stronger on accented speech than the browser's built-in recognizer,
+// which garbled even short English queries). Audio arrives as base64 inside
+// JSON (no multipart dependency); the 60-second client cap keeps payloads
+// small. Same fail-closed rule: no key, no call.
+const WHISPER_MODEL = 'whisper-large-v3-turbo';
+const MAX_AUDIO_BASE64_CHARS = 3_500_000;
+
+export async function transcribeAudio(audioBase64: string, mimeType: string): Promise<string> {
+  if (!getAssistantConfig().enabled) throw new Error('GROQ_API_KEY is not set — the assistant is disabled.');
+  if (!mimeType.startsWith('audio/')) throw new Error('Only audio recordings can be transcribed.');
+  if (audioBase64.length === 0 || audioBase64.length > MAX_AUDIO_BASE64_CHARS) {
+    throw new Error('Recording too long — keep it under a minute and try again.');
+  }
+  const bytes = Buffer.from(audioBase64, 'base64');
+  const form = new FormData();
+  form.append('file', new Blob([bytes], { type: mimeType }), 'recording');
+  form.append('model', WHISPER_MODEL);
+  let response: Response;
+  try {
+    response = await fetch(`${env.groqBaseUrl}/audio/transcriptions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.groqApiKey}` },
+      body: form,
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch (error) {
+    throw new Error(`Transcription failed: ${(error as Error).message}`);
+  }
+  const body = (await response.json().catch(() => ({}))) as { text?: string; error?: { message?: string } };
+  if (!response.ok || typeof body.text !== 'string') {
+    throw new Error(`Transcription failed (${response.status}): ${body.error?.message ?? 'provider error'}`);
+  }
+  return body.text.trim();
+}

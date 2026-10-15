@@ -3,17 +3,16 @@
 // both by the /assistant page and by the floating cube widget — one
 // component, identical labels and behavior in both places.
 //
-// Nothing here sends by itself: each draft card's Approve posts to the
-// existing POST /api/sms/campaign (role-guarded there). The mic is
-// browser-native speech recognition (no key, hidden where unsupported) in
-// CONTINUOUS mode with live interim text: tap to start, tap again (or wait
-// for silence) to stop. Single-shot recognition ends at the first pause,
-// which is the "mic dies after a second" bug this replaces.
+// Voice input records audio (tap mic to start, tap again to stop, 60 s cap)
+// and transcribes it server-side via Groq Whisper — far stronger on accented
+// speech than the browser's built-in recognizer, which garbled even short
+// English queries. Nothing here sends by itself: each draft card's Approve
+// posts to the existing POST /api/sms/campaign (role-guarded there).
 import { useEffect, useRef, useState } from 'react';
 import { Mic, Send, Volume2, VolumeX } from 'lucide-react';
 import { Button, Field, TextInput, useToast } from '../ui';
 import { api } from '../../lib/api';
-import { getSpeechRecognitionCtor, speak, supportsSpeechSynthesis } from '../../lib/voice';
+import { speak, supportsSpeechSynthesis } from '../../lib/voice';
 import type { AssistantChatReply, AssistantConfig, AssistantDraft } from '@rpms/shared';
 
 interface ChatMessage {
@@ -37,11 +36,16 @@ export default function AssistantChat() {
   const [listening, setListening] = useState(false);
   const [readAloud, setReadAloud] = useState(false);
   const history = useRef<{ role: 'user' | 'assistant'; content: string }[]>([]);
-  // Only stop() is ever called on the live recognizer — no need for the
-  // full (unexported) recognizer type here.
-  const recognizer = useRef<{ stop(): void } | null>(null);
-  const finalText = useRef('');
-  const micSupported = getSpeechRecognitionCtor() !== null;
+  // Live MediaRecorder (null when idle). Tap mic to start, tap again to
+  // stop and transcribe; a 60 s timer stops runaway recordings.
+  const recorder = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  // Audio chunks accumulate here from the moment recording starts (handlers
+  // attach at start, not at stop — data emitted mid-recording must land
+  // somewhere even though stop() comes later).
+  const audioChunks = useRef<Blob[]>([]);
+  const recordTimer = useRef<number | null>(null);
+  const micSupported = typeof window !== 'undefined' && 'MediaRecorder' in window;
   const voiceOutSupported = supportsSpeechSynthesis();
 
   useEffect(() => {
@@ -51,11 +55,15 @@ export default function AssistantChat() {
       .catch(() => setConfig({ enabled: false, model: '' }));
   }, []);
 
-  // Stop any live recognition when the component unmounts (page change while
+  // Stop any live recording when the component unmounts (page change while
   // dictating must not leave the mic hot).
   useEffect(() => () => {
-    recognizer.current?.stop();
-    recognizer.current = null;
+    try {
+      recorder.current?.stop();
+    } catch {
+      // Already stopped.
+    }
+    releaseMic();
   }, []);
 
   async function send(text: string) {
@@ -79,42 +87,94 @@ export default function AssistantChat() {
     }
   }
 
-  function dictate() {
-    // Tap-again stops: the recognizer runs until the operator stops it or
-    // silence ends it, never a single-shot cut.
-    if (recognizer.current) {
-      recognizer.current.stop();
+  function releaseMic() {
+    if (recordTimer.current !== null) {
+      window.clearTimeout(recordTimer.current);
+      recordTimer.current = null;
+    }
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    recorder.current = null;
+    setListening(false);
+  }
+
+  function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const url = String(reader.result ?? '');
+        const comma = url.indexOf(',');
+        resolve(comma >= 0 ? url.slice(comma + 1) : url);
+      };
+      reader.onerror = () => reject(new Error('Could not read the recording.'));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function dictate() {
+    // Tap-again: the chunks are already collected (handlers attached at
+    // start); stopping flushes the last one, then onstop resolves.
+    if (recorder.current) {
+      const rec = recorder.current;
+      const done = new Promise<Blob>((resolve, reject) => {
+        rec.onstop = () => resolve(new Blob(audioChunks.current, { type: rec.mimeType || 'audio/webm' }));
+        rec.onerror = () => reject(new Error('Recording failed — try again.'));
+      });
+      setBusy(true);
+      try {
+        rec.stop();
+      } catch {
+        // Already stopped — onstop still fires.
+      }
+      try {
+        const blob = await done;
+        releaseMic();
+        if (blob.size === 0) {
+          toast('error', 'Nothing was recorded — tap the mic and speak, then tap again to stop.');
+          return;
+        }
+        if (blob.size > 900_000) {
+          toast('error', 'Recording too long — keep it under a minute and try again.');
+          return;
+        }
+        const audioBase64 = await blobToBase64(blob);
+        const res = await api.post<{ data: { text: string } }>('/api/assistant/transcribe', {
+          audioBase64,
+          mimeType: blob.type || 'audio/webm',
+        });
+        setInput(res.data.text);
+      } catch (err) {
+        releaseMic();
+        toast('error', (err as Error).message);
+      } finally {
+        setBusy(false);
+      }
       return;
     }
-    const Ctor = getSpeechRecognitionCtor();
-    if (!Ctor) return;
-    const rec = new Ctor();
-    recognizer.current = rec;
-    finalText.current = '';
-    rec.lang = 'en-KE';
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.onresult = (event) => {
-      let interim = '';
-      for (const result of event.results) {
-        const text = result[0]?.transcript ?? '';
-        if (result.isFinal) finalText.current += `${text} `;
-        else interim += text;
-      }
-      setInput(`${finalText.current}${interim}`.trim());
+    if (!micSupported) return;
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      toast('error', 'Microphone blocked — allow microphone access for this site, then tap the mic again.');
+      return;
+    }
+    streamRef.current = stream;
+    const rec = new MediaRecorder(stream);
+    recorder.current = rec;
+    audioChunks.current = [];
+    rec.ondataavailable = (e: BlobEvent) => {
+      if (e.data.size > 0) audioChunks.current.push(e.data);
     };
-    rec.onerror = (event) => {
-      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-        toast('error', 'Microphone blocked — allow microphone access for this site, then tap the mic again.');
-      }
-      setListening(false);
-      recognizer.current = null;
-    };
-    rec.onend = () => {
-      setListening(false);
-      recognizer.current = null;
+    rec.onerror = () => {
+      toast('error', 'Recording failed — try again.');
+      releaseMic();
     };
     setListening(true);
+    // Runaway guard: 60 s is plenty for a question and keeps uploads small.
+    recordTimer.current = window.setTimeout(() => {
+      void dictate();
+    }, 60_000);
     rec.start();
   }
 

@@ -64,6 +64,11 @@ export function createApp() {
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
   }));
+  // Assistant voice uploads (base64 audio inside JSON): a scoped larger body
+  // cap so minute-long recordings survive. Runs BEFORE the default parser
+  // below (parsed bodies are skipped downstream), and everything else keeps
+  // the 1mb default. The route still enforces its own audio/mime/size rules.
+  app.use('/api/assistant/transcribe', express.json({ limit: '5mb' }));
   // Svix (Clerk webhooks) signs the exact request bytes, but this parser
   // consumes the stream — so it snapshots the raw body for the webhook path
   // as it parses. No extra middleware pass, no double read of the stream.
