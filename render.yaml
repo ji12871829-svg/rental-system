@@ -66,5 +66,7 @@ services:
       # 64-char hex from `openssl rand -hex 32` (docs/runbooks/RUNBOOK-mpesa-callback-gate.md).
       - key: MPESA_CALLBACK_TOKEN
         sync: false # paste a 64-hex token; then append ?token=<same> to the Daraja callback URLs
+      - key: GROQ_API_KEY
+        sync: false # paste the free Groq key; empty keeps the assistant disabled (fail-closed 503)
       # Same-origin deploy: Express serves frontend/dist, CORS never fires.
     # Add CORS_ORIGIN only if you later split the frontend to its own host.
