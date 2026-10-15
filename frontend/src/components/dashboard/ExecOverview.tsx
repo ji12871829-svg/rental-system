@@ -107,7 +107,7 @@ export function ExecOverviewHeader({ reportingYear }: { reportingYear: number })
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
-        <h1 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">Executive Portfolio Overview</h1>
+        <h1 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">Olbano Plaza Overview</h1>
         <p className="mt-1 text-sm text-gray-500">
           Rent, arrears and occupancy from recorded transactions · reporting year {reportingYear}
         </p>
