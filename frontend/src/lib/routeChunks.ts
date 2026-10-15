@@ -26,6 +26,7 @@ export const routeChunks = {
   monthly: () => import('../pages/MonthlySummary'),
   expenses: () => import('../pages/Expenses'),
   arrears: () => import('../pages/Arrears'),
+  assistant: () => import('../pages/Assistant'),
   receipts: () => import('../pages/Receipts'),
   sms: () => import('../pages/SmsNotifications'),
   emailHistory: () => import('../pages/EmailHistory'),

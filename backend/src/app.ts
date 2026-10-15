@@ -15,6 +15,7 @@ import { clerkMiddleware } from '@clerk/express';
 import { clerkAuth } from './middleware/clerkAuth';
 import clerkAuthRoutes from './routes/clerkAuthRoutes';
 import clerkWebhookRoutes from './routes/clerkWebhookRoutes';
+import assistantRoutes from './routes/assistant';
 import auditRoutes from './routes/audit';
 import authRoutes from './routes/auth';
 import brandingRoutes from './routes/branding';
@@ -238,6 +239,7 @@ export function createApp() {
   mountApi('/api/receipts', receiptRoutes, 'receipts');
   mountApi('/api/sms', smsRoutes, 'sms');
   mountApi('/api/emails', emailRoutes, 'emails');
+  mountApi('/api/assistant', assistantRoutes, 'assistant');
   mountApi('/api/templates', templateRoutes, 'templates');
   mountApi('/api/privacy-requests', privacyRequestRoutes, 'privacyRequests');
   mountApi('/api/reports', reportRoutes, 'reports');

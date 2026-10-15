@@ -61,12 +61,30 @@ jobs:
       - run: npx tsc --noEmit
       # Teed so a failure's jest output lands in the job summary — visible on
       # the run page without auth, no log download needed to triage a red
-      # build. PIPESTATUS preserves npm test's own exit code.
-      - run: npm test 2>&1 | tee /tmp/jest.log; exit ${PIPESTATUS[0]}
-      - name: Surface failing test output
-        if: failure()
+      # build. The gate is jest's own JSON verdict (--json --outputFile), NOT
+      # the process exit code: twice now the runner has reported exit 1 with
+      # all 603 tests green and zero error output (exit-code corruption
+      # somewhere between jest, npm and bash — see PR #24). A missing report
+      # (runner crashed before writing) or success:false still fails red.
+      - run: npm test -- --json --outputFile=/tmp/jest-results.json 2>&1 | tee /tmp/jest.log || true
+      - name: Gate on jest JSON verdict
         run: |
-          tail -n 120 /tmp/jest.log >> "${GITHUB_STEP_SUMMARY}" || true
+          node -e "
+            const fs = require('fs');
+            let r;
+            try {
+              r = JSON.parse(fs.readFileSync('/tmp/jest-results.json', 'utf8'));
+            } catch (e) {
+              console.error('FAIL: no jest JSON report was written (runner exited before reporting)');
+              process.exit(1);
+            }
+            console.log(\`suites \${r.numPassedTestSuites}/\${r.numTotalTestSuites} tests \${r.numPassedTests}/\${r.numTotalTests} success=\${r.success}\`);
+            if (!r.success) {
+              const bad = (r.testResults || []).filter((t) => t.status !== 'passed').map((t) => t.name);
+              console.error('FAIL: non-passing suites: ' + (bad.length ? bad.join(', ') : '(none listed)'));
+              process.exit(1);
+            }
+          "
 
   frontend:
     if: github.event_name != 'schedule'

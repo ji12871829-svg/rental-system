@@ -5,7 +5,7 @@ import { Link, NavLink, Outlet } from 'react-router-dom';
 import {
   AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, BookUser, Building2, CalendarDays, ChevronDown, Droplets, FileText, LayoutDashboard, Loader2, LogOut, Mail, Menu, MessageSquareText, ReceiptText, Settings,
   Smartphone, Ticket, UserCog, Users as UsersIcon, Wallet, X, ClipboardCheck, Zap, Wrench, Truck, BadgeCheck, Repeat,
-  Percent, FolderLock, Megaphone,
+  Percent, FolderLock, Megaphone, Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { api } from '../lib/api';
@@ -41,6 +41,7 @@ const PREFETCH_BY_PATH: Record<string, keyof typeof routeChunks> = {
   '/monthly': 'monthly',
   '/expenses': 'expenses',
   '/arrears': 'arrears',
+  '/assistant': 'assistant',
   '/sms': 'sms',
   '/emails': 'emailHistory',
   '/email-campaign': 'emailCampaign',
@@ -108,6 +109,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'Operations',
     icon: Wrench,
     items: [
+      { to: '/assistant', label: 'Assistant', icon: Sparkles },
       { to: '/maintenance', label: 'Maintenance', icon: Wrench },
       { to: '/vendors', label: 'Vendors', icon: Truck, managerOnly: true },
       { to: '/expense-approvals', label: 'Expense Approvals', icon: BadgeCheck },
