@@ -107,7 +107,7 @@ export default function Dashboard() {
         <ExecBulkOps data={data} arrears={arrears.data} />
       </div>
 
-      {/* 4. Watchlist — highest open balances first, actions per row */}
+      {/* 4. Watchlist — open balances in unit order, actions per row */}
       <div className="mt-5">
         <ExecWatchlist
           rows={arrears.data}

@@ -57,7 +57,7 @@ describe('ExecWatchlist (empty states)', () => {
       screen.getByText('No open balances right now — every tenant on the books is paid up.'),
     ).toBeInTheDocument();
     expect(screen.queryByText(/No rows match this filter/)).not.toBeInTheDocument();
-    expect(screen.getByText('0 tenants with an open balance, highest first')).toBeInTheDocument();
+    expect(screen.getByText('0 tenants with an open balance, in unit order')).toBeInTheDocument();
   });
 
   it('blames the filter only once a filter is actually hiding rows', () => {
@@ -105,5 +105,40 @@ describe('ExecWatchlist (empty states)', () => {
     // SkeletonTable renders its own <table>; the pulse placeholders are what
     // distinguishes "still fetching" from a real (empty) table.
     expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);
+  });
+});
+
+describe('ExecWatchlist (unit order and row numbers)', () => {
+  const debtors = [
+    row({ unitId: 112, unitNumber: '12', tenantId: 21, tenantName: 'Twelve Tenant', status: 'UNPAID', totalOutstanding: 12000 }),
+    row({ unitId: 109, unitNumber: '9', tenantId: 22, tenantName: 'Nine Tenant', status: 'UNPAID', totalOutstanding: 9000 }),
+    row({ unitId: 102, unitNumber: '2', tenantId: 23, tenantName: 'Two Tenant', status: 'UNPAID', totalOutstanding: 2000 }),
+  ];
+
+  function renderDebtors() {
+    return render(
+      <MemoryRouter>
+        <ExecWatchlist rows={debtors} loading={false} currency="KSh" />
+      </MemoryRouter>,
+    );
+  }
+
+  it('lists debtors in numeric unit order even when balances run the other way', () => {
+    renderDebtors();
+    // Balances descend 12k → 9k → 2k, but units must read 2, 9, 12
+    // (string sort would put 12 first — the numeric-aware compare matters).
+    expect(screen.getAllByText(/Unit \d+/).map((el) => el.textContent)).toEqual([
+      'Unit 2',
+      'Unit 9',
+      'Unit 12',
+    ]);
+  });
+
+  it('numbers every visible row from 1 in the first column', () => {
+    const { container } = renderDebtors();
+    const firstCells = [...container.querySelectorAll('tbody tr')].map(
+      (tr) => tr.querySelector('td')?.textContent,
+    );
+    expect(firstCells).toEqual(['1', '2', '3']);
   });
 });
