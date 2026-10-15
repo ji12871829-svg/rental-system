@@ -5,9 +5,17 @@
 // throw — the model can never invoke something unwired).
 import { arrears, dashboard } from './financeService';
 import { tenantBalances } from './tenantLedger';
+import { getBriefing } from './assistantBriefing';
 import type { ToolDef } from './assistantProvider';
 
+export const BRIEFING_TOOL_DEF: ToolDef = {
+  name: 'get_briefing',
+  description: 'What needs attention right now: top debtors, longest overdue, collection pace, water spikes. Call this when the user asks what to focus on, or to ground a month-end summary.',
+  parameters: { type: 'object', properties: {} },
+};
+
 export const TOOL_DEFS: ToolDef[] = [
+  BRIEFING_TOOL_DEF,
   {
     name: 'get_arrears_summary',
     description: 'Who owes rent/water: counts and totals by status for a reporting year, plus up to 5 sample debtors (tenantId, name, unit, balance).',
@@ -46,6 +54,7 @@ function asYear(value: unknown, fallback: number): number {
 
 export async function runTool(name: string, args: unknown, year: number): Promise<unknown> {
   const a = (args ?? {}) as Record<string, unknown>;
+  if (name === 'get_briefing') return getBriefing(year);
   if (name === 'get_arrears_summary') {
     const y = asYear(a.year, year);
     const rows = (await arrears(y)) as ArrearsRow[];
