@@ -97,8 +97,18 @@ export async function transcribeAudio(audioBase64: string, mimeType: string): Pr
     throw new Error('Recording too long — keep it under a minute and try again.');
   }
   const bytes = Buffer.from(audioBase64, 'base64');
+  // Groq detects the audio type from the FILENAME extension, not the MIME
+  // type: uploading as bare "recording" 400s with "file must be one of the
+  // following types". Map the validated mime to its extension.
+  const extByMime: Record<string, string> = {
+    'audio/webm': 'webm', 'audio/mp4': 'mp4', 'audio/mpeg': 'mp3',
+    'audio/mpga': 'mpga', 'audio/m4a': 'm4a', 'audio/x-m4a': 'm4a',
+    'audio/ogg': 'ogg', 'audio/opus': 'opus', 'audio/wav': 'wav',
+    'audio/x-wav': 'wav', 'audio/flac': 'flac',
+  };
+  const ext = extByMime[mimeType.toLowerCase()] ?? 'webm';
   const form = new FormData();
-  form.append('file', new Blob([bytes], { type: mimeType }), 'recording');
+  form.append('file', new Blob([bytes], { type: mimeType }), `recording.${ext}`);
   form.append('model', WHISPER_MODEL);
   let response: Response;
   try {
