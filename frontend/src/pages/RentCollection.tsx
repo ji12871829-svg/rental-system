@@ -297,18 +297,19 @@ export default function RentCollection() {
           </div>
           <div className="table-scroll">
             {!payments ? (
-              <SkeletonTable cols={8} rows={6} />
+              <SkeletonTable cols={9} rows={6} />
             ) : (
             <table>
               <thead>
                 <tr>
-                  <th>Date</th><th>Tenant</th><th>Unit</th><th>Month</th><th>Amount</th>
+                  <th>#</th><th>Date</th><th>Tenant</th><th>Unit</th><th>Month</th><th>Amount</th>
                   <th>Method</th><th>Status</th><th>Receipt</th>
                 </tr>
               </thead>
               <tbody>
-                {payments?.data.map((p) => (
+                {payments?.data.map((p, i) => (
                   <tr key={p.id}>
+                    <td className="text-xs text-gray-400">{i + 1}</td>
                     <td>{formatDate(p.payment_date)}</td>
                     <td className="font-medium">{p.tenant_name}</td>
                     <td>{p.unit_number}</td>
