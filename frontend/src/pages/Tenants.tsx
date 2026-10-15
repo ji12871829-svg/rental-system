@@ -192,12 +192,13 @@ export default function Tenants() {
               <table>
                 <thead>
                   <tr>
-                    <th>Tenant</th><th>Unit</th><th>Phone</th><th>Email</th><th>Missing</th><th>Actions</th>
+                    <th>#</th><th>Tenant</th><th>Unit</th><th>Phone</th><th>Email</th><th>Missing</th><th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {gapData.data.map((t) => (
+                  {gapData.data.map((t, i) => (
                     <tr key={t.id}>
+                      <td className="text-xs text-gray-400">{(gapData.pagination.page - 1) * gapData.pagination.limit + i + 1}</td>
                       <td className="font-medium">{t.full_name}</td>
                       <td>{t.unit_number ? `Unit ${t.unit_number}` : '—'}</td>
                       <td>{t.phone_number || '—'}</td>
@@ -238,13 +239,14 @@ export default function Tenants() {
           <table>
             <thead>
               <tr>
-                <th>Tenant</th><th>Phone</th><th>Unit</th><th>Move In</th><th>Rent Deadline</th>
+                <th>#</th><th>Tenant</th><th>Phone</th><th>Unit</th><th>Move In</th><th>Rent Deadline</th>
                 <th>Current Month</th><th>Payment History</th><th>Deposit</th><th>Status</th><th>Balances (YTD)</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {data.data.map((t) => (
+              {data.data.map((t, i) => (
                 <tr key={t.id}>
+                  <td className="text-xs text-gray-400">{(data.pagination.page - 1) * data.pagination.limit + i + 1}</td>
                   <td>
                     <div className="font-semibold text-gray-900">{t.full_name}</div>
                     <div className="text-xs text-gray-500">

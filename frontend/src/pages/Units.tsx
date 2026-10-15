@@ -59,20 +59,21 @@ export default function Units() {
         </Select>
       </div>
 
-      {loading && <SkeletonTable cols={9} />}
+      {loading && <SkeletonTable cols={10} />}
       {error && <div className="text-sm text-red-600">{error}</div>}
       {!loading && !error && data && (
         <div className="table-scroll">
           <table>
             <thead>
               <tr>
-                <th>Unit</th><th>Floor</th><th>Type</th><th>Monthly Rent</th>
+                <th>#</th><th>Unit</th><th>Floor</th><th>Type</th><th>Monthly Rent</th>
                 <th>Tenant</th><th>Phone</th><th>Status</th><th>Water</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {data.data.map((u) => (
+              {data.data.map((u, i) => (
                 <tr key={u.id}>
+                  <td className="text-xs text-gray-400">{(data.pagination.page - 1) * data.pagination.limit + i + 1}</td>
                   <td className="font-semibold text-gray-900">{u.unit_number}</td>
                   <td>{u.floor_name}</td>
                   <td>{u.unit_type}</td>

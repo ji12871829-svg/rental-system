@@ -169,14 +169,15 @@ function MeterSection({ formOpen, setFormOpen }: { formOpen: boolean; setFormOpe
           <table>
             <thead>
               <tr>
-                <th>Date</th><th>Unit</th><th>Tenant</th><th>Month</th>
+                <th>#</th><th>Date</th><th>Unit</th><th>Tenant</th><th>Month</th>
                 <th>Previous</th><th>Current</th><th>Consumed</th><th>Rate</th><th>Bill</th>
                 <th>Paid</th><th>Balance</th><th>Status</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {data.data.map((r) => (
+              {data.data.map((r, i) => (
                 <tr key={r.id}>
+                  <td className="text-xs text-gray-400">{i + 1}</td>
                   <td>{formatDate(r.reading_date)}</td>
                   <td className="font-semibold text-gray-900">Unit {r.unit_number}</td>
                   <td>{r.tenant_name ?? '—'}</td>
@@ -557,13 +558,14 @@ function PaymentsSection() {
           <table>
             <thead>
               <tr>
-                <th>Date</th><th>Tenant</th><th>Unit</th><th>Month</th><th>Amount</th>
+                <th>#</th><th>Date</th><th>Tenant</th><th>Unit</th><th>Month</th><th>Amount</th>
                 <th>Method</th><th>Bill</th><th>Total Paid</th><th>Balance</th><th>Status</th><th>Receipt</th>{isAdmin && <th>Actions</th>}
               </tr>
             </thead>
             <tbody>
-              {data.data.map((p) => (
+              {data.data.map((p, i) => (
                 <tr key={p.id}>
+                  <td className="text-xs text-gray-400">{i + 1}</td>
                   <td>{formatDate(p.payment_date)}</td>
                   <td className="font-medium">{p.tenant_name}</td>
                   <td>Unit {p.unit_number}</td>
