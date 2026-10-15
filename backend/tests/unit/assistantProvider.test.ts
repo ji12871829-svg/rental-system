@@ -141,6 +141,9 @@ describe('transcribeAudio (Whisper)', () => {
     expect(text).toBe('who has not paid rent?');
     expect(seen[0].url).toBe('https://api.groq.com/openai/v1/audio/transcriptions');
     expect((seen[0].init.body as FormData).get('model')).toBe('whisper-large-v3-turbo');
+    // Groq types the file by filename extension — an extensionless upload
+    // 400s with "file must be one of the following types".
+    expect(((seen[0].init.body as FormData).get('file') as File).name).toBe('recording.webm');
   });
 
   it('surfaces provider failures readably', async () => {
