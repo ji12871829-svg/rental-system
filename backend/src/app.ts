@@ -90,14 +90,18 @@ export function createApp() {
     next();
   });
 
-  // Browser features this app never uses stay disabled at the policy level.
+  // Browser features this app never uses stay disabled at the policy level —
+  // EXCEPT the microphone, which the assistant's voice dictation needs. It is
+  // scoped to our own origin only (self): no iframe or third party can claim
+  // it. (microphone=() here once overrode the user's own grant and made the
+  // mic button fail even with permission allowed — see the copilot mic fix.)
   // helmet (v8) has no Permissions-Policy middleware, and its default CSP +
   // Referrer-Policy: no-referrer already cover script/object/frame hardening
   // and referrer leakage — this is the one header that needed a hand roll.
   app.use((_req, res, next) => {
     res.setHeader(
       'Permissions-Policy',
-      'camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()'
+      'camera=(), microphone=(self), geolocation=(), payment=(), usb=(), browsing-topics=()'
     );
     next();
   });

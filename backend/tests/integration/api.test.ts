@@ -187,6 +187,18 @@ describe('Security', () => {
     expect(res.headers['content-security-policy']).toBeDefined();
   });
 
+  it('allows the microphone for our own origin only (assistant voice dictation)', async () => {
+    // microphone=() once overrode the user's own grant and made the mic
+    // button fail even with permission allowed — camera/geolocation stay
+    // denied (least privilege: nothing uses them).
+    const res = await request(app).get('/api/health');
+    const policy = res.headers['permissions-policy'] ?? '';
+    expect(policy).toContain('microphone=(self)');
+    expect(policy).not.toContain('microphone=()');
+    expect(policy).toContain('camera=()');
+    expect(policy).toContain('geolocation=()');
+  });
+
   it('rejects unauthenticated API access', async () => {
     const res = await request(app).get('/api/units');
     expect(res.status).toBe(401);
