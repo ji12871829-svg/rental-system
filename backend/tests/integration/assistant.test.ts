@@ -48,3 +48,25 @@ describe('Assistant routes', () => {
     expect(JSON.stringify(res.body.data)).not.toMatch(/key|secret|token/i);
   });
 });
+
+describe('POST /api/assistant/transcribe (Whisper)', () => {
+  const audio = Buffer.from('fake-opus-bytes').toString('base64');
+
+  it('requires staff login', async () => {
+    const res = await request(app).post('/api/assistant/transcribe').send({ audioBase64: audio, mimeType: 'audio/webm' });
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects empty audio and non-audio mime types with 400', async () => {
+    const empty = await request(app).post('/api/assistant/transcribe').set(auth(staffToken)).send({ audioBase64: '', mimeType: 'audio/webm' });
+    expect(empty.status).toBe(400);
+    const text = await request(app).post('/api/assistant/transcribe').set(auth(staffToken)).send({ audioBase64: audio, mimeType: 'text/plain' });
+    expect(text.status).toBe(400);
+  });
+
+  it('fails closed with 503 when GROQ_API_KEY is unset', async () => {
+    const res = await request(app).post('/api/assistant/transcribe').set(auth(staffToken)).send({ audioBase64: audio, mimeType: 'audio/webm' });
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBe('ASSISTANT_DISABLED');
+  });
+});

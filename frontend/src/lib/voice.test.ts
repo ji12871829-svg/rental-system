@@ -1,27 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getSpeechRecognitionCtor, speak, supportsSpeechSynthesis } from './voice';
+import { speak, supportsSpeechSynthesis } from './voice';
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('voice helpers', () => {
-  it('returns null when the browser has no speech recognition (mic hides)', () => {
-    vi.stubGlobal('SpeechRecognition', undefined);
-    vi.stubGlobal('webkitSpeechRecognition', undefined);
-    expect(getSpeechRecognitionCtor()).toBeNull();
-  });
-
-  it('prefers the standard constructor, falls back to webkit', () => {
-    const Std = vi.fn();
-    vi.stubGlobal('SpeechRecognition', Std);
-    expect(getSpeechRecognitionCtor()).toBe(Std);
-    vi.stubGlobal('SpeechRecognition', undefined);
-    const Webkit = vi.fn();
-    vi.stubGlobal('webkitSpeechRecognition', Webkit);
-    expect(getSpeechRecognitionCtor()).toBe(Webkit);
-  });
-
+describe('voice helpers (read-aloud only — dictation records audio for server-side Whisper instead)', () => {
   it('speak() is a no-op without synthesis support and speaks once with it', () => {
     vi.stubGlobal('speechSynthesis', undefined);
     expect(() => speak('hi')).not.toThrow();

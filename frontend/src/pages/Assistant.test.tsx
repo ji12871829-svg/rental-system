@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../components/ui';
@@ -50,7 +50,7 @@ describe('Assistant page', () => {
     expect(await screen.findByText('Two tenants owe KSh 8,000.')).toBeInTheDocument();
   });
 
-  it('hides the mic button where speech recognition is unsupported', async () => {
+  it('hides the mic button where audio recording is unsupported', async () => {
     renderPage();
     await screen.findByText(/Ask about rent, water, tenants/);
     expect(screen.queryByRole('button', { name: 'Dictate question' })).not.toBeInTheDocument();
@@ -86,96 +86,105 @@ describe('Assistant page', () => {
   });
 });
 
-describe('Assistant mic (continuous dictation)', () => {
-  class MockRecognition {
-    static instances: MockRecognition[] = [];
-    lang = '';
-    continuous = false;
-    interimResults = false;
-    onresult: ((e: { results: ({ transcript: string }[] & { isFinal: boolean })[]; resultIndex: number }) => void) | null = null;
-    onerror: ((e: { error?: string }) => void) | null = null;
-    onend: (() => void) | null = null;
-    started = false;
+describe('Assistant mic (record and transcribe)', () => {
+  class MockRecorder {
+    static instances: MockRecorder[] = [];
+    ondataavailable: ((e: { data: Blob }) => void) | null = null;
+    onstop: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    state = 'inactive';
+    mimeType = 'audio/webm';
     stopped = false;
-    constructor() {
-      MockRecognition.instances.push(this);
+    constructor(_stream?: unknown) {
+      MockRecorder.instances.push(this);
     }
     start() {
-      this.started = true;
+      this.state = 'recording';
     }
     stop() {
+      this.state = 'inactive';
       this.stopped = true;
-      this.onend?.();
+      this.onstop?.();
     }
   }
 
-  function stubMic() {
-    MockRecognition.instances = [];
-    vi.stubGlobal('SpeechRecognition', MockRecognition);
+  function stubMicStack() {
+    MockRecorder.instances = [];
+    vi.stubGlobal('MediaRecorder', MockRecorder);
+    const stopTrack = vi.fn();
+    const stream = { getTracks: () => [{ stop: stopTrack }] };
+    Object.defineProperty(window.navigator, 'mediaDevices', {
+      value: { getUserMedia: vi.fn(async () => stream) },
+      configurable: true,
+    });
+    return { stopTrack };
   }
 
   function lastMic() {
-    return MockRecognition.instances[MockRecognition.instances.length - 1];
+    return MockRecorder.instances[MockRecorder.instances.length - 1];
   }
 
-  function micResult(transcript: string, isFinal: boolean) {
-    // isFinal lives on the RESULT (results[i]), per the real API — putting
-    // it on the alternative would silently make everything interim.
-    const result = Object.assign([{ transcript }], { isFinal });
-    // Direct handler call (not via fireEvent), so flush with act().
-    act(() => {
-      lastMic().onresult?.({ results: [result], resultIndex: 0 });
-    });
+  function emitAudio(byteCount = 3) {
+    lastMic()?.ondataavailable?.({ data: new Blob([new Uint8Array(byteCount)], { type: 'audio/webm' }) });
   }
 
   function dictate() {
     fireEvent.click(screen.getByRole('button', { name: 'Dictate question' }));
   }
 
-  it('starts continuous recognition with live interim results and a Stop state', async () => {
-    stubMic();
-    renderPage();
-    await screen.findByText(/Ask about rent, water, tenants/);
-    dictate();
-    const rec = lastMic();
-    expect(rec.started).toBe(true);
-    // The actual bug: single-shot mode ended at the first pause.
-    expect(rec.continuous).toBe(true);
-    expect(rec.interimResults).toBe(true);
-    expect(rec.lang).toBe('en-KE');
-    expect(screen.getByText('Stop')).toBeInTheDocument();
-  });
+  function mockTranscribe(text: string) {
+    mockedPost.mockImplementation(async (url: string) =>
+      url === '/api/assistant/transcribe' ? { data: { text } } : { data: {} },
+    );
+  }
 
-  it('stops on second tap instead of leaking a recognizer', async () => {
-    stubMic();
+  it('records on tap and transcribes into the input on second tap', async () => {
+    stubMicStack();
+    mockTranscribe('who has not paid October rent?');
     renderPage();
     await screen.findByText(/Ask about rent, water, tenants/);
     dictate();
+    await screen.findByText('Stop');
+    expect(lastMic().state).toBe('recording');
+    emitAudio();
     dictate();
-    expect(lastMic().stopped).toBe(true);
-    expect(MockRecognition.instances).toHaveLength(1);
+    await waitFor(() =>
+      expect(mockedPost).toHaveBeenCalledWith(
+        '/api/assistant/transcribe',
+        expect.objectContaining({ mimeType: 'audio/webm' }),
+      ),
+    );
+    const call = mockedPost.mock.calls.find((c) => c[0] === '/api/assistant/transcribe');
+    if (!call) throw new Error('expected a transcribe upload call');
+    expect((call[1] as { audioBase64: string }).audioBase64.length).toBeGreaterThan(0);
+    await waitFor(() =>
+      expect(screen.getByLabelText('Ask the assistant')).toHaveValue('who has not paid October rent?'),
+    );
     expect(screen.queryByText('Stop')).not.toBeInTheDocument();
-  });
-
-  it('streams interim text live and accumulates finals', async () => {
-    stubMic();
-    renderPage();
-    await screen.findByText(/Ask about rent, water, tenants/);
-    dictate();
-    micResult('who has', false);
-    expect(screen.getByLabelText('Ask the assistant')).toHaveValue('who has');
-    micResult('who has not', true);
-    micResult('paid', true);
-    expect(screen.getByLabelText('Ask the assistant')).toHaveValue('who has not paid');
   });
 
   it('explains a blocked microphone instead of silently dying', async () => {
-    stubMic();
+    stubMicStack();
+    Object.defineProperty(window.navigator, 'mediaDevices', {
+      value: { getUserMedia: vi.fn(async () => { throw new DOMException('denied', 'NotAllowedError'); }) },
+      configurable: true,
+    });
     renderPage();
     await screen.findByText(/Ask about rent, water, tenants/);
     dictate();
-    lastMic().onerror?.({ error: 'not-allowed' });
     expect(await screen.findByText(/Microphone blocked/)).toBeInTheDocument();
-    expect(screen.queryByText('Stop')).not.toBeInTheDocument();
+  });
+
+  it('rejects oversized recordings client-side without uploading', async () => {
+    stubMicStack();
+    mockTranscribe('never used');
+    renderPage();
+    await screen.findByText(/Ask about rent, water, tenants/);
+    dictate();
+    await screen.findByText('Stop');
+    emitAudio(901_001);
+    dictate();
+    expect(await screen.findByText(/too long/)).toBeInTheDocument();
+    expect(mockedPost).not.toHaveBeenCalled();
   });
 });

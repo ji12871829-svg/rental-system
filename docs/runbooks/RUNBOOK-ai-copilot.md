@@ -8,8 +8,13 @@
 4. Free-tier reality (Oct 2026): ~1,000 requests/day per model, no card.
    Model default `openai/gpt-oss-20b` via `GROQ_MODEL`. Limits change without
    warning — the provider is swap-able (OpenAI-compatible endpoint).
-5. Voice dictation is browser-native (Chrome/Edge); elsewhere the mic hides
-   and typing works. No audio ever leaves the device for transcription.
+5. Voice dictation records in the browser (MediaRecorder, 60 s cap) and
+   transcribes server-side via Groq Whisper (`whisper-large-v3-turbo`,
+   same free tier) — far stronger on accented speech than the browser's
+   built-in recognizer, which garbled even short English queries. Unlike
+   before, voice AUDIO does leave the device (to Groq, for transcription
+   only) — covered by the same data-use check as point 6. Mic needs a secure
+   context (HTTPS in production, localhost in dev) plus the site permission.
 6. Privacy: prompts may contain tenant names/balances — check the provider's
    current data-use terms before going live; drafts never send without a
    human pressing Approve (existing role-guarded campaign endpoint).
