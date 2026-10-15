@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../components/ui';
@@ -16,6 +16,7 @@ const mockedPost = vi.mocked(api.post);
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function renderPage() {
@@ -82,5 +83,99 @@ describe('Assistant page', () => {
     renderPage();
     expect(await screen.findByText(/assistant is disabled/)).toBeInTheDocument();
     expect(await screen.findByText(/GROQ_API_KEY/)).toBeInTheDocument();
+  });
+});
+
+describe('Assistant mic (continuous dictation)', () => {
+  class MockRecognition {
+    static instances: MockRecognition[] = [];
+    lang = '';
+    continuous = false;
+    interimResults = false;
+    onresult: ((e: { results: ({ transcript: string }[] & { isFinal: boolean })[]; resultIndex: number }) => void) | null = null;
+    onerror: ((e: { error?: string }) => void) | null = null;
+    onend: (() => void) | null = null;
+    started = false;
+    stopped = false;
+    constructor() {
+      MockRecognition.instances.push(this);
+    }
+    start() {
+      this.started = true;
+    }
+    stop() {
+      this.stopped = true;
+      this.onend?.();
+    }
+  }
+
+  function stubMic() {
+    MockRecognition.instances = [];
+    vi.stubGlobal('SpeechRecognition', MockRecognition);
+  }
+
+  function lastMic() {
+    return MockRecognition.instances[MockRecognition.instances.length - 1];
+  }
+
+  function micResult(transcript: string, isFinal: boolean) {
+    // isFinal lives on the RESULT (results[i]), per the real API — putting
+    // it on the alternative would silently make everything interim.
+    const result = Object.assign([{ transcript }], { isFinal });
+    // Direct handler call (not via fireEvent), so flush with act().
+    act(() => {
+      lastMic().onresult?.({ results: [result], resultIndex: 0 });
+    });
+  }
+
+  function dictate() {
+    fireEvent.click(screen.getByRole('button', { name: 'Dictate question' }));
+  }
+
+  it('starts continuous recognition with live interim results and a Stop state', async () => {
+    stubMic();
+    renderPage();
+    await screen.findByText(/Ask about rent, water, tenants/);
+    dictate();
+    const rec = lastMic();
+    expect(rec.started).toBe(true);
+    // The actual bug: single-shot mode ended at the first pause.
+    expect(rec.continuous).toBe(true);
+    expect(rec.interimResults).toBe(true);
+    expect(rec.lang).toBe('en-KE');
+    expect(screen.getByText('Stop')).toBeInTheDocument();
+  });
+
+  it('stops on second tap instead of leaking a recognizer', async () => {
+    stubMic();
+    renderPage();
+    await screen.findByText(/Ask about rent, water, tenants/);
+    dictate();
+    dictate();
+    expect(lastMic().stopped).toBe(true);
+    expect(MockRecognition.instances).toHaveLength(1);
+    expect(screen.queryByText('Stop')).not.toBeInTheDocument();
+  });
+
+  it('streams interim text live and accumulates finals', async () => {
+    stubMic();
+    renderPage();
+    await screen.findByText(/Ask about rent, water, tenants/);
+    dictate();
+    micResult('who has', false);
+    expect(screen.getByLabelText('Ask the assistant')).toHaveValue('who has');
+    micResult('who has not', true);
+    micResult('paid', true);
+    expect(screen.getByLabelText('Ask the assistant')).toHaveValue('who has not paid');
+  });
+
+  it('explains a blocked microphone instead of silently dying', async () => {
+    stubMic();
+    renderPage();
+    await screen.findByText(/Ask about rent, water, tenants/);
+    dictate();
+    lastMic().onerror?.({ error: 'not-allowed' });
+    expect(await screen.findByText(/Microphone blocked/)).toBeInTheDocument();
+    expect(screen.queryByText('Stop')).not.toBeInTheDocument();
   });
 });
