@@ -14,6 +14,12 @@ process.env.JWT_PORTAL_SECRET = 'test-portal-signing-key-fedcba9876543210';
 // instead of exercising its handler. The mpesaCallbackGate suite sets its
 // own token explicitly when testing the gate itself.
 process.env.MPESA_CALLBACK_TOKEN = '';
+// Assistant LLM key: a real GROQ_API_KEY in backend/.env (dev machine) must
+// never enable the assistant under test — the fail-closed suites assert the
+// 503/disabled path, and no test run may fire live Groq calls. Suites that
+// need a key set it explicitly (mutating the imported env object, since
+// env.ts snapshots process.env at import).
+process.env.GROQ_API_KEY = '';
 process.env.DATABASE_URL =
   process.env.TEST_DATABASE_URL || 'postgres://rms_user:rms_password@localhost:5432/rpms_test';
 
