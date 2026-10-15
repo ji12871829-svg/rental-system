@@ -18,3 +18,15 @@
 6. Privacy: prompts may contain tenant names/balances — check the provider's
    current data-use terms before going live; drafts never send without a
    human pressing Approve (existing role-guarded campaign endpoint).
+
+## Memory, retention, briefing (agent update)
+
+- Conversations save per staff user (Threads table). Switching threads
+  resumes exact context; Delete is a hard erase (privacy).
+- Idle threads auto-delete after 365 days on listing; no scheduler to run.
+- The "What needs attention" briefing is deterministic rules over live
+  data (top debtors, longest overdue, collection pace, water spikes) — the
+  model never invents suggestions. Same payload backs the chat
+  (`get_briefing` tool) and the greeting cards.
+- Fence unchanged: the agent drafts and prioritizes; money movement, SMS
+  sending, and record changes stay behind human approval.

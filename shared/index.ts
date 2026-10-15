@@ -205,3 +205,25 @@ export interface AssistantConfig {
   enabled: boolean;
   model: string;
 }
+
+// ---------------------------------------------------------------------------
+// Staff copilot threads (per-user conversation memory)
+// ---------------------------------------------------------------------------
+
+/** One saved conversation in the thread switcher. */
+export interface AssistantThread {
+  id: number;
+  title: string;
+  messageCount: number;
+  updatedAt: string;
+}
+
+/** Deterministic briefing item (computed server-side, never LLM-written). */
+export interface BriefingItem {
+  kind: 'top_debtor' | 'longest_overdue' | 'collection_pace' | 'water_spike' | 'unpaid_count';
+  title: string;
+  detail: string;
+  tenantId?: number;
+  unitNumber?: string;
+  linkTo?: string;
+}

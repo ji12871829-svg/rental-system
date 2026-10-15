@@ -3,7 +3,7 @@ import { runTool, TOOL_DEFS } from '../../src/services/assistantTools';
 describe('assistantTools (read-only)', () => {
   it('exposes exactly the four whitelisted tools', () => {
     expect(TOOL_DEFS.map((t) => t.name).sort()).toEqual(
-      ['draft_reminder', 'find_tenant', 'get_arrears_summary', 'monthly_figures'].sort(),
+      ['draft_reminder', 'find_tenant', 'get_arrears_summary', 'get_briefing', 'monthly_figures'].sort(),
     );
   });
 

@@ -41,10 +41,10 @@ describe('assistantChat loop', () => {
     expect(out.reply).toBe('Here is the draft for Abdi N.');
   });
 
-  it('stops after 5 tool iterations and says so', async () => {
+  it('stops after 8 tool iterations and says so', async () => {
     mockChat.mockResolvedValue({ content: null, toolCalls: [{ id: 'c', name: 'get_arrears_summary', args: {} }] });
     const out = await chatWithAssistant({ message: 'x', history: [], year: 2026 });
-    expect(mockChat).toHaveBeenCalledTimes(5);
+    expect(mockChat).toHaveBeenCalledTimes(8);
     expect(out.reply).toMatch(/could not finish/i);
   });
 

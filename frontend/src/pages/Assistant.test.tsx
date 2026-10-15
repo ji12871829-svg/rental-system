@@ -6,12 +6,13 @@ import { api } from '../lib/api';
 import Assistant from './Assistant';
 
 vi.mock('../lib/api', () => ({
-  api: { get: vi.fn(), post: vi.fn() },
+  api: { get: vi.fn(), post: vi.fn(), del: vi.fn() },
   qs: () => '',
 }));
 
 const mockedGet = vi.mocked(api.get);
 const mockedPost = vi.mocked(api.post);
+const mockedDel = vi.mocked(api.del);
 
 afterEach(() => {
   cleanup();
@@ -186,5 +187,66 @@ describe('Assistant mic (record and transcribe)', () => {
     dictate();
     expect(await screen.findByText(/too long/)).toBeInTheDocument();
     expect(mockedPost).not.toHaveBeenCalled();
+  });
+});
+
+describe('Assistant threads and briefing', () => {
+  const THREADS = [{ id: 9, title: 'October chase', messageCount: 4, updatedAt: '2026-10-15T08:00:00.000Z' }];
+  const BRIEFING = [
+    {
+      kind: 'top_debtor',
+      title: 'Abdi N (Unit 7) owes KSh 5,000',
+      detail: 'Rent balance KSh 5,000, water KSh 0, unpaid.',
+      tenantId: 7,
+      unitNumber: '7',
+      linkTo: '/arrears',
+    },
+  ];
+  const THREAD_MESSAGES = {
+    id: 9,
+    title: 'October chase',
+    messages: [
+      { role: 'user', content: 'who owes?', toolCalls: [], drafts: [] },
+      { role: 'assistant', content: 'Abdi N owes 5,000.', toolCalls: ['get_arrears_summary'], drafts: [] },
+    ],
+  };
+
+  beforeEach(() => {
+    mockedDel.mockReset();
+    mockedDel.mockResolvedValue({ data: {} });
+    mockedGet.mockImplementation((url: string) => {
+      if (url === '/api/assistant/threads/9/messages') return Promise.resolve({ data: THREAD_MESSAGES });
+      if (url === '/api/assistant/threads') return Promise.resolve({ data: THREADS });
+      if (url === '/api/assistant/briefing') return Promise.resolve({ data: BRIEFING });
+      return Promise.resolve({ data: { enabled: true, model: 'openai/gpt-oss-20b' } });
+    });
+  });
+
+  it('shows the briefing when the chat is empty', async () => {
+    renderPage();
+    expect(await screen.findByText('What needs attention')).toBeInTheDocument();
+    expect(screen.getByText('Abdi N (Unit 7) owes KSh 5,000')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Abdi N (Unit 7) owes KSh 5,000' })).toHaveAttribute('href', '/arrears');
+    expect(mockedPost).not.toHaveBeenCalled();
+  });
+
+  it("switching threads loads that thread's messages", async () => {
+    renderPage();
+    fireEvent.change(await screen.findByLabelText('Conversation'), { target: { value: '9' } });
+    expect(await screen.findByText('who owes?')).toBeInTheDocument();
+    expect(screen.getByText('Abdi N owes 5,000.')).toBeInTheDocument();
+    expect(mockedGet).toHaveBeenCalledWith('/api/assistant/threads/9/messages');
+  });
+
+  it('deleting a thread asks confirm and returns to a fresh chat', async () => {
+    renderPage();
+    fireEvent.change(await screen.findByLabelText('Conversation'), { target: { value: '9' } });
+    await screen.findByText('who owes?');
+    fireEvent.click(screen.getByRole('button', { name: 'Delete conversation' }));
+    expect(window.confirm).toHaveBeenCalledWith('Delete this conversation? It cannot be undone.');
+    await waitFor(() => expect(mockedDel).toHaveBeenCalledWith('/api/assistant/threads/9'));
+    expect(await screen.findByText('What needs attention')).toBeInTheDocument();
+    expect(screen.queryByText('who owes?')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Ask the assistant')).toHaveValue('');
   });
 });
