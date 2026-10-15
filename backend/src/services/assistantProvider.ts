@@ -11,6 +11,7 @@ export interface ChatMsg {
   content: string;
   toolCallId?: string;
   name?: string;
+  toolCalls?: { id: string; name: string; args: unknown }[];
 }
 
 export interface ToolDef {
@@ -26,6 +27,13 @@ export interface AssistantCompletion {
 
 function toWireMessage(m: ChatMsg): Record<string, unknown> {
   if (m.role === 'tool') return { role: 'tool', tool_call_id: m.toolCallId ?? '', content: m.content };
+  if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
+    return {
+      role: 'assistant',
+      content: m.content,
+      tool_calls: m.toolCalls.map((c) => ({ id: c.id, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args ?? {}) } })),
+    };
+  }
   return { role: m.role, content: m.content };
 }
 

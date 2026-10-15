@@ -45,7 +45,7 @@ export async function chatWithAssistant(input: {
   const transcript: ChatMsg[] = [...input.history.slice(-10), { role: 'user', content: input.message }];
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
     const out = await chatCompletion({ system: SYSTEM_PROMPT, messages: transcript, tools: TOOL_DEFS });
-    transcript.push({ role: 'assistant', content: out.content ?? '' });
+    transcript.push({ role: 'assistant', content: out.content ?? '', toolCalls: out.toolCalls });
     if (out.toolCalls.length === 0) {
       const reply = (out.content ?? '').trim();
       return {
