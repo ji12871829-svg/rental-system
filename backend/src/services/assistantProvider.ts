@@ -2,6 +2,10 @@
 // SDK: one POST shape, zero new dependencies. Fail-closed without a key.
 import { env } from '../config/env';
 
+// Wire shape note: this interface uses camelCase internally, but the
+// OpenAI-compatible wire format wants snake_case `tool_call_id` on tool
+// messages (and no `name`/`toolCallId` keys at all — Groq 400s otherwise).
+// toWireMessage() below is the SOLE translation point; tests pin it.
 export interface ChatMsg {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
@@ -18,6 +22,11 @@ export interface ToolDef {
 export interface AssistantCompletion {
   content: string | null;
   toolCalls: { id: string; name: string; args: unknown }[];
+}
+
+function toWireMessage(m: ChatMsg): Record<string, unknown> {
+  if (m.role === 'tool') return { role: 'tool', tool_call_id: m.toolCallId ?? '', content: m.content };
+  return { role: m.role, content: m.content };
 }
 
 const TIMEOUT_MS = 20_000;
@@ -38,7 +47,7 @@ export async function chatCompletion(args: { system: string; messages: ChatMsg[]
         model: cfg.model,
         temperature: 0.2,
         max_tokens: 800,
-        messages: [{ role: 'system', content: args.system }, ...args.messages],
+        messages: [{ role: 'system', content: args.system }, ...args.messages.map(toWireMessage)],
         tools: args.tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } })),
         tool_choice: 'auto',
       }),
