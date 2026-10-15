@@ -180,3 +180,28 @@ export interface DashboardData {
     }[];
   };
 }
+
+// ---------------------------------------------------------------------------
+// Staff copilot (POST /api/assistant/chat) — read-only answers + drafts
+// ---------------------------------------------------------------------------
+
+/** One draft message the copilot prepared for human approval (never sent by the copilot itself). */
+export interface AssistantDraft {
+  tenantId: number;
+  tenantName: string | null;
+  phoneNumber: string | null;
+  text: string;
+}
+
+/** POST /api/assistant/chat response payload. */
+export interface AssistantChatReply {
+  reply: string;
+  drafts: AssistantDraft[];
+  toolCalls: string[];
+}
+
+/** GET /api/assistant/config response payload (no secrets — safe for any staff role). */
+export interface AssistantConfig {
+  enabled: boolean;
+  model: string;
+}

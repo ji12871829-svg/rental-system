@@ -5,9 +5,9 @@
 import { chatCompletion, type ChatMsg } from './assistantProvider';
 import { TOOL_DEFS, runTool } from './assistantTools';
 
-export const MAX_TOOL_ITERATIONS = 5;
+const MAX_TOOL_ITERATIONS = 5;
 
-export const SYSTEM_PROMPT = [
+const SYSTEM_PROMPT = [
   'You are Olbano, the in-app assistant for Olbano Plaza property staff (Kenya, currency KSh, English).',
   'Answer ONLY from tool results shown in this conversation. If the tools do not contain a figure, say you cannot see it — never invent tenant names, units, or balances.',
   'Keep replies short: one direct answer plus at most 3 supporting numbers.',
