@@ -38,7 +38,9 @@ export function ExecWatchlist({ rows, loading, error, currency }: ExecWatchlistP
             r.phoneNumber.toLowerCase().includes(q)
           : true,
       )
-      .sort((a, b) => b.totalOutstanding - a.totalOutstanding)
+      // Unit order (numeric-aware, so Unit 12 follows Unit 9): the operator
+      // walks the building in unit order, and the list mirrors it.
+      .sort((a, b) => a.unitNumber.localeCompare(b.unitNumber, undefined, { numeric: true }))
       .slice(0, MAX_ROWS);
   }, [rows, query, status]);
 
@@ -61,7 +63,7 @@ export function ExecWatchlist({ rows, loading, error, currency }: ExecWatchlistP
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-gray-900">High-Priority Arrears &amp; Recovery Watchlist</h3>
           <p className="text-[11px] text-gray-500">
-            {rows === null ? 'Loading balances…' : `${plural(openCount, 'tenant')} with an open balance, highest first`}
+            {rows === null ? 'Loading balances…' : `${plural(openCount, 'tenant')} with an open balance, in unit order`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -91,7 +93,7 @@ export function ExecWatchlist({ rows, loading, error, currency }: ExecWatchlistP
         </div>
       </div>
 
-      {loading && <SkeletonTable cols={8} rows={4} />}
+      {loading && <SkeletonTable cols={9} rows={4} />}
       {!loading && error && <div className="p-4 text-sm text-red-600">Unable to load arrears: {error}</div>}
       {!loading && !error && (rows?.length ?? 0) === 0 && (
         <div className="p-6">
@@ -103,6 +105,7 @@ export function ExecWatchlist({ rows, loading, error, currency }: ExecWatchlistP
           <table>
             <thead>
               <tr>
+                <th>#</th>
                 <th>Unit</th>
                 <th>Tenant</th>
                 <th>Floor</th>
@@ -114,8 +117,9 @@ export function ExecWatchlist({ rows, loading, error, currency }: ExecWatchlistP
               </tr>
             </thead>
             <tbody>
-              {visible.map((r) => (
+              {visible.map((r, i) => (
                 <tr key={r.unitId}>
+                  <td className="text-xs text-gray-400">{i + 1}</td>
                   <td className="font-semibold text-gray-900">Unit {r.unitNumber}</td>
                   <td className="font-medium">{r.tenantName}</td>
                   <td className="text-xs text-gray-600">{r.floor || '—'}</td>

@@ -35,11 +35,17 @@ function KpiShell({
   icon,
   tint,
   children,
+  linkTo,
+  linkLabel,
 }: {
   label: string;
   icon: React.ReactNode;
   tint: string;
   children: React.ReactNode;
+  // Optional hub link — turns the card into one click to the page behind
+  // the number (e.g. Overdue Arrears → /arrears).
+  linkTo?: string;
+  linkLabel?: string;
 }) {
   return (
     <div className="flex flex-col rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -50,6 +56,11 @@ function KpiShell({
         </span>
       </div>
       <div className="mt-2 flex-1">{children}</div>
+      {linkTo && (
+        <Link to={linkTo} className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-brand-600 transition-colors duration-150 hover:text-brand-700 hover:underline">
+          {linkLabel ?? 'View →'}
+        </Link>
+      )}
     </div>
   );
 }
@@ -186,8 +197,9 @@ export function ExecKpiRow({ data, arrears }: ExecKpiRowProps) {
         </div>
       </KpiShell>
 
-      {/* 2. Overdue arrears — rent + water still open this reporting year */}
-      <KpiShell label="Overdue Arrears" tint="bg-red-50 text-red-600" icon={<AlertTriangle size={16} strokeWidth={1.75} />}>
+      {/* 2. Overdue arrears — rent + water still open this reporting year.
+          One click on the card footer opens the full debtors list. */}
+      <KpiShell label="Overdue Arrears" tint="bg-red-50 text-red-600" icon={<AlertTriangle size={16} strokeWidth={1.75} />} linkTo="/arrears" linkLabel="View debtors →">
         <div className="text-2xl font-bold text-gray-900">{money(combined.totalOutstanding, currency)}</div>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <span className="rounded-md bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">

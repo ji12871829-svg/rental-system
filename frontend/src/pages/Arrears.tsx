@@ -37,7 +37,10 @@ export default function Arrears() {
   // deep-link straight to one unit's arrears row — shared hook syncs both ways.
   const [unitFilter, setUnitFilter] = useQueryParam('unit');
   const [statusFilter, setStatusFilter] = useState('');
-  const [sortBy, setSortBy] = useState<SortKey>('total');
+  // Unit order is the default: the operator walks the building in unit
+  // order, and the list mirrors it. Highest-balance / months views stay one
+  // click away in the sort dropdown.
+  const [sortBy, setSortBy] = useState<SortKey>('unit');
 
   const { data, loading, error } = useFetch<ArrearRow[]>(
     () => api.get<{ data: ArrearRow[] }>(`/api/reports/arrears?year=${year}`).then((r) => r.data),
@@ -178,27 +181,28 @@ export default function Arrears() {
           <option value="OVERPAID">Overpaid</option>
         </Select>
         <Select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)} className="w-44">
+          <option value="unit">Sort: unit number</option>
           <option value="total">Sort: highest balance</option>
           <option value="months">Sort: months in arrears</option>
-          <option value="unit">Sort: unit number</option>
         </Select>
       </div>
 
-      {loading && <SkeletonTable cols={11} />}
+      {loading && <SkeletonTable cols={12} />}
       {error && <div className="text-sm text-red-600">{error}</div>}
       {!loading && !error && (
         <div className="table-scroll">
           <table>
             <thead>
               <tr>
-                <th>Unit</th><th>Tenant</th><th>Phone</th><th>Monthly Rent</th>
+                <th>#</th><th>Unit</th><th>Tenant</th><th>Phone</th><th>Monthly Rent</th>
                 <th>Rent Paid</th><th>Rent Balance</th>
                 <th>Water Balance</th><th>Total Outstanding</th><th>Months in Arrears</th><th>Status</th><th></th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {rows.map((r, i) => (
                 <tr key={r.unitId}>
+                  <td className="text-xs text-gray-400">{i + 1}</td>
                   <td className="font-semibold text-gray-900">Unit {r.unitNumber}</td>
                   <td className="font-medium">{r.tenantName}</td>
                   <td className="text-xs">{r.phoneNumber}</td>
