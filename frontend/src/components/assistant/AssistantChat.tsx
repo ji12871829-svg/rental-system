@@ -9,11 +9,12 @@
 // English queries. Nothing here sends by itself: each draft card's Approve
 // posts to the existing POST /api/sms/campaign (role-guarded there).
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Mic, Send, Volume2, VolumeX } from 'lucide-react';
-import { Button, Field, TextInput, useToast } from '../ui';
+import { Button, Field, Select, TextInput, useToast } from '../ui';
 import { api } from '../../lib/api';
 import { speak, supportsSpeechSynthesis } from '../../lib/voice';
-import type { AssistantChatReply, AssistantConfig, AssistantDraft } from '@rpms/shared';
+import type { AssistantChatReply, AssistantConfig, AssistantDraft, AssistantThread, BriefingItem } from '@rpms/shared';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -35,6 +36,9 @@ export default function AssistantChat() {
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
   const [readAloud, setReadAloud] = useState(false);
+  const [threads, setThreads] = useState<AssistantThread[]>([]);
+  const [threadId, setThreadId] = useState<number | null>(null);
+  const [briefing, setBriefing] = useState<BriefingItem[] | null>(null);
   const history = useRef<{ role: 'user' | 'assistant'; content: string }[]>([]);
   // Live MediaRecorder (null when idle). Tap mic to start, tap again to
   // stop and transcribe; a 60 s timer stops runaway recordings.
@@ -53,6 +57,17 @@ export default function AssistantChat() {
       .get<{ data: AssistantConfig }>('/api/assistant/config')
       .then((r) => setConfig(r.data))
       .catch(() => setConfig({ enabled: false, model: '' }));
+    // Threads + briefing degrade to today's UI on failure (never a crash):
+    // a non-array payload (or a rejected fetch) leaves threads empty and the
+    // briefing hidden, exactly as before this feature existed.
+    api
+      .get<{ data: AssistantThread[] }>('/api/assistant/threads')
+      .then((r) => { if (Array.isArray(r.data)) setThreads(r.data); })
+      .catch(() => setThreads([]));
+    api
+      .get<{ data: BriefingItem[] }>('/api/assistant/briefing')
+      .then((r) => { if (Array.isArray(r.data)) setBriefing(r.data); })
+      .catch(() => setBriefing(null));
   }, []);
 
   // Stop any live recording when the component unmounts (page change while
@@ -73,18 +88,64 @@ export default function AssistantChat() {
     setMessages((m) => [...m, { role: 'user', text: question }]);
     setInput('');
     try {
-      const res = await api.post<{ data: AssistantChatReply }>('/api/assistant/chat', {
+      const res = await api.post<{ data: AssistantChatReply & { threadId?: number } }>('/api/assistant/chat', {
         message: question,
         history: history.current,
+        threadId: threadId ?? undefined,
       });
       history.current = [...history.current, { role: 'user' as const, content: question }, { role: 'assistant' as const, content: res.data.reply }].slice(-10);
       setMessages((m) => [...m, { role: 'assistant', text: res.data.reply, drafts: res.data.drafts }]);
+      if (typeof res.data.threadId === 'number') setThreadId(res.data.threadId);
+      // Counts/titles change after a turn — refresh the switcher, ignoring
+      // failures (the chat itself already succeeded).
+      api
+        .get<{ data: AssistantThread[] }>('/api/assistant/threads')
+        .then((r) => { if (Array.isArray(r.data)) setThreads(r.data); })
+        .catch(() => {});
       if (readAloud) speak(res.data.reply);
     } catch (err) {
       toast('error', (err as Error).message);
     } finally {
       setBusy(false);
     }
+  }
+
+  function newChat() {
+    setThreadId(null);
+    setMessages([]);
+    history.current = [];
+  }
+
+  async function resumeThread(id: number) {
+    setThreadId(id);
+    try {
+      const r = await api.get<{ data: { id: number; title: string; messages: { role: 'user' | 'assistant'; content: string; drafts?: AssistantDraft[] }[] } }>(
+        `/api/assistant/threads/${id}/messages`,
+      );
+      // Rebuild both the bubbles and the model history from ALL stored
+      // turns (capped to the last 10) so follow-ups ("and their phone
+      // numbers?") resolve against the resumed conversation.
+      setMessages(r.data.messages.map((m) => ({ role: m.role, text: m.content, drafts: m.drafts ?? [] })));
+      history.current = r.data.messages.map((m) => ({ role: m.role, content: m.content })).slice(-10);
+    } catch (err) {
+      toast('error', (err as Error).message);
+    }
+  }
+
+  async function deleteThread() {
+    if (threadId === null) return;
+    if (!window.confirm('Delete this conversation? It cannot be undone.')) return;
+    try {
+      await api.del(`/api/assistant/threads/${threadId}`);
+    } catch (err) {
+      toast('error', (err as Error).message);
+      return;
+    }
+    newChat();
+    api
+      .get<{ data: AssistantThread[] }>('/api/assistant/threads')
+      .then((r) => { if (Array.isArray(r.data)) setThreads(r.data); })
+      .catch(() => {});
   }
 
   function releaseMic() {
@@ -195,6 +256,34 @@ export default function AssistantChat() {
           The assistant is disabled — no LLM key is configured. Set <code>GROQ_API_KEY</code> (free tier, no card) in the backend environment and redeploy to enable it.
         </div>
       )}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Select
+          aria-label="Conversation"
+          value={threadId === null ? '' : String(threadId)}
+          onChange={(e) => {
+            if (e.target.value === '') {
+              newChat();
+              return;
+            }
+            void resumeThread(Number(e.target.value));
+          }}
+        >
+          <option value="">New chat</option>
+          {threads.map((t) => (
+            <option key={t.id} value={String(t.id)}>
+              {t.title}
+            </option>
+          ))}
+        </Select>
+        <Button variant="secondary" className="!px-3 !py-1.5 text-xs" onClick={newChat} disabled={busy}>
+          New chat
+        </Button>
+        {threadId !== null && (
+          <Button variant="secondary" className="!px-3 !py-1.5 text-xs" onClick={() => void deleteThread()} disabled={busy}>
+            Delete conversation
+          </Button>
+        )}
+      </div>
       <div className="mb-3 flex flex-wrap gap-2">
         {SUGGESTIONS.map((s) => (
           <Button key={s} variant="secondary" className="!px-3 !py-1.5 text-xs" onClick={() => void send(s)} disabled={busy}>
@@ -203,6 +292,28 @@ export default function AssistantChat() {
         ))}
       </div>
       <div aria-live="polite" className="mb-4 space-y-3">
+        {messages.length === 0 && briefing !== null && (
+          <div className="max-w-2xl rounded-xl bg-white px-4 py-3 ring-1 ring-gray-200">
+            <h2 className="text-sm font-semibold text-gray-900">What needs attention</h2>
+            {briefing.length === 0 ? (
+              <p className="mt-1 text-sm text-gray-700">All clear — nothing owed right now.</p>
+            ) : (
+              <ul className="mt-2 space-y-2">
+                {briefing.map((item, i) => (
+                  <li key={i} className="rounded-lg bg-gray-50 p-3 ring-1 ring-gray-200">
+                    <p className="text-sm font-semibold text-gray-900">{item.title}</p>
+                    <p className="mt-0.5 text-xs text-gray-700">{item.detail}</p>
+                    {item.linkTo && (
+                      <Link to={item.linkTo} aria-label={item.title} className="mt-1 inline-block text-xs font-semibold text-brand-600 hover:text-brand-700">
+                        Open →
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
         {messages.map((m, i) => (
           <div key={i} className={`max-w-2xl rounded-xl px-4 py-3 text-sm ${m.role === 'user' ? 'ml-auto bg-brand-500 text-white' : 'bg-white text-gray-900 ring-1 ring-gray-200'}`}>
             <p className="whitespace-pre-wrap">{m.text}</p>
