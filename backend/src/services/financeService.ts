@@ -85,6 +85,33 @@ export async function dashboard(year?: number): Promise<DashboardData> {
   const rentOutstanding = balanceDue(expectedRentYtd, rentCollected);
   const totalCollected = round2(rentCollected + water.waterCollected);
 
+  // Gross outstanding (the Overdue Arrears card): what tenants still OWE —
+  // floored per tenant so one tenant's credit can never cancel another
+  // tenant's debt the way the old net figure (expected − collected) did. The
+  // net formula broke visibly when a tenant moved out: their expected rent
+  // leaves the occupancy math while their payments stay in collected, which
+  // once printed −51,080 as "balances still open". See dashboardGross.test.ts.
+  const grossOwed = await queryOne<{ rent: string; water: string }>(
+    `SELECT COALESCE(SUM(GREATEST(rent_expected - rent_paid, 0)), 0)::text AS rent,
+            COALESCE(SUM(GREATEST(water_billed - water_paid, 0)), 0)::text AS water
+     FROM (
+       SELECT (COALESCE(u.monthly_rent, 0) * COALESCE(occ.months, 0)) AS rent_expected,
+              COALESCE((SELECT SUM(amount) FROM rent_payments rp WHERE rp.tenant_id = t.id AND rp.billing_year = $1), 0) AS rent_paid,
+              COALESCE((SELECT SUM(wmr.water_bill) FROM water_meter_readings wmr JOIN tenants tw2 ON tw2.unit_id = wmr.unit_id WHERE tw2.id = t.id AND wmr.billing_year = $1), 0) AS water_billed,
+              COALESCE((SELECT SUM(amount) FROM water_payments wp WHERE wp.tenant_id = t.id AND wp.billing_year = $1), 0) AS water_paid
+       FROM tenants t
+       LEFT JOIN units u ON u.id = t.unit_id
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS months
+         FROM generate_series(1, $2::int) AS mm
+         WHERE ${occupiedInMonth('t', 1, 'mm')}
+       ) occ ON TRUE
+       WHERE t.status = 'ACTIVE'
+     ) g`,
+    [targetYear, currentMonth]
+  );
+  const grossOutstanding = round2(toNumber(grossOwed?.rent) + toNumber(grossOwed?.water));
+
   // Charts
   // The Monthly Rent Collected chart's collected series comes from
   // rentMonthlySummary (monthlyRentSummary) — the one source for both its
@@ -104,6 +131,12 @@ export async function dashboard(year?: number): Promise<DashboardData> {
   // carries forward instead of being chased. One aggregate over the same
   // move-in-aware YTD math the ledger uses (expected = occupied months × rent),
   // so this number and "View Details → /tenants" always agree.
+  // NOTE on the year index: params here are [targetYear, currentMonth], so
+  // the occupancy predicate takes yearIdx 1 ($1 = the year). Passing 2 would
+  // test move-in dates against year $2 (the CURRENT MONTH number, e.g. year
+  // 10 AD) — every tenancy fails, months drop to 0, and every paid tenant
+  // shows their whole YTD payments as "credit". That exact bug once put
+  // KSh 547,740 across 18 tenants on this card; see dashboardGross.test.ts.
   const creditBalances = await queryOne<{ n: string; total: string }>(
     `SELECT COUNT(*)::text AS n, COALESCE(SUM(credit), 0)::text AS total
      FROM (
@@ -119,7 +152,7 @@ export async function dashboard(year?: number): Promise<DashboardData> {
        LEFT JOIN LATERAL (
          SELECT COUNT(*)::int AS months
          FROM generate_series(1, $2::int) AS mm
-         WHERE ${occupiedInMonth('t', 2, 'mm')}
+         WHERE ${occupiedInMonth('t', 1, 'mm')}
        ) occ ON TRUE
        WHERE t.status = 'ACTIVE'
      ) c
@@ -171,7 +204,7 @@ export async function dashboard(year?: number): Promise<DashboardData> {
     combined: {
       totalDueThisMonth: round2(expectedRentThisMonth + water.waterBilled),
       totalCollected,
-      totalOutstanding: round2(rentOutstanding + water.waterOutstanding),
+      totalOutstanding: grossOutstanding,
       rentCollected,
       waterCollected: water.waterCollected,
       totalExpenses,
