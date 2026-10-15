@@ -32,6 +32,7 @@ const TenantLedger = lazy(routeChunks.ledger);
 const MonthlySummary = lazy(routeChunks.monthly);
 const Expenses = lazy(routeChunks.expenses);
 const Arrears = lazy(routeChunks.arrears);
+const Assistant = lazy(routeChunks.assistant);
 const Receipts = lazy(routeChunks.receipts);
 const SmsNotifications = lazy(routeChunks.sms);
 const EmailHistory = lazy(routeChunks.emailHistory);
@@ -109,6 +110,7 @@ const TITLES: Record<string, string> = {
   '/monthly': 'Monthly Summary',
   '/expenses': 'Expenses',
   '/arrears': 'Arrears',
+  '/assistant': 'Assistant',
   '/receipts': 'Receipts',
   '/sms': 'SMS Notifications',
   '/emails': 'Email History',
@@ -216,6 +218,7 @@ export default function App() {
             <Route path="/monthly" element={<MonthlySummary />} />
             <Route path="/expenses" element={<Expenses />} />
             <Route path="/arrears" element={<Arrears />} />
+            <Route path="/assistant" element={<Assistant />} />
             <Route path="/receipts" element={<Receipts />} />
             <Route path="/sms" element={<SmsNotifications />} />
             <Route path="/emails" element={<EmailHistory />} />
