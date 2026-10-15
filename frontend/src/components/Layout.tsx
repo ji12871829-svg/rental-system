@@ -14,6 +14,7 @@ import { routeChunks, prefetchRoute } from '../lib/routeChunks';
 import { useBranding } from '../lib/BrandingContext';
 import BrandingBanner from './BrandingBanner';
 import { ThemeToggle } from './ThemeToggle';
+import AssistantFab from './assistant/AssistantFab';
 import { NotifPanel, type NotifSummary, TopbarSearch } from './ui';
 
 // One icon set (lucide), one stroke weight (1.75), recolored via currentColor.
@@ -437,6 +438,9 @@ export default function Layout() {
             </footer>
           </div>
         </main>
+        {/* Floating copilot cube — staff shell only (Layout never renders on
+            public/login/portal surfaces), so no auth checks needed here. */}
+        <AssistantFab />
       </div>
     </div>
   );
