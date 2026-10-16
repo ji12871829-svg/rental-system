@@ -3,6 +3,7 @@
 // nothing is hard-coded here.
 
 import type { PaymentStatus } from '../types';
+import { MONTH_NAMES } from '../types';
 import { round2 } from './money';
 
 // --- Rent / water payment status -------------------------------------------
@@ -143,15 +144,18 @@ export function rentReceiptMessage(opts: {
   balance: number;
   receiptNumber: string;
   currency: string;
+  /** Calendar pay day (YYYY-MM-DD) — omitted for legacy shapes that lack it. */
+  paidDate?: string | null;
   businessIdentity?: string | string[];
 }): string {
   const { tenantName, unitNumber, monthName, year, rentPaid, balance, receiptNumber, currency } = opts;
+  const paidOn = opts.paidDate ? ` on ${opts.paidDate}` : '';
   if (balance > 0) {
-    return withIdentity(`RENT RECEIPT: Dear ${tenantName}, we have received ${currency} ${rentPaid} for Unit ${unitNumber} rent, ${monthName} ${year}. Your outstanding balance is ${currency} ${balance}. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
+    return withIdentity(`RENT RECEIPT: Dear ${tenantName}, we have received ${currency} ${rentPaid}${paidOn} for Unit ${unitNumber} rent, ${monthName} ${year}. Your outstanding balance is ${currency} ${balance}. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
   }
   // A settled account says so plainly — "Balance: KSh 0" reads like a figure
   // the tenant has to act on, when the opposite is true.
-  return withIdentity(`RENT RECEIPT: Dear ${tenantName}, we have received ${currency} ${rentPaid} for Unit ${unitNumber} rent, ${monthName} ${year}. Your balance is now clear. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
+  return withIdentity(`RENT RECEIPT: Dear ${tenantName}, we have received ${currency} ${rentPaid}${paidOn} for Unit ${unitNumber} rent, ${monthName} ${year}. Your balance is now clear. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
 }
 
 export function waterReceiptMessage(opts: {
@@ -163,10 +167,13 @@ export function waterReceiptMessage(opts: {
   balance: number;
   receiptNumber: string;
   currency: string;
+  /** Calendar pay day (YYYY-MM-DD) — omitted for legacy shapes that lack it. */
+  paidDate?: string | null;
   businessIdentity?: string | string[];
 }): string {
   const { tenantName, unitNumber, monthName, year, waterPaid, balance, receiptNumber, currency } = opts;
-  return withIdentity(`WATER RECEIPT: Dear ${tenantName}, we have received ${currency} ${waterPaid} for Unit ${unitNumber} water, ${monthName} ${year}. Outstanding balance: ${currency} ${balance}. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
+  const paidOn = opts.paidDate ? ` on ${opts.paidDate}` : '';
+  return withIdentity(`WATER RECEIPT: Dear ${tenantName}, we have received ${currency} ${waterPaid}${paidOn} for Unit ${unitNumber} water, ${monthName} ${year}. Outstanding balance: ${currency} ${balance}. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
 }
 
 export function combinedReceiptMessage(opts: {
@@ -180,13 +187,26 @@ export function combinedReceiptMessage(opts: {
   balance: number;
   receiptNumber: string;
   currency: string;
+  /** Calendar pay day (YYYY-MM-DD) — omitted for legacy shapes that lack it. */
+  paidDate?: string | null;
   businessIdentity?: string | string[];
 }): string {
   const { tenantName, unitNumber, monthName, year, rentPaid, waterPaid, totalPaid, balance, receiptNumber, currency } = opts;
+  const paidOn = opts.paidDate ? ` on ${opts.paidDate}` : '';
   if (waterPaid > 0) {
-    return withIdentity(`PAYMENT RECEIPT: Dear ${tenantName}, we have received ${currency} ${totalPaid} for Unit ${unitNumber}, ${monthName} ${year} (Rent ${currency} ${rentPaid} + Water ${currency} ${waterPaid}). Outstanding balance: ${currency} ${balance}. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
+    return withIdentity(`PAYMENT RECEIPT: Dear ${tenantName}, we have received ${currency} ${totalPaid}${paidOn} for Unit ${unitNumber}, ${monthName} ${year} (Rent ${currency} ${rentPaid} + Water ${currency} ${waterPaid}). Outstanding balance: ${currency} ${balance}. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
   }
-  return withIdentity(`PAYMENT RECEIPT: Dear ${tenantName}, we have received ${currency} ${totalPaid} for Unit ${unitNumber} rent, ${monthName} ${year}. Outstanding balance: ${currency} ${balance}. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
+  return withIdentity(`PAYMENT RECEIPT: Dear ${tenantName}, we have received ${currency} ${totalPaid}${paidOn} for Unit ${unitNumber} rent, ${monthName} ${year}. Outstanding balance: ${currency} ${balance}. Receipt: ${receiptNumber}. Thank you.`, opts.businessIdentity);
+}
+
+// Unpaid months as a compact label — "Oct 2026", or "Aug, Sep, Oct 2026",
+// capped at three with a "+n more" tail so year-long arrears never blow the
+// SMS segment budget.
+export function formatArrearsSpan(unpaidMonths: number[], throughMonth: number, year: number): string {
+  const short = (m: number): string => MONTH_NAMES[m - 1].slice(0, 3);
+  const list = unpaidMonths.length === 0 ? [throughMonth] : unpaidMonths.slice(0, 3);
+  const more = unpaidMonths.length - list.length;
+  return `${list.map(short).join(', ')}${more > 0 ? ` +${more} more` : ''} ${year}`;
 }
 
 // --- Tenant reminder templates ----------------------------------------------
@@ -203,6 +223,8 @@ export function combinedReceiptMessage(opts: {
 export function monthlyBalanceDueMessage(opts: {
   tenantName: string;
   unitNumber: string;
+  /** Unpaid months, e.g. "Oct 2026" or "Aug, Sep, Oct 2026". */
+  period: string;
   rentDue: number;
   waterDue: number;
   totalDue: number;
@@ -211,14 +233,14 @@ export function monthlyBalanceDueMessage(opts: {
   currency: string;
   businessIdentity?: string | string[];
 }): string {
-  const { tenantName, unitNumber, rentDue, waterDue, totalDue, accountNumber, paymentMethod, currency } = opts;
+  const { tenantName, unitNumber, period, rentDue, waterDue, totalDue, accountNumber, paymentMethod, currency } = opts;
   // accountNumber is empty in Send-Money mode (no reference field exists),
   // so the reference clause is dropped rather than printed blank.
   const reference = accountNumber ? ` with account ${accountNumber}` : '';
   const body =
     waterDue > 0
-      ? `Dear ${tenantName}, Unit ${unitNumber} arrears: Rent ${currency} ${rentDue} + Water ${currency} ${waterDue} = Total ${currency} ${totalDue}. Pay via ${paymentMethod}${reference}. If already paid, ignore this message. Thank you.`
-      : `Dear ${tenantName}, rent for Unit ${unitNumber} is unpaid: ${currency} ${rentDue}. Pay via ${paymentMethod}${reference}. If already paid, ignore this message. Thank you.`;
+      ? `Dear ${tenantName}, Unit ${unitNumber} arrears ${period}: Rent ${currency} ${rentDue} + Water ${currency} ${waterDue} = Total ${currency} ${totalDue}. Pay via ${paymentMethod}${reference}. If already paid, ignore this message. Thank you.`
+      : `Dear ${tenantName}, rent for Unit ${unitNumber} (${period}) is unpaid: ${currency} ${rentDue}. Pay via ${paymentMethod}${reference}. If already paid, ignore this message. Thank you.`;
   return withIdentity(body, opts.businessIdentity);
 }
 
@@ -229,14 +251,16 @@ export function monthlyBalanceDueMessage(opts: {
 export function overdueNoticeMessage(opts: {
   tenantName: string;
   unitNumber: string;
+  /** Unpaid months, e.g. "Oct 2026" or "Aug, Sep, Oct 2026". */
+  period: string;
   amountDue: number;
   totalBalance: number;
   currency: string;
   businessIdentity?: string | string[];
 }): string {
-  const { tenantName, unitNumber, amountDue, totalBalance, currency } = opts;
+  const { tenantName, unitNumber, period, amountDue, totalBalance, currency } = opts;
   return withIdentity(
-    `Dear ${tenantName}, the rent for Unit ${unitNumber} is overdue by ${currency} ${amountDue}. Kindly settle this amount to avoid a late payment fee. Your total balance is ${currency} ${totalBalance}. If already paid, ignore this message. Thank you.`,
+    `Dear ${tenantName}, the rent for Unit ${unitNumber} is overdue by ${currency} ${amountDue} (${period}). Kindly settle this amount to avoid a late payment fee. Your total balance is ${currency} ${totalBalance}. If already paid, ignore this message. Thank you.`,
     opts.businessIdentity,
   );
 }

@@ -14,6 +14,7 @@
 import { query, queryOne } from '../config/db';
 import { MONTH_NAMES } from '../types';
 import {
+  formatArrearsSpan,
   lateFeeNoticeMessage,
   monthlyBalanceDueMessage,
   overdueNoticeMessage,
@@ -31,7 +32,7 @@ import { getSettings } from './settingsService';
 import { composeRentStatementEmail } from '../utils/emailTemplates';
 import { getCustomTemplate, type TemplateKind } from './templateService';
 import { renderMergeFields, type MergeVars } from '../utils/mergeFields';
-import { tenantBalances } from './tenantLedger';
+import { rentMonths, tenantBalances } from './tenantLedger';
 import { queuePreparedEmail } from './emailService';
 import { dispatchAutoSend, queueSms } from './smsService';
 
@@ -54,6 +55,8 @@ interface ReminderFigures {
   waterBalance: number;
   rentBalance: number;
   combinedBalance: number;
+  /** Unpaid rent months as a compact label ("Oct 2026" / "Aug, Sep, Oct 2026"). */
+  arrearsSpan: string;
   paymentMethod: string;
   accountNumber: string;
   identityName: string | null;
@@ -133,6 +136,14 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
   // "previous balance" to show).
   const previousRentBalance = ledger.previousRentBalance;
 
+  // Unpaid rent months for the reminder's period label — which months the
+  // tenant actually owes, not just the running total.
+  const spine = await rentMonths(tenantId, year, month);
+  const unpaidMonths = spine
+    .filter((m) => m.inTenancy && m.expectedRent > m.rentPaid)
+    .map((m) => m.month);
+  const arrearsSpan = formatArrearsSpan(unpaidMonths, month, year);
+
   const identity = await getBusinessIdentity();
   const paybill = await getPaybillInstructions();
   const { paymentMethod, accountNumber } = resolvePaymentInstructions({
@@ -176,6 +187,7 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
     waterBalance,
     rentBalance,
     combinedBalance,
+    arrearsSpan,
     paymentMethod,
     accountNumber,
     identityName: identity.name,
@@ -416,7 +428,7 @@ function mergeVarsFor(kind: ReminderKind, f: ReminderFigures, baseVars: MergeVar
   const referenceClause = f.accountNumber ? `, quoting ${f.accountNumber} as the account reference` : '';
   switch (kind) {
     case 'BALANCE_DUE':
-      return { ...baseVars, account: unitLabel, account_clause: accountClause, rent_due: Math.max(f.rentBalance, 0), water_due: Math.max(f.waterBalance, 0), total_due: Math.max(f.combinedBalance, 0), payment_method: f.paymentMethod };
+      return { ...baseVars, period: f.arrearsSpan, account: unitLabel, account_clause: accountClause, rent_due: Math.max(f.rentBalance, 0), water_due: Math.max(f.waterBalance, 0), total_due: Math.max(f.combinedBalance, 0), payment_method: f.paymentMethod };
     case 'DUE_SOON':
       return { ...baseVars, reference_clause: referenceClause, next_month: MONTH_NAMES[nextMonth - 1], amount: Math.max(f.currentRent, 0), payment_method: f.paymentMethod };
     case 'WATER_BILLING': {
@@ -437,7 +449,7 @@ function mergeVarsFor(kind: ReminderKind, f: ReminderFigures, baseVars: MergeVar
       return { ...baseVars, account: unitLabel, reference_clause: referenceClause, amount: Math.max(f.currentRent, 0), payment_method: f.paymentMethod };
     case 'OVERDUE':
     default:
-      return { ...baseVars, amount_due: Math.max(f.rentBalance, 0), total_due: Math.max(f.combinedBalance, 0) };
+      return { ...baseVars, period: f.arrearsSpan, amount_due: Math.max(f.rentBalance, 0), total_due: Math.max(f.combinedBalance, 0) };
   }
 }
 
@@ -448,7 +460,7 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
   switch (kind) {
     case 'BALANCE_DUE':
       return monthlyBalanceDueMessage({
-        tenantName: f.tenantName, unitNumber: f.unitNumber,
+        tenantName: f.tenantName, unitNumber: f.unitNumber, period: f.arrearsSpan,
         rentDue: Math.max(f.rentBalance, 0),
         waterDue: Math.max(f.waterBalance, 0),
         totalDue: Math.max(f.combinedBalance, 0), accountNumber: f.accountNumber,
@@ -480,7 +492,7 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
     case 'OVERDUE':
     default:
       return overdueNoticeMessage({
-        tenantName: f.tenantName, unitNumber: f.unitNumber, amountDue: Math.max(f.rentBalance, 0),
+        tenantName: f.tenantName, unitNumber: f.unitNumber, period: f.arrearsSpan, amountDue: Math.max(f.rentBalance, 0),
         totalBalance: Math.max(f.combinedBalance, 0), currency: f.currency, businessIdentity: identity,
       });
   }

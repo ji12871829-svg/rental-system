@@ -72,6 +72,8 @@ const SAMPLE_VARS: Record<string, string> = {
   currency: 'KES',
   business: 'Olbano Plaza',
   total_due: '13,500',
+  period: 'Aug, Sep, Oct 2026',
+  date: '2026-10-12',
   rent_due: '12,000',
   water_due: '1,500',
   account: 'A4',

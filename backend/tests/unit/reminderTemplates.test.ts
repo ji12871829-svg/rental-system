@@ -3,6 +3,7 @@
 // The receipt composers' GSM-7 budget rules apply here too (shared
 // withIdentity helper), so the identity-line behaviour is covered as well.
 import {
+  formatArrearsSpan,
   gsm7EffectiveLength,
   lateFeeNoticeMessage,
   monthlyBalanceDueMessage,
@@ -23,6 +24,7 @@ describe('monthlyBalanceDueMessage', () => {
   it('itemizes rent and water with the total when both are owed', () => {
     const msg = monthlyBalanceDueMessage({
       ...base,
+      period: 'Aug, Sep, Oct 2026',
       rentDue: 9000,
       waterDue: 1200,
       totalDue: 10200,
@@ -31,13 +33,14 @@ describe('monthlyBalanceDueMessage', () => {
       currency: 'KSh',
     });
     expect(msg).toBe(
-      'Dear Jane Wanjiku, Unit B4 arrears: Rent KSh 9000 + Water KSh 1200 = Total KSh 10200. Pay via M-Pesa PayBill 247252 with account Unit B4. If already paid, ignore this message. Thank you.',
+      'Dear Jane Wanjiku, Unit B4 arrears Aug, Sep, Oct 2026: Rent KSh 9000 + Water KSh 1200 = Total KSh 10200. Pay via M-Pesa PayBill 247252 with account Unit B4. If already paid, ignore this message. Thank you.',
     );
   });
 
   it('uses the shorter rent-only wording when no water is owed', () => {
     const msg = monthlyBalanceDueMessage({
       ...base,
+      period: 'Oct 2026',
       rentDue: 4500,
       waterDue: 0,
       totalDue: 4500,
@@ -46,7 +49,7 @@ describe('monthlyBalanceDueMessage', () => {
       currency: 'KSh',
     });
     expect(msg).toBe(
-      'Dear Jane Wanjiku, rent for Unit B4 is unpaid: KSh 4500. Pay via M-Pesa PayBill 247252 with account Unit B4. If already paid, ignore this message. Thank you.',
+      'Dear Jane Wanjiku, rent for Unit B4 (Oct 2026) is unpaid: KSh 4500. Pay via M-Pesa PayBill 247252 with account Unit B4. If already paid, ignore this message. Thank you.',
     );
   });
 
@@ -54,6 +57,7 @@ describe('monthlyBalanceDueMessage', () => {
     const msg = monthlyBalanceDueMessage({
       tenantName: 'A Very Long Tenant Name That Operators Sometimes Type',
       unitNumber: 'B12',
+      period: 'Aug, Sep, Oct 2026',
       rentDue: 123456,
       waterDue: 78901,
       totalDue: 202357,
@@ -67,6 +71,7 @@ describe('monthlyBalanceDueMessage', () => {
   it('appends a short identity line within the segment budget', () => {
     const msg = monthlyBalanceDueMessage({
       ...base,
+      period: 'Aug, Sep, Oct 2026',
       rentDue: 9000,
       waterDue: 1200,
       totalDue: 10200,
@@ -84,18 +89,19 @@ describe('overdueNoticeMessage', () => {
   it('follows the overdue template wording with both figures', () => {
     const msg = overdueNoticeMessage({
       ...base,
+      period: 'Aug, Sep, Oct 2026',
       amountDue: 4500,
       totalBalance: 13500,
       currency: 'KSh',
     });
     expect(msg).toBe(
-      'Dear Jane Wanjiku, the rent for Unit B4 is overdue by KSh 4500. Kindly settle this amount to avoid a late payment fee. Your total balance is KSh 13500. If already paid, ignore this message. Thank you.',
+      'Dear Jane Wanjiku, the rent for Unit B4 is overdue by KSh 4500 (Aug, Sep, Oct 2026). Kindly settle this amount to avoid a late payment fee. Your total balance is KSh 13500. If already paid, ignore this message. Thank you.',
     );
   });
 
   it('keeps the same tone when only part of the balance is overdue', () => {
-    const msg = overdueNoticeMessage({ ...base, amountDue: 500, totalBalance: 500, currency: 'KSh' });
-    expect(msg).toContain('is overdue by KSh 500.');
+    const msg = overdueNoticeMessage({ ...base, period: 'Oct 2026', amountDue: 500, totalBalance: 500, currency: 'KSh' });
+    expect(msg).toContain('is overdue by KSh 500 (Oct 2026).');
     expect(msg).toContain('Your total balance is KSh 500.');
   });
 
@@ -103,6 +109,7 @@ describe('overdueNoticeMessage', () => {
     const msg = overdueNoticeMessage({
       tenantName: 'A Very Long Tenant Name That Operators Sometimes Type',
       unitNumber: 'B12',
+      period: 'Aug, Sep, Oct 2026',
       amountDue: 123456,
       totalBalance: 987654,
       currency: 'KSh',
@@ -112,7 +119,7 @@ describe('overdueNoticeMessage', () => {
   });
 
   it('avoids non-GSM-7 characters (no em dashes or curly quotes)', () => {
-    const msg = overdueNoticeMessage({ ...base, amountDue: 4500, totalBalance: 13500, currency: 'KSh' });
+    const msg = overdueNoticeMessage({ ...base, period: 'Oct 2026', amountDue: 4500, totalBalance: 13500, currency: 'KSh' });
     // eslint-disable-next-line no-control-regex -- GSM-7 charset check, not a control-char check
     expect(/[^\u0000-\u007F]/.test(msg)).toBe(false);
   });
@@ -211,6 +218,7 @@ describe('Send-Money mode (no PayBill, no account reference)', () => {
   it('balance reminder points at the phone with no account clause', () => {
     const msg = monthlyBalanceDueMessage({
       ...base,
+      period: 'Oct 2026',
       rentDue: 9000,
       waterDue: 1200,
       totalDue: 10200,
@@ -219,7 +227,7 @@ describe('Send-Money mode (no PayBill, no account reference)', () => {
       currency: 'KSh',
     });
     expect(msg).toBe(
-      'Dear Jane Wanjiku, Unit B4 arrears: Rent KSh 9000 + Water KSh 1200 = Total KSh 10200. Pay via M-Pesa to 0712000000. If already paid, ignore this message. Thank you.',
+      'Dear Jane Wanjiku, Unit B4 arrears Oct 2026: Rent KSh 9000 + Water KSh 1200 = Total KSh 10200. Pay via M-Pesa to 0712000000. If already paid, ignore this message. Thank you.',
     );
   });
 
@@ -270,11 +278,25 @@ describe('Send-Money mode (no PayBill, no account reference)', () => {
     const long = 'A Very Long Tenant Name That Operators Sometimes Type';
     const method = 'M-Pesa to 0712000000';
     for (const msg of [
-      monthlyBalanceDueMessage({ tenantName: long, unitNumber: 'B12', rentDue: 123456, waterDue: 78901, totalDue: 202357, accountNumber: '', paymentMethod: method, currency: 'KSh' }),
+      monthlyBalanceDueMessage({ tenantName: long, unitNumber: 'B12', period: 'Aug, Sep, Oct 2026', rentDue: 123456, waterDue: 78901, totalDue: 202357, accountNumber: '', paymentMethod: method, currency: 'KSh' }),
       rentDueSoonMessage({ tenantName: long, unitNumber: 'B12', nextMonthName: 'September', year: 2026, rentAmount: 123456, paymentMethod: method, accountNumber: '', currency: 'KSh' }),
     ]) {
       expect(gsm7EffectiveLength(msg)).toBeLessThanOrEqual(SMS_TWO_SEGMENT_GSM7_LIMIT);
     }
+  });
+});
+
+describe('formatArrearsSpan', () => {
+  it('names a single unpaid month', () => {
+    expect(formatArrearsSpan([10], 10, 2026)).toBe('Oct 2026');
+  });
+
+  it('lists up to three unpaid months', () => {
+    expect(formatArrearsSpan([8, 9, 10], 10, 2026)).toBe('Aug, Sep, Oct 2026');
+  });
+
+  it('caps longer arrears with a more-count tail', () => {
+    expect(formatArrearsSpan([1, 2, 3, 4, 5, 6], 10, 2026)).toBe('Jan, Feb, Mar +3 more 2026');
   });
 });
 

@@ -60,6 +60,14 @@ describe('buildMessage — env-configured business identity + contact line', () 
     expect(msg).toContain('Your balance is now clear. Receipt: RC-2026-0001. Thank you.');
   });
 
+  it('states the calendar pay day when the receipt carries a payment date', () => {
+    const msg = buildMessage(
+      { ...receipt, payment_date: '2026-10-12' },
+      { tenantName: 'Peter Otieno', unitNumber: '1', currency: 'KSh' }
+    );
+    expect(msg).toContain('we have received KSh 9000 on 2026-10-12 for Unit 1 rent, September 2026');
+  });
+
   it('never introduces non-GSM characters (em dash would double SMS cost)', () => {
     const msg = buildMessage(receipt, { tenantName: 'Peter Otieno', unitNumber: '1', currency: 'KSh' });
     expect(msg).not.toMatch(/[—–]/);

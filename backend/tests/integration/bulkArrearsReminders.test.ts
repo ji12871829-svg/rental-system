@@ -208,7 +208,7 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
     expect(rentRows).toHaveLength(1);
     expect(rentRows[0].status).toBe('PENDING');
     expect(rentRows[0].message).toContain('Bulk Arrears Phone Tenant');
-    expect(rentRows[0].message).toMatch(/rent for Unit .* is unpaid/);
+    expect(rentRows[0].message).toMatch(/rent for Unit .* \(.* 2026\) is unpaid/);
     expect(rentRows[0].message).not.toContain('{{');
 
     // Water-only debtor: reminded about the water charge (KSh 1000 of it),
@@ -224,7 +224,7 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
     expect(bothRows).toHaveLength(1);
     expect(bothRows[0].status).toBe('PENDING');
     expect(bothRows[0].message).toContain('Bulk Arrears Both Tenant');
-    expect(bothRows[0].message).toMatch(/arrears: Rent KSh \d+ \+ Water KSh 1000 = Total KSh \d+/);
+    expect(bothRows[0].message).toMatch(/arrears .* 2026: Rent KSh \d+ \+ Water KSh 1000 = Total KSh \d+/);
 
     // Paid-up tenant: nothing queued, ever — no row from this batch.
     expect(await smsRowsFor(paidTenantId)).toHaveLength(0);
