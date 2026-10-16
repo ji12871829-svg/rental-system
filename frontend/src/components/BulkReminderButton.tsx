@@ -1,18 +1,16 @@
-// One-click bulk arrears reminders — the operator's "remind everyone owing"
-// button. One POST queues a personalised SMS for every ACTIVE tenant with
-// money owing; each tenant's message matches their own bill (balance
-// statement for rent debtors, water notice for water-only debtors). The
-// audience picker narrows the blast to rent debtors or water debtors only —
-// the server derives the audience from the live ledger, so a paid-up tenant
-// can never be included by a stale client selection, and no recipient picking
-// step exists. Rows auto-send when the SMS pipeline is on, otherwise they
-// wait as PENDING on the SMS page.
+// One-click bulk arrears reminders — one button per bill. Each button POSTs
+// one audience (everyone owing, rent debtors, or water debtors) and the
+// server queues a personalised SMS per tenant, each message matching its own
+// bill. The server derives the audience from the live ledger, so a paid-up
+// tenant can never be included by a stale client selection, and no recipient
+// picking step exists. Rows auto-send when the SMS pipeline is on, otherwise
+// they wait as PENDING on the SMS page.
 import { useContext, useState } from 'react';
 import { Send } from 'lucide-react';
-import { Button, Modal, Select, ToastContext } from './ui';
+import { Button, Modal, ToastContext } from './ui';
 import { api } from '../lib/api';
 
-export type BulkAudience = 'ALL' | 'RENT' | 'WATER';
+type BulkAudience = 'ALL' | 'RENT' | 'WATER';
 
 type BulkSkipReason = 'NO_PHONE' | 'PAID' | 'OTHER_BILL';
 
@@ -43,13 +41,10 @@ const AUDIENCE_META: Record<BulkAudience, { group: string; bill: string; otherBi
 };
 
 interface BulkReminderButtonProps {
-  /** Outstanding count for the whole ledger — the ALL audience label. */
+  /** Which bill this button reminds. Defaults to everyone owing. */
+  audience?: BulkAudience;
+  /** Owing count for this button's audience — names it in the label. */
   owingCount?: number | null;
-  /** Per-bill counts for the picker labels, when the parent knows them. */
-  audienceCounts?: { rent: number; water: number } | null;
-  defaultAudience?: BulkAudience;
-  /** Show the All / Rent / Water audience picker beside the button. */
-  showAudiencePicker?: boolean;
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
   className?: string;
   /** Refresh parent lists after a successful send. */
@@ -64,10 +59,8 @@ function skipReasonText(s: BulkSkippedTenant): string {
 }
 
 export function BulkReminderButton({
+  audience = 'ALL',
   owingCount,
-  audienceCounts,
-  defaultAudience = 'ALL',
-  showAudiencePicker = false,
   variant = 'primary',
   className = '',
   onSent,
@@ -78,28 +71,24 @@ export function BulkReminderButton({
   const toastCtx = useContext(ToastContext);
   const toast = toastCtx?.toast ?? (() => {});
   const [busy, setBusy] = useState(false);
-  const [audience, setAudience] = useState<BulkAudience>(defaultAudience);
   const [report, setReport] = useState<BulkArrearsResponse | null>(null);
 
-  const countFor = (a: BulkAudience): number | null | undefined =>
-    a === 'ALL' ? owingCount : a === 'RENT' ? audienceCounts?.rent : audienceCounts?.water;
-  const count = countFor(audience);
   const meta = AUDIENCE_META[audience];
 
   const label =
-    count === null || count === undefined
+    owingCount === null || owingCount === undefined
       ? `Remind ${meta.group}`
-      : count === 0
+      : owingCount === 0
         ? `Nobody owes ${meta.bill} — nothing to send`
-        : `Remind ${count} ${meta.group}`;
+        : `Remind ${owingCount} ${meta.group}`;
 
   async function send() {
     if (busy) return;
-    // One click sends — the label already names the audience, so no picker.
+    // One click sends — the label already names the audience.
     // A native confirm guards the wallet: bulk SMS spends real credit.
-    if (count !== undefined && count !== null && count > 0) {
+    if (owingCount !== undefined && owingCount !== null && owingCount > 0) {
       const ok = window.confirm(
-        `Send a payment-reminder SMS to ${count} tenant${count === 1 ? '' : 's'} ${meta.group}? ` +
+        `Send a payment-reminder SMS to ${owingCount} tenant${owingCount === 1 ? '' : 's'} ${meta.group}? ` +
           `Each message quotes the tenant's own live ${meta.bill} balance.` +
           (audience === 'ALL'
             ? ''
@@ -127,47 +116,40 @@ export function BulkReminderButton({
     }
   }
 
-  const button = (
-    <Button
-      variant={variant}
-      onClick={send}
-      loading={busy}
-      disabled={busy || count === 0}
-      className={className}
-      title={`Send a personalised ${meta.bill} reminder SMS to every tenant ${meta.group}`}
-    >
-      <Send size={15} strokeWidth={1.75} aria-hidden />
-      {busy ? 'Sending…' : label}
-    </Button>
-  );
-
-  if (!showAudiencePicker) return (
+  return (
     <>
-      {button}
+      <Button
+        variant={variant}
+        onClick={send}
+        loading={busy}
+        disabled={busy || owingCount === 0}
+        className={className}
+        title={`Send a personalised ${meta.bill} reminder SMS to every tenant ${meta.group}`}
+      >
+        <Send size={15} strokeWidth={1.75} aria-hidden />
+        {busy ? 'Sending…' : label}
+      </Button>
       <SkippedReportModal report={report} onClose={() => setReport(null)} />
     </>
   );
+}
 
+interface BulkBillReminderButtonsProps {
+  /** Owing counts per bill for the two labels. Unknown while loading. */
+  rentCount?: number | null;
+  waterCount?: number | null;
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
+  /** Refresh parent lists after a successful send. */
+  onSent?: (result: BulkArrearsResponse) => void;
+}
+
+/** The per-bill pair: one button reminding rent debtors, one for water
+ * debtors. Each sends only its own audience in a single click. */
+export function BulkBillReminderButtons({ rentCount, waterCount, variant = 'primary', onSent }: BulkBillReminderButtonsProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Select
-        value={audience}
-        onChange={(e) => setAudience(e.target.value as BulkAudience)}
-        aria-label="Reminder audience"
-        className="w-40"
-      >
-        <option value="ALL">
-          {owingCount === null || owingCount === undefined ? 'Everyone owing' : `Everyone owing (${owingCount})`}
-        </option>
-        <option value="RENT">
-          {audienceCounts ? `Rent owing (${audienceCounts.rent})` : 'Rent owing'}
-        </option>
-        <option value="WATER">
-          {audienceCounts ? `Water owing (${audienceCounts.water})` : 'Water owing'}
-        </option>
-      </Select>
-      {button}
-      <SkippedReportModal report={report} onClose={() => setReport(null)} />
+      <BulkReminderButton audience="RENT" owingCount={rentCount} variant={variant} onSent={onSent} />
+      <BulkReminderButton audience="WATER" owingCount={waterCount} variant={variant} onSent={onSent} />
     </div>
   );
 }

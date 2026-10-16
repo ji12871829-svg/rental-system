@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, Info, MessageSquareText } from 'lucide-react';
 import { Button, EmptyState, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { SmsComposer, type SmsComposerTenant } from '../components/SmsComposer';
-import { BulkReminderButton } from '../components/BulkReminderButton';
+import { BulkBillReminderButtons } from '../components/BulkReminderButton';
 import { api, qs } from '../lib/api';
 import { useQueryParam } from '../lib/useQueryParam';
 import { useReportingYear } from '../lib/useReportingYear';
@@ -289,12 +289,11 @@ export default function SmsNotifications() {
             <MessageSquareText size={15} strokeWidth={1.75} aria-hidden />
             {composerOpen ? 'Close composer' : 'Compose confirmation…'}
           </Button>
-          {/* One click: everyone owing — or rent / water debtors alone. Each
-              message matches its tenant's own bill. */}
-          <BulkReminderButton
-            owingCount={arrearsData ? arrearsIds.length : undefined}
-            audienceCounts={audienceCounts}
-            showAudiencePicker
+          {/* One button per bill: rent debtors and water debtors are
+              reminded separately. Each message matches its tenant's own bill. */}
+          <BulkBillReminderButtons
+            rentCount={audienceCounts?.rent}
+            waterCount={audienceCounts?.water}
             variant="primary"
             onSent={refresh}
           />
