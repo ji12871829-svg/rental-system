@@ -20,6 +20,8 @@ interface PortalPayment {
 interface PaymentInstructions {
   businessName: string | null;
   number: string | null;
+  /** True while a PayBill is configured — account references only exist then. */
+  paybillActive: boolean;
   accountName: string | null;
   instructions: string | null;
   rentReference: string | null;
@@ -81,15 +83,17 @@ export default function PortalPayments() {
         <div className="rounded-xl border border-ash bg-white p-4">
           <h3 className="text-sm font-semibold text-gray-900">Send money via M-Pesa</h3>
           <p className="mt-1 text-sm text-gray-600">
-            Send the amount you owe to the details below, using the exact account reference for what you are paying (rent or water). The payment reflects on your account once it is confirmed.
+            {instructionsData.data.paybillActive
+              ? <>Send the amount you owe to the details below, using the exact account reference for what you are paying (rent or water). The payment reflects on your account once it is confirmed.</>
+              : <>Send the amount you owe to the M-Pesa number below. There is no account reference — just send, and the payment reflects on your account once it is confirmed.</>}
           </p>
           <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
             <CopyRow label="M-Pesa number" value={instructionsData.data.number} onCopy={copyValue} copied={copied} />
             {(instructionsData.data.accountName || instructionsData.data.businessName) && (
               <CopyRow label="Account name" value={instructionsData.data.accountName || instructionsData.data.businessName!} onCopy={copyValue} copied={copied} />
             )}
-            {instructionsData.data.rentReference && <CopyRow label="Rent account" value={instructionsData.data.rentReference} onCopy={copyValue} copied={copied} />}
-            {instructionsData.data.waterReference && <CopyRow label="Water account" value={instructionsData.data.waterReference} onCopy={copyValue} copied={copied} />}
+            {instructionsData.data.paybillActive && instructionsData.data.rentReference && <CopyRow label="Rent account" value={instructionsData.data.rentReference} onCopy={copyValue} copied={copied} />}
+            {instructionsData.data.paybillActive && instructionsData.data.waterReference && <CopyRow label="Water account" value={instructionsData.data.waterReference} onCopy={copyValue} copied={copied} />}
           </div>
           <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
             {instructionsData.data.rentReference && (

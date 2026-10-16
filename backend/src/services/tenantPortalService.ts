@@ -436,6 +436,8 @@ export async function getPortalReceipts(tenantId: number, limit = 12): Promise<u
 export async function getPortalPaymentInstructions(tenantId: number): Promise<{
   businessName: string | null;
   number: string | null;
+  /** True while a PayBill is configured — the portal shows account references only then. */
+  paybillActive: boolean;
   accountName: string | null;
   instructions: string | null;
   rentReference: string | null;
@@ -443,19 +445,24 @@ export async function getPortalPaymentInstructions(tenantId: number): Promise<{
   rentBalance: number;
   waterBalance: number;
 }> {
-  const [paybill, identity, summary, contactPhone] = await Promise.all([
+  const [paybill, identity, summary, lines] = await Promise.all([
     getPaybillInstructions(),
     getPortalIdentity(tenantId),
     getPortalSummary(tenantId),
-    // The send-to number falls back to the business contact phone when no
-    // PayBill is configured — many small landlords take payments to their
-    // own line, and that number is already maintained in business identity.
-    getBusinessIdentity().then((i) => i.phone?.trim() || null),
+    // Send-Money fallback chain mirrors the reminder composer: the dedicated
+    // money line first, then the business contact phone. Many small landlords
+    // take payments to their own line, and that number is already maintained
+    // in business identity.
+    getBusinessIdentity().then((i) => ({
+      money: i.sendMoneyPhone?.trim() || null,
+      contact: i.phone?.trim() || null,
+    })),
   ]);
   const unit = identity.unitNumber?.trim() || null;
   return {
     businessName: identity.name ?? null,
-    number: paybill.number ?? contactPhone,
+    number: paybill.number ?? lines.money ?? lines.contact,
+    paybillActive: paybill.enabled,
     accountName: paybill.name,
     instructions: paybill.instructions,
     rentReference: unit,
