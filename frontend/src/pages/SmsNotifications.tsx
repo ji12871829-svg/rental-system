@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, Info, MessageSquareText } from 'lucide-react';
 import { Button, EmptyState, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { SmsComposer, type SmsComposerTenant } from '../components/SmsComposer';
+import { BulkReminderButton } from '../components/BulkReminderButton';
 import { api, qs } from '../lib/api';
 import { useQueryParam } from '../lib/useQueryParam';
 import { useReportingYear } from '../lib/useReportingYear';
@@ -127,7 +128,9 @@ export default function SmsNotifications() {
     { enabled: wantArrearsAudience }
   );
   const arrearsIds = useMemo(
-    () => (arrearsData?.data ?? []).filter((r) => r.totalOutstanding > 0).map((r) => r.tenantId),
+    // Per-side owing (rent OR water), never the net — a credit on one side
+    // must not hide a debt on the other. Matches the bulk-reminder audience.
+    () => (arrearsData?.data ?? []).filter((r) => r.rentBalance > 0 || r.waterBalance > 0).map((r) => r.tenantId),
     [arrearsData]
   );
   // Hold the composer until the arrears audience resolves (or fails — then it
@@ -271,10 +274,15 @@ export default function SmsNotifications() {
       })()}
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <Button variant="secondary" onClick={() => setComposerOpen((v) => !v)}>
-          <MessageSquareText size={15} strokeWidth={1.75} aria-hidden />
-          {composerOpen ? 'Close composer' : 'Compose confirmation…'}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" onClick={() => setComposerOpen((v) => !v)}>
+            <MessageSquareText size={15} strokeWidth={1.75} aria-hidden />
+            {composerOpen ? 'Close composer' : 'Compose confirmation…'}
+          </Button>
+          {/* One click: personalised balance SMS to everyone owing rent or water. */}
+          <BulkReminderButton owingCount={arrearsData ? arrearsIds.length : undefined} variant="primary" onSent={refresh} />
+        </div>
+        {arrearsIds.length > 0 && <span className="text-xs text-gray-500">{arrearsIds.length} tenant{arrearsIds.length === 1 ? '' : 's'} with an open balance</span>}
       </div>
 
       {composerOpen && (

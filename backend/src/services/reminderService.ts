@@ -11,7 +11,7 @@
 // flow lived in smsService and reached into emailService for the email twin —
 // now both channel modules stay channel-only.
 
-import { queryOne } from '../config/db';
+import { query, queryOne } from '../config/db';
 import { MONTH_NAMES } from '../types';
 import {
   lateFeeNoticeMessage,
@@ -32,7 +32,7 @@ import { getCustomTemplate, type TemplateKind } from './templateService';
 import { renderMergeFields, type MergeVars } from '../utils/mergeFields';
 import { tenantBalances } from './tenantLedger';
 import { queuePreparedEmail } from './emailService';
-import { queueSms } from './smsService';
+import { dispatchAutoSend, queueSms } from './smsService';
 
 // The shared figures every reminder channel composes from. previousRent
 // (YTD expected minus THIS month's expected) drives the statement's
@@ -440,4 +440,81 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
         totalBalance: Math.max(f.combinedBalance, 0), currency: f.currency, businessIdentity: identity,
       });
   }
+}
+
+// --- One-click bulk arrears reminders ---------------------------------------
+// Single-operator action: queue a personalised SMS for EVERY ACTIVE tenant
+// with money owing on EITHER side of the ledger — rent OR water. The gate is
+// per-side (rentBalance / waterBalance), never the net combined figure, so a
+// rent credit can never mask a water debt and a paid-up tenant (both sides
+// clear or in credit) is always skipped. The kind follows what is actually
+// owed so the quoted amount is always positive and sane:
+//   rent owed + net positive -> BALANCE_DUE statement (combined total covers both)
+//   rent owed + netted to zero by a water credit -> OVERDUE (leads with the rent owed)
+//   rent clear but water owed -> WATER_BILLING notice (water amount + meter proof)
+// Custom Message Templates apply exactly as they do for a hand-queued
+// reminder. Queue-only: rows auto-dispatch when the SMS pipeline is on,
+// otherwise they wait as PENDING for manual send from the SMS page.
+// Idempotency is deliberately NOT enforced here: the operator explicitly
+// pressed the button, so a second press is a conscious re-send, not a
+// scheduler accident.
+export interface BulkArrearsResult {
+  total: number;
+  owing: number;
+  queued: number;
+  skippedPaid: number;
+  skippedNoPhone: number;
+}
+
+export async function sendBulkArrearsReminders(opts: {
+  userId?: number | null;
+}): Promise<BulkArrearsResult> {
+  const settings = await getSettings();
+  const year = settings.reporting_year;
+  const month = new Date().getUTCMonth() + 1;
+
+  const tenants = await query<{ id: number }>(
+    `SELECT id FROM tenants WHERE status = 'ACTIVE' ORDER BY id`,
+  );
+
+  let owing = 0;
+  let queued = 0;
+  let skippedPaid = 0;
+  let skippedNoPhone = 0;
+
+  for (const tenant of tenants) {
+    const ledger = await tenantBalances(tenant.id, year, month);
+    const rentOwing = ledger.rentBalance > 0.009;
+    const waterOwing = ledger.waterBalance > 0.009;
+    if (!rentOwing && !waterOwing) {
+      skippedPaid += 1;
+      continue;
+    }
+    owing += 1;
+    const kind: ReminderKind =
+      rentOwing && ledger.combinedBalance > 0.009
+        ? 'BALANCE_DUE'
+        : rentOwing
+          ? 'OVERDUE'
+          : 'WATER_BILLING';
+    const sent = await prepareReminder(tenant.id, kind, 'SMS', {
+      userId: opts.userId ?? null,
+      templateKind: 'MANUAL_BULK_ARREARS',
+    });
+    if (sent?.smsId) {
+      dispatchAutoSend(sent.smsId);
+      queued += 1;
+    } else {
+      skippedNoPhone += 1;
+    }
+  }
+
+  await logAudit({
+    userId: opts.userId ?? null,
+    action: 'BULK_ARREARS_REMINDERS',
+    entity: 'tenants',
+    newValue: { total: tenants.length, owing, queued, skippedPaid, skippedNoPhone },
+  });
+
+  return { total: tenants.length, owing, queued, skippedPaid, skippedNoPhone };
 }

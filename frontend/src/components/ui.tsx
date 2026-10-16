@@ -422,6 +422,12 @@ const ToastContext = createContext<{
   toast: (type: 'success' | 'error', message: string, action?: { label: string; to: string }) => void;
 } | null>(null);
 
+// Exported so leaf action buttons (e.g. BulkReminderButton) can toast when a
+// provider is present but still render — and stay clickable — where there is
+// none (dashboard widget tests, storybook-style previews). The production app
+// always mounts ToastProvider (main.tsx), so the fallback never fires there.
+export { ToastContext };
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
