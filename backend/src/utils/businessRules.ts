@@ -289,7 +289,11 @@ export function rentDueSoonMessage(opts: {
 // "Water Billing": the month's water charge on the tenant's ledger. Wording
 // states the charge rather than claiming it was "billed in full" — the figure
 // carried here is the water balance, so after a part-payment it is what is
-// left, and that is what the message must say.
+// left, and that is what the message must say. The proof clause names the
+// two meter readings the bill was computed from, so the tenant can verify
+// against their own meter instead of taking the charge on trust. Plain ASCII
+// (GSM-7 budget); omitted entirely when either reading is missing rather
+// than printing blanks.
 export function waterBillingNoticeMessage(opts: {
   tenantName: string;
   unitNumber: string;
@@ -298,11 +302,19 @@ export function waterBillingNoticeMessage(opts: {
   amount: number;
   paymentMethod: string;
   currency: string;
+  previousReading?: number | null;
+  currentReading?: number | null;
   businessIdentity?: string | string[];
 }): string {
   const { tenantName, unitNumber, monthName, year, amount, paymentMethod, currency } = opts;
+  const prev = opts.previousReading ?? null;
+  const curr = opts.currentReading ?? null;
+  const proof =
+    prev !== null && curr !== null && Number.isFinite(prev) && Number.isFinite(curr)
+      ? ` Meter: prev ${prev}, curr ${curr} (${Math.round((curr - prev) * 100) / 100} units).`
+      : '';
   return withIdentity(
-    `Dear ${tenantName}, your water charge for Unit ${unitNumber} for ${monthName} ${year} is ${currency} ${amount}. It appears on your statement and can be paid together with your rent via ${paymentMethod}.`,
+    `Dear ${tenantName}, your water charge for Unit ${unitNumber} for ${monthName} ${year} is ${currency} ${amount}.${proof} It appears on your statement and can be paid together with your rent via ${paymentMethod}.`,
     opts.businessIdentity,
   );
 }
