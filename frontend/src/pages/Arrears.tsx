@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, AlertTriangle } from 'lucide-react';
 import { Button, EmptyState, MetricCardWithActions, PageHeader, Select, SkeletonTable, StatusBadge, useFetch, useToast } from '../components/ui';
-import { BulkReminderButton } from '../components/BulkReminderButton';
+import { BulkBillReminderButtons } from '../components/BulkReminderButton';
 import { api } from '../lib/api';
+import { downloadCsv, toCsv } from '../lib/csv';
 import { downloadBlob } from '../lib/download';
 import { money } from '../lib/format';
 import { useQueryParam } from '../lib/useQueryParam';
@@ -95,12 +96,11 @@ export default function Arrears() {
         subtitle="Who owes what — rent and water balances per occupied unit, with months in arrears"
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {/* One click: personalised SMS to everyone owing — or rent / water
-                debtors alone. Each message matches its tenant's own bill. */}
-            <BulkReminderButton
-              owingCount={loading ? undefined : totals.owing}
-              audienceCounts={loading ? undefined : { rent: totals.rentOwing, water: totals.waterOwing }}
-              showAudiencePicker
+            {/* One button per bill: rent debtors and water debtors are
+                reminded separately, each message matching its bill. */}
+            <BulkBillReminderButtons
+              rentCount={loading ? undefined : totals.rentOwing}
+              waterCount={loading ? undefined : totals.waterOwing}
             />
             <Select value={year} onChange={(e) => setYear(e.target.value)} className="w-28">
               {[now.getFullYear(), now.getFullYear() - 1, now.getFullYear() + 1].map((y) => <option key={y} value={y}>{y}</option>)}
@@ -114,6 +114,18 @@ export default function Arrears() {
             >
               <Download size={15} strokeWidth={1.75} aria-hidden /> {downloading ? 'Preparing…' : 'Download Report (PDF)'}
             </button>
+            {rows.length > 0 && (
+              <button
+                type="button"
+                onClick={() => downloadCsv(`arrears-${year}.csv`, toCsv(
+                  ['Unit', 'Tenant', 'Phone', 'Monthly Rent', 'Water Bill', 'Rent Paid', 'Water Paid', 'Outstanding', 'Months Behind', 'Status'],
+                  rows.map((r) => [r.unitNumber, r.tenantName, r.phoneNumber, r.monthlyRent, r.waterBill, r.rentPaid, r.waterPaid, r.totalOutstanding, r.monthsInArrears, r.status])
+                ))}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-50 active:scale-[0.98]"
+              >
+                <Download size={15} strokeWidth={1.75} aria-hidden /> CSV
+              </button>
+            )}
           </div>
         }
       />
