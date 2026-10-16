@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { managerOrAdmin, requireAuth } from '../middleware/auth';
 import { validateBody, validateParams, listQuerySchema as baseListQuerySchema } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
-import { applyDeliveryReport, getSmsBalance, listSms, sendSmsNotification, sendTenantSmsCampaign, sendTestSms } from '../services/smsService';
-import { getSmsConfig } from '../services/smsProvider';
+import { applyDeliveryReport, applyTextbeeDeliveryReport, getSmsBalance, listInbox, listSms, markInboxRead, recordReceivedSms, sendSmsNotification, sendTenantSmsCampaign, sendTestSms } from '../services/smsService';
+import { getSmsConfig, verifyTextbeeSignature, type TextbeeWebhookEvent } from '../services/smsProvider';
+import { env } from '../config/env';
 
 const router = Router();
 
@@ -26,6 +27,67 @@ router.post('/delivery-reports', asyncHandler(async (req, res) => {
     networkCode: typeof report.networkCode === 'string' ? report.networkCode : undefined,
   });
   res.status(200).send('Ok');
+}));
+
+// textbee webhook — delivery + inbound events for the own-SIM gateway.
+// MUST sit above router.use(requireAuth): textbee proves itself with an
+// HMAC-SHA256 signature (X-Signature over the raw body), not a login — same
+// reason the AT delivery-reports route is public. Always answers 200:
+// textbee retries non-2xx for up to 30 days, and a forged or malformed body
+// will never become valid, so it is logged and dropped instead of retried.
+// Without TEXTBEE_WEBHOOK_SECRET every delivery is dropped (fail closed).
+const textbeeWebhookSchema = z.object({
+  webhookEvent: z.string().optional(),
+  smsId: z.string().optional(),
+  smsBatchId: z.string().optional(),
+  status: z.string().optional(),
+  recipient: z.string().optional(),
+  sender: z.string().optional(),
+  message: z.string().optional(),
+  deviceId: z.string().optional(),
+  idempotencyKey: z.string().optional(),
+  errorCode: z.string().optional(),
+  errorMessage: z.string().optional(),
+  receivedAt: z.string().optional(),
+  sentAt: z.string().optional(),
+  deliveredAt: z.string().optional(),
+  failedAt: z.string().optional(),
+});
+
+router.post('/textbee-webhook', asyncHandler(async (req, res) => {
+  const raw = (req as { rawBody?: Buffer }).rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
+  // Envelope, not bare fields: the response guard requires { data } on 200s.
+  if (!verifyTextbeeSignature(raw, req.header('x-signature') ?? undefined, env.textbeeWebhookSecret)) {
+    console.warn('[sms] textbee webhook dropped: bad or missing signature');
+    res.status(200).json({ data: { ok: true, handled: false } });
+    return;
+  }
+  const parsed = textbeeWebhookSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    console.warn('[sms] textbee webhook dropped: unparsable body');
+    res.status(200).json({ data: { ok: true, handled: false } });
+    return;
+  }
+  const event = parsed.data as TextbeeWebhookEvent;
+  if (event.webhookEvent === 'MESSAGE_RECEIVED') {
+    if (!event.sender) {
+      console.warn('[sms] textbee webhook dropped: MESSAGE_RECEIVED without sender');
+      res.status(200).json({ data: { ok: true, handled: false } });
+      return;
+    }
+    const stored = await recordReceivedSms({
+      sender: event.sender,
+      message: event.message,
+      deviceId: event.deviceId,
+      textbeeSmsId: event.smsId,
+      idempotencyKey: event.idempotencyKey,
+      receivedAt: event.receivedAt,
+    });
+    res.status(200).json({ data: { ok: true, handled: true, kind: 'received', id: stored.id, duplicate: stored.duplicate } });
+    return;
+  }
+  const result = await applyTextbeeDeliveryReport(event);
+  res.status(200).json({ data: { ok: true, handled: true, kind: 'delivery', ...result } });
 }));
 
 router.use(requireAuth);
@@ -92,6 +154,25 @@ router.post('/campaign', managerOrAdmin, validateBody(smsCampaignSchema), asyncH
 }));
 
 const paramsSchema = z.object({ id: z.coerce.number().int().positive() });
+
+// --- Tenant inbox (textbee replies) ------------------------------------------
+// MESSAGE_RECEIVED rows via GET, newest-first with tenant resolution; PATCH
+// marks one read. Any authenticated staff may triage replies.
+
+const inboxQuerySchema = baseListQuerySchema.extend({
+  unreadOnly: z.enum(['1', 'true']).optional(),
+});
+
+router.get('/inbox', asyncHandler(async (req, res) => {
+  const q = inboxQuerySchema.parse(req.query);
+  const result = await listInbox({ page: q.page, limit: q.limit, unreadOnly: q.unreadOnly !== undefined });
+  res.json({ data: result.rows, pagination: result.pagination });
+}));
+
+router.post('/inbox/:id/read', validateParams(paramsSchema), asyncHandler(async (req, res) => {
+  const row = await markInboxRead(Number(req.params.id));
+  res.json({ data: row });
+}));
 const sendSmsSchema = z.object({
   templateKind: z.string().optional(),
 });

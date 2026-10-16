@@ -25,7 +25,7 @@ jest.mock('../../src/services/settingsService', () => ({
 }));
 
 import { env } from '../../src/config/env';
-import { getSmsConfig, parseTextbeeResponse, sendSms } from '../../src/services/smsProvider';
+import { getSmsConfig, parseTextbeeDeliveryOutcome, parseTextbeeResponse, sendSms, verifyTextbeeSignature } from '../../src/services/smsProvider';
 
 const fetchMock = jest.fn();
 
@@ -214,5 +214,43 @@ describe('parseTextbeeResponse (response mapping)', () => {
     expect(r.ok).toBe(false);
     expect(r.failureReason).toContain('404');
     expect(r.failureReason).toContain('Device not found');
+  });
+});
+
+describe('parseTextbeeDeliveryOutcome (webhook mapping)', () => {
+  it('maps delivered and failed to the terminal outcomes', () => {
+    expect(parseTextbeeDeliveryOutcome({ webhookEvent: 'MESSAGE_DELIVERED' })).toBe('DELIVERED');
+    expect(parseTextbeeDeliveryOutcome({ webhookEvent: 'MESSAGE_FAILED' })).toBe('FAILED_ON_NETWORK');
+  });
+
+  it('ignores sent, unknown-state and unrecognised events (no outcome)', () => {
+    // MESSAGE_SENT merely left the phone — the row is already SENT.
+    expect(parseTextbeeDeliveryOutcome({ webhookEvent: 'MESSAGE_SENT' })).toBeNull();
+    // UNKNOWN_STATE is log-only per textbee: the message may still arrive.
+    expect(parseTextbeeDeliveryOutcome({ webhookEvent: 'UNKNOWN_STATE' })).toBeNull();
+    expect(parseTextbeeDeliveryOutcome({ webhookEvent: 'SMS_STATUS_UPDATED' })).toBeNull();
+    expect(parseTextbeeDeliveryOutcome({})).toBeNull();
+  });
+});
+
+describe('verifyTextbeeSignature (webhook auth)', () => {
+  const { createHmac } = jest.requireActual('node:crypto') as typeof import('node:crypto');
+  const secret = 'test-webhook-secret-0123456789abcdef';
+  const body = Buffer.from(JSON.stringify({ webhookEvent: 'MESSAGE_DELIVERED', smsBatchId: 'b1' }));
+  const good = createHmac('sha256', secret).update(body).digest('hex');
+
+  it('accepts the correct HMAC-SHA256 hex of the raw body', () => {
+    expect(verifyTextbeeSignature(body, good, secret)).toBe(true);
+  });
+
+  it('rejects a forged signature, a missing one, and a missing secret', () => {
+    expect(verifyTextbeeSignature(body, '0'.repeat(64), secret)).toBe(false);
+    expect(verifyTextbeeSignature(body, undefined, secret)).toBe(false);
+    expect(verifyTextbeeSignature(body, good, '')).toBe(false);
+  });
+
+  it('rejects when the body differs by even one byte', () => {
+    const tampered = Buffer.from(JSON.stringify({ webhookEvent: 'MESSAGE_DELIVERED', smsBatchId: 'b2' }));
+    expect(verifyTextbeeSignature(tampered, good, secret)).toBe(false);
   });
 });

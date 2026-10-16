@@ -14,6 +14,10 @@ process.env.JWT_PORTAL_SECRET = 'test-portal-signing-key-fedcba9876543210';
 // instead of exercising its handler. The mpesaCallbackGate suite sets its
 // own token explicitly when testing the gate itself.
 process.env.MPESA_CALLBACK_TOKEN = '';
+// textbee webhook secret: same posture — cleared here so a real
+// TEXTBEE_WEBHOOK_SECRET in backend/.env never gates test deliveries; the
+// textbeeWebhook suite sets its own secret explicitly when testing the gate.
+process.env.TEXTBEE_WEBHOOK_SECRET = '';
 // Assistant LLM key: a real GROQ_API_KEY in backend/.env (dev machine) must
 // never enable the assistant under test — the fail-closed suites assert the
 // 503/disabled path, and no test run may fire live Groq calls. Suites that

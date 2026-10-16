@@ -16,10 +16,12 @@ import {
   getSmsConfig,
   normalizePhoneNumber,
   parseAtDeliveryOutcome,
+  parseTextbeeDeliveryOutcome,
   sendSms,
   type AtDeliveryReport,
   type BalanceStatus,
   type DeliveryOutcome,
+  type TextbeeWebhookEvent,
 } from './smsProvider';
 
 // Structural superset of ReceiptRow (receiptService) — any created receipt
@@ -563,6 +565,140 @@ export async function applyDeliveryReport(report: AtDeliveryReport): Promise<Del
     [row.id, outcome, report.networkCode?.slice(0, 10) ?? null]
   );
   return { matched: true, outcome, alreadySet: false };
+}
+
+// --- textbee webhook ---------------------------------------------------------
+// Delivery events reuse applyDeliveryReport unchanged: the textbee outcome
+// maps onto the same vocabulary, and the batch id our send stored as
+// provider_message_id is the join key. The recipient is matched too — our
+// sends are one recipient per batch, but a shared batch id must never flip a
+// sibling row, and stored numbers are operator-typed (0714…) while textbee
+// reports E.164 (+254…), so both sides normalize before comparing.
+
+export async function applyTextbeeDeliveryReport(event: TextbeeWebhookEvent): Promise<DeliveryReportUpdate> {
+  const outcome = parseTextbeeDeliveryOutcome(event);
+  if (!outcome || !event.smsBatchId) {
+    return { matched: false, outcome, alreadySet: false };
+  }
+  if (event.recipient) {
+    const reported = normalizePhoneNumber(event.recipient);
+    const stored = await queryOne<{ phone_number: string }>(
+      `SELECT phone_number FROM sms_notifications WHERE provider_message_id = $1 ORDER BY id DESC LIMIT 1`,
+      [event.smsBatchId]
+    );
+    const ours = stored ? normalizePhoneNumber(stored.phone_number) : null;
+    if (!reported || !ours || reported !== ours) {
+      return { matched: false, outcome, alreadySet: false };
+    }
+  }
+  return applyDeliveryReport({
+    messageId: event.smsBatchId,
+    status: outcome === 'DELIVERED' ? 'Success' : (event.errorMessage || 'Failed'),
+  });
+}
+
+export interface ReceivedSms {
+  id: number;
+  sender: string;
+  message: string;
+  device_id: string | null;
+  received_at: string | null;
+  read_at: string | null;
+  created_at: string;
+  tenant_id: number | null;
+  tenant_name: string | null;
+  unit_number: string | null;
+}
+
+// Inbound tenant reply (MESSAGE_RECEIVED): no receipt/reminder row to attach
+// to, so it lands in sms_inbox. Dedupe on the webhook idempotency key —
+// textbee retries a delivery up to 10 times with the same key.
+export async function recordReceivedSms(input: {
+  sender: string;
+  message?: string;
+  deviceId?: string;
+  textbeeSmsId?: string;
+  idempotencyKey?: string;
+  receivedAt?: string;
+}): Promise<{ id: number; duplicate: boolean }> {
+  if (input.idempotencyKey) {
+    const existing = await queryOne<{ id: number }>(
+      `SELECT id FROM sms_inbox WHERE idempotency_key = $1`,
+      [input.idempotencyKey]
+    );
+    if (existing) return { id: existing.id, duplicate: true };
+  }
+  const inserted = await queryOne<{ id: number }>(
+    `INSERT INTO sms_inbox (sender, message, device_id, textbee_sms_id, idempotency_key, received_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id`,
+    [
+      input.sender,
+      input.message ?? '',
+      input.deviceId ?? null,
+      input.textbeeSmsId ?? null,
+      input.idempotencyKey ?? null,
+      input.receivedAt ?? null,
+    ]
+  );
+  return { id: inserted!.id, duplicate: false };
+}
+
+// Inbox list, newest-first, with each sender resolved to an ACTIVE tenant
+// where the number matches (E.164 both sides — stored numbers are
+// operator-typed). One tenant query per page, matched in JS: phone
+// normalization lives in code, not SQL.
+export async function listInbox(filters: { page: number; limit: number; unreadOnly?: boolean }): Promise<{ rows: ReceivedSms[]; pagination: Pagination }> {
+  const where = filters.unreadOnly ? `WHERE read_at IS NULL` : '';
+  const { rows, pagination } = await paginate<Record<string, unknown>>({
+    selectSql: `id, sender, message, device_id, received_at, read_at, created_at`,
+    tableSql: `FROM sms_inbox`,
+    whereSql: where,
+    params: [],
+    orderBy: `ORDER BY created_at DESC`,
+    page: filters.page,
+    limit: filters.limit,
+  });
+  const senders = [...new Set(rows.map((r) => String(r.sender)))];
+  const tenants = senders.length
+    ? await query<{ id: number; full_name: string; phone_number: string | null; unit_number: string | null }>(
+        `SELECT t.id, t.full_name, t.phone_number, u.unit_number
+         FROM tenants t LEFT JOIN units u ON u.id = t.unit_id
+         WHERE t.status = 'ACTIVE'`
+      )
+    : [];
+  const byPhone = new Map<string, { id: number; full_name: string; unit_number: string | null }>();
+  for (const t of tenants) {
+    const normalized = t.phone_number ? normalizePhoneNumber(t.phone_number) : null;
+    if (normalized && !byPhone.has(normalized)) byPhone.set(normalized, { id: t.id, full_name: t.full_name, unit_number: t.unit_number });
+  }
+  return {
+    rows: rows.map((r) => {
+      const match = byPhone.get(normalizePhoneNumber(String(r.sender)) ?? '') ?? null;
+      return {
+        id: Number(r.id),
+        sender: String(r.sender),
+        message: String(r.message ?? ''),
+        device_id: r.device_id === null ? null : String(r.device_id),
+        received_at: r.received_at === null ? null : String(r.received_at),
+        read_at: r.read_at === null ? null : String(r.read_at),
+        created_at: String(r.created_at),
+        tenant_id: match?.id ?? null,
+        tenant_name: match?.full_name ?? null,
+        unit_number: match?.unit_number ?? null,
+      };
+    }),
+    pagination,
+  };
+}
+
+export async function markInboxRead(id: number): Promise<unknown> {
+  const row = await queryOne(
+    `UPDATE sms_inbox SET read_at = COALESCE(read_at, NOW()) WHERE id = $1 RETURNING *`,
+    [id]
+  );
+  if (!row) throw notFound('Inbox message not found.');
+  return row;
 }
 
 // --- Account balance & low-balance warning -----------------------------------

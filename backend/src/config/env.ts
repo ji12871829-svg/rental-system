@@ -113,6 +113,11 @@ export const env = {
   textbeeApiKey: process.env.TEXTBEE_API_KEY || '',
   textbeeApiUrl: (process.env.TEXTBEE_API_URL || 'https://api.textbee.dev/api/v1').replace(/\/+$/, ''),
   textbeeDeviceId: process.env.TEXTBEE_DEVICE_ID || '',
+  // TEXTBEE_WEBHOOK_SECRET signs inbound textbee webhook deliveries
+  // (HMAC-SHA256 over the raw body, X-Signature header). Generate with
+  // `openssl rand -hex 32`; the SAME value goes into the textbee dashboard
+  // subscription. Unset = /api/sms/textbee-webhook accepts nothing.
+  textbeeWebhookSecret: process.env.TEXTBEE_WEBHOOK_SECRET || '',
   mpesaProvider: (process.env.MPESA_PROVIDER || 'mock').toLowerCase() as 'mock' | 'daraja',
   mpesaConsumerKey: process.env.MPESA_CONSUMER_KEY || '',
   mpesaConsumerSecret: process.env.MPESA_CONSUMER_SECRET || '',
