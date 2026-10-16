@@ -41,6 +41,7 @@ interface ReminderFigures {
   tenantName: string;
   phoneNumber: string | null;
   email: string | null;
+  unitId: number | null;
   unitNumber: string;
   /** Real UTC month (1-12) the figures were computed for. */
   month: number;
@@ -55,6 +56,10 @@ interface ReminderFigures {
   paymentMethod: string;
   accountNumber: string;
   identityName: string | null;
+  // Latest meter reading for the unit (the row the current bill was computed
+  // from) — feeds the proof clause on water notices. Null when the unit has
+  // no readings (builders omit the clause rather than printing blanks).
+  latestWaterReading: { previous: number; current: number } | null;
 }
 
 async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures> {
@@ -62,11 +67,12 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
     full_name: string;
     phone_number: string | null;
     email: string | null;
+    unit_id: number | null;
     unit_number: string | null;
     move_in_date: string;
     move_out_date: string | null;
   }>(
-    `SELECT t.full_name, t.phone_number, t.email, u.unit_number, t.move_in_date, t.move_out_date
+    `SELECT t.full_name, t.phone_number, t.email, u.id AS unit_id, u.unit_number, t.move_in_date, t.move_out_date
      FROM tenants t
      LEFT JOIN units u ON u.id = t.unit_id
      WHERE t.id = $1`,
@@ -101,10 +107,29 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
     : 'M-Pesa or at the office';
   const accountNumber = `Unit ${tenant.unit_number ?? tenantId}`;
 
+  // Latest meter reading for the unit in the reporting year — the proof
+  // behind the water-billing notice. Falls back to null (clause omitted)
+  // when the unit has no readings.
+  let latestWaterReading: { previous: number; current: number } | null = null;
+  if (tenant.unit_id !== null) {
+    const reading = await queryOne<{ previous_reading: string; current_reading: string }>(
+      `SELECT previous_reading, current_reading FROM water_meter_readings
+       WHERE unit_id = $1 AND billing_year = $2
+       ORDER BY reading_date DESC, id DESC LIMIT 1`,
+      [tenant.unit_id, year],
+    );
+    if (reading) {
+      const prev = Number(reading.previous_reading);
+      const curr = Number(reading.current_reading);
+      if (Number.isFinite(prev) && Number.isFinite(curr)) latestWaterReading = { previous: prev, current: curr };
+    }
+  }
+
   return {
     tenantName: tenant.full_name,
     phoneNumber: tenant.phone_number,
     email: tenant.email,
+    unitId: tenant.unit_id,
     unitNumber: tenant.unit_number ?? String(tenantId),
     month,
     monthName,
@@ -118,6 +143,7 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
     paymentMethod,
     accountNumber,
     identityName: identity.name,
+    latestWaterReading,
   };
 }
 
@@ -351,8 +377,18 @@ function mergeVarsFor(kind: ReminderKind, f: ReminderFigures, baseVars: MergeVar
       return { ...baseVars, total_due: Math.max(f.combinedBalance, 0), account: f.accountNumber, payment_method: f.paymentMethod };
     case 'DUE_SOON':
       return { ...baseVars, next_month: MONTH_NAMES[nextMonth - 1], amount: Math.max(f.currentRent, 0), payment_method: f.paymentMethod };
-    case 'WATER_BILLING':
-      return { ...baseVars, amount: Math.max(f.waterBalance, 0), payment_method: f.paymentMethod };
+    case 'WATER_BILLING': {
+      const prev = f.latestWaterReading?.previous ?? null;
+      const curr = f.latestWaterReading?.current ?? null;
+      return {
+        ...baseVars,
+        amount: Math.max(f.waterBalance, 0),
+        payment_method: f.paymentMethod,
+        previous_reading: prev,
+        current_reading: curr,
+        units_used: prev !== null && curr !== null ? Math.round((curr - prev) * 100) / 100 : null,
+      };
+    }
     case 'LATE_FEE':
       return { ...baseVars, amount_due: Math.max(f.rentBalance, 0) };
     case 'WELCOME':
@@ -382,7 +418,10 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
     case 'WATER_BILLING':
       return waterBillingNoticeMessage({
         tenantName: f.tenantName, unitNumber: f.unitNumber, monthName: f.monthName, year: f.year,
-        amount: Math.max(f.waterBalance, 0), paymentMethod: f.paymentMethod, currency: f.currency, businessIdentity: identity,
+        amount: Math.max(f.waterBalance, 0), paymentMethod: f.paymentMethod, currency: f.currency,
+        previousReading: f.latestWaterReading?.previous ?? null,
+        currentReading: f.latestWaterReading?.current ?? null,
+        businessIdentity: identity,
       });
     case 'LATE_FEE':
       return lateFeeNoticeMessage({

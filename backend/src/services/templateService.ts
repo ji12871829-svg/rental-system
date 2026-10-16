@@ -127,11 +127,11 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     channel: 'SMS' as const,
     description:
       'Tells the tenant the month\'s water charge has been billed to their ledger. Sent only when an operator sends it — billing water never spends SMS credit on its own.',
-    fields: ['name', 'unit', 'month', 'year', 'amount', 'payment_method', 'currency', 'business'],
+    fields: ['name', 'unit', 'month', 'year', 'amount', 'previous_reading', 'current_reading', 'units_used', 'payment_method', 'currency', 'business'],
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, your water charge for Unit {{unit}} for {{month}} {{year}} is {{currency}} {{amount}}. It appears on your statement and can be paid together with your rent via {{payment_method}}.',
+      'Dear {{name}}, your water charge for Unit {{unit}} for {{month}} {{year}} is {{currency}} {{amount}}. Meter: prev {{previous_reading}}, curr {{current_reading}} ({{units_used}} units). It appears on your statement and can be paid together with your rent via {{payment_method}}.',
   },
   {
     kind: 'SMS_LATE_FEE',

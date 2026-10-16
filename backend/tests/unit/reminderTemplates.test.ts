@@ -134,6 +134,42 @@ describe('waterBillingNoticeMessage', () => {
       'Dear Jane Wanjiku, your water charge for Unit B4 for September 2026 is KSh 1200. It appears on your statement and can be paid together with your rent via M-Pesa PayBill 247252.',
     );
   });
+
+  it('names the previous and current readings as meter proof', () => {
+    const msg = waterBillingNoticeMessage({
+      tenantName: 'Jane Wanjiku',
+      unitNumber: 'B4',
+      monthName: 'September',
+      year: 2026,
+      amount: 1200,
+      paymentMethod: 'M-Pesa PayBill 247252',
+      currency: 'KSh',
+      previousReading: 128,
+      currentReading: 133,
+    });
+    expect(msg).toContain('Meter: prev 128, curr 133 (5 units).');
+  });
+
+  it('omits the proof clause entirely when either reading is missing', () => {
+    for (const opts of [
+      { previousReading: 128, currentReading: null },
+      { previousReading: null, currentReading: 133 },
+    ]) {
+      const msg = waterBillingNoticeMessage({
+        tenantName: 'Jane Wanjiku',
+        unitNumber: 'B4',
+        monthName: 'September',
+        year: 2026,
+        amount: 1200,
+        paymentMethod: 'M-Pesa PayBill 247252',
+        currency: 'KSh',
+        previousReading: opts.previousReading,
+        currentReading: opts.currentReading,
+      });
+      expect(msg).not.toContain('Meter:');
+      expect(msg).toContain('is KSh 1200. It appears on your statement');
+    }
+  });
 });
 
 describe('lateFeeNoticeMessage', () => {
@@ -174,6 +210,7 @@ describe('notice budget and charset', () => {
     const identity = 'Olbano Plaza, Reg No BN-2026-XYZ';
     for (const build of [
       () => waterBillingNoticeMessage({ tenantName: long, unitNumber: 'B12', monthName: 'September', year: 2026, amount: 123456, paymentMethod: 'M-Pesa PayBill 247252', currency: 'KSh', businessIdentity: identity }),
+      () => waterBillingNoticeMessage({ tenantName: long, unitNumber: 'B12', monthName: 'September', year: 2026, amount: 123456, paymentMethod: 'M-Pesa PayBill 247252', currency: 'KSh', previousReading: 1234.5, currentReading: 2345.75, businessIdentity: identity }),
       () => lateFeeNoticeMessage({ tenantName: long, unitNumber: 'B12', amountDue: 123456, currency: 'KSh', businessIdentity: identity }),
       () => welcomeMessage({ tenantName: long, unitNumber: 'B12', rentAmount: 123456, paymentMethod: 'M-Pesa PayBill 247252', currency: 'KSh', businessIdentity: identity }),
     ]) {
