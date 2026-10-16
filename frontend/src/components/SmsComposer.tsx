@@ -21,11 +21,12 @@ export type SmsTemplateKey = 'reminder' | 'general' | 'water' | 'latefee' | 'wel
 
 // Starting wordings only — the operator edits before sending. Each fits the
 // two-segment GSM-7 budget (306 chars) with a typical name and unit number,
-// so the default send never trips the server's cost guard.
+// so the default send never trips the server's cost guard. Worded for
+// Send-Money collection (no PayBill, no account reference).
 export const SMS_TEMPLATES: Record<SmsTemplateKey, string> = {
   reminder: [
     'Dear {{name}}, this is a friendly reminder that your Olbano Plaza account (Unit {{unit}}) has an outstanding balance.',
-    'Please pay via M-Pesa using your unit number as the account reference. If you already paid, kindly ignore this message.',
+    'Please send M-Pesa to 0743799002. If you already paid, kindly ignore this message.',
   ].join(' '),
   general: [
     'Dear {{name}}, please note the following regarding your tenancy at Unit {{unit}}:',
@@ -34,15 +35,15 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, string> = {
   ].join(' '),
   water: [
     'Dear {{name}}, this is a reminder that water for your Unit {{unit}} is unpaid.',
-    'Please pay via M-Pesa using your unit number as the account reference. If you already paid, kindly ignore this message.',
+    'Please send M-Pesa to 0743799002. If you already paid, kindly ignore this message.',
   ].join(' '),
   latefee: [
     'Dear {{name}}, rent for Unit {{unit}} was not received by the due date, so a late fee has been applied.',
-    'Please settle the full amount via M-Pesa using your unit number as the reference. Regards, Olbano Plaza Management.',
+    'Please send the full amount via M-Pesa to 0743799002. Regards, Olbano Plaza Management.',
   ].join(' '),
   welcome: [
     'Dear {{name}}, welcome to Olbano Plaza! Your home is Unit {{unit}}.',
-    'Rent is due on the 1st of each month; pay via M-Pesa using your unit number as the reference. Regards, Management.',
+    'Rent is due on the 1st of each month; send it via M-Pesa to 0743799002. Regards, Management.',
   ].join(' '),
 };
 

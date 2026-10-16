@@ -132,3 +132,24 @@ describe('GET /api/portal/payment-status', () => {
     await query(`UPDATE mpesa_transactions SET payment_kind = 'RENT' WHERE id = $1`, [rent]);
   });
 });
+
+describe('GET /api/portal/payment-instructions (send-money number)', () => {
+  it('requires a portal session', async () => {
+    const res = await request(app).get('/api/portal/payment-instructions');
+    expect(res.status).toBe(401);
+  });
+
+  it('points at the Send-Money line with no paybill flag when PayBill is off', async () => {
+    await query(
+      `UPDATE business_branding SET send_money_phone = '0712000007', paybill_enabled = FALSE, paybill_number = NULL WHERE id = 1`
+    );
+    try {
+      const res = await agent.get('/api/portal/payment-instructions');
+      expect(res.status).toBe(200);
+      expect(res.body.data.number).toBe('0712000007');
+      expect(res.body.data.paybillActive).toBe(false);
+    } finally {
+      await query(`UPDATE business_branding SET send_money_phone = NULL WHERE id = 1`);
+    }
+  });
+});
