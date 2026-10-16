@@ -3,11 +3,23 @@ import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { env, isProd } from '../config/env';
+import { requireAuth } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
-import { parseC2bCallback, parseStkCallback } from '../services/mpesaProvider';
+import { getMpesaConfig, parseC2bCallback, parseStkCallback } from '../services/mpesaProvider';
 import { markStkFailure, processMpesaPayment, processPaybillPayment } from '../services/mpesaService';
 
 const router = Router();
+
+// Liveness probe for the staff UI (Rent page): whether an M-Pesa prompt
+// would actually reach a phone. Mock mode answers success without sending
+// anything, so the page hides the prompt button unless live. Secrets never
+// leave the server — provider name and boolean only. Any authenticated staff
+// may read it. Registered above the callback limiter: this is UI polling,
+// not provider traffic.
+router.get('/config', requireAuth, asyncHandler(async (_req, res) => {
+  const cfg = getMpesaConfig();
+  res.json({ data: { provider: cfg.provider, live: cfg.live } });
+}));
 
 // ---------------------------------------------------------------------------
 // Callback authentication

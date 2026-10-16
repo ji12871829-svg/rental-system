@@ -62,7 +62,9 @@ describe('ExecWatchlist (empty states)', () => {
 
   it('blames the filter only once a filter is actually hiding rows', () => {
     renderWatchlist({
-      rows: [row({ status: 'OVERDUE', totalOutstanding: 5500, tenantName: 'Juma Ibrahim' })],
+      // Internally consistent balances: the 5500 owed sits on the rent side,
+      // which is what the "Open balances" audience reads.
+      rows: [row({ status: 'OVERDUE', rentBalance: 5500, totalOutstanding: 5500, tenantName: 'Juma Ibrahim' })],
     });
     // Default view (Open balances) shows the row.
     expect(screen.getByText('Juma Ibrahim')).toBeInTheDocument();
@@ -109,10 +111,12 @@ describe('ExecWatchlist (empty states)', () => {
 });
 
 describe('ExecWatchlist (unit order and row numbers)', () => {
+  // Balances sit on the rent side (consistent with each totalOutstanding) —
+  // that is the audience the default "Open balances" filter reads.
   const debtors = [
-    row({ unitId: 112, unitNumber: '12', tenantId: 21, tenantName: 'Twelve Tenant', status: 'UNPAID', totalOutstanding: 12000 }),
-    row({ unitId: 109, unitNumber: '9', tenantId: 22, tenantName: 'Nine Tenant', status: 'UNPAID', totalOutstanding: 9000 }),
-    row({ unitId: 102, unitNumber: '2', tenantId: 23, tenantName: 'Two Tenant', status: 'UNPAID', totalOutstanding: 2000 }),
+    row({ unitId: 112, unitNumber: '12', tenantId: 21, tenantName: 'Twelve Tenant', status: 'UNPAID', rentBalance: 12000, totalOutstanding: 12000 }),
+    row({ unitId: 109, unitNumber: '9', tenantId: 22, tenantName: 'Nine Tenant', status: 'UNPAID', rentBalance: 9000, totalOutstanding: 9000 }),
+    row({ unitId: 102, unitNumber: '2', tenantId: 23, tenantName: 'Two Tenant', status: 'UNPAID', rentBalance: 2000, totalOutstanding: 2000 }),
   ];
 
   function renderDebtors() {

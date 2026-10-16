@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, AlertTriangle } from 'lucide-react';
 import { Button, EmptyState, MetricCardWithActions, PageHeader, Select, SkeletonTable, StatusBadge, useFetch, useToast } from '../components/ui';
+import { BulkReminderButton } from '../components/BulkReminderButton';
 import { api } from '../lib/api';
 import { downloadBlob } from '../lib/download';
 import { money } from '../lib/format';
@@ -78,6 +79,12 @@ export default function Arrears() {
       total: list.reduce((s, r) => s + Math.max(0, r.totalOutstanding), 0),
       overdues: list.filter((r) => r.status === 'OVERDUE' || r.status === 'UNPAID').length,
       cleared: list.filter((r) => r.status === 'CLEARED' || r.status === 'OVERPAID').length,
+      // Rent OR water, per side — never the net total, so a rent credit can
+      // never mask a water debt (and vice versa), matching the bulk-reminder
+      // audience on the backend.
+      owing: list.filter((r) => r.rentBalance > 0 || r.waterBalance > 0).length,
+      rentOwing: list.filter((r) => r.rentBalance > 0).length,
+      waterOwing: list.filter((r) => r.waterBalance > 0).length,
     };
   }, [data]);
 
@@ -87,7 +94,14 @@ export default function Arrears() {
         title="Arrears"
         subtitle="Who owes what — rent and water balances per occupied unit, with months in arrears"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* One click: personalised SMS to everyone owing — or rent / water
+                debtors alone. Each message matches its tenant's own bill. */}
+            <BulkReminderButton
+              owingCount={loading ? undefined : totals.owing}
+              audienceCounts={loading ? undefined : { rent: totals.rentOwing, water: totals.waterOwing }}
+              showAudiencePicker
+            />
             <Select value={year} onChange={(e) => setYear(e.target.value)} className="w-28">
               {[now.getFullYear(), now.getFullYear() - 1, now.getFullYear() + 1].map((y) => <option key={y} value={y}>{y}</option>)}
             </Select>

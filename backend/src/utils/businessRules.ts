@@ -190,28 +190,36 @@ export function combinedReceiptMessage(opts: {
 }
 
 // --- Tenant reminder templates ----------------------------------------------
-// Staff-initiated statements/overdue notices (SMS page + Tenants page actions).
-// Same 2-segment GSM-7 budget and identity-line budgeting as the receipts.
+// Staff-initiated arrears reminders (Tenants page actions, the one-click bulk
+// button, the scheduled overdue chase). Every message states what is actually
+// unpaid — rent and water are itemized, never folded into a bare total — so
+// the text a tenant receives matches the bill they owe. Same 2-segment GSM-7
+// budget and identity-line budgeting as the receipts.
 
-// "Monthly Rent & Balance Due": a month's statement. Sent any time; when the
-// month is still current the wording stays neutral ("is ready"), and the
-// balance is the figure the ledger shows for that month.
+// "Monthly Rent & Balance Due": itemized arrears reminder. When water is owed
+// the split is spelled out (Rent X + Water Y = Total Z); rent-only arrears
+// get the shorter single-figure wording. YTD arrears are cumulative, so no
+// month is named — naming one month would misdescribe the figure.
 export function monthlyBalanceDueMessage(opts: {
   tenantName: string;
   unitNumber: string;
-  monthName: string;
-  year: number;
+  rentDue: number;
+  waterDue: number;
   totalDue: number;
   accountNumber: string;
   paymentMethod: string;
   currency: string;
   businessIdentity?: string | string[];
 }): string {
-  const { tenantName, unitNumber, monthName, year, totalDue, accountNumber, paymentMethod, currency } = opts;
-  return withIdentity(
-    `Dear ${tenantName}, your rent statement for ${monthName} ${year} (Unit ${unitNumber}) is ready. Total Due: ${currency} ${totalDue}. To pay, use ${paymentMethod} with account ${accountNumber}.`,
-    opts.businessIdentity,
-  );
+  const { tenantName, unitNumber, rentDue, waterDue, totalDue, accountNumber, paymentMethod, currency } = opts;
+  // accountNumber is empty in Send-Money mode (no reference field exists),
+  // so the reference clause is dropped rather than printed blank.
+  const reference = accountNumber ? ` with account ${accountNumber}` : '';
+  const body =
+    waterDue > 0
+      ? `Dear ${tenantName}, Unit ${unitNumber} arrears: Rent ${currency} ${rentDue} + Water ${currency} ${waterDue} = Total ${currency} ${totalDue}. Pay via ${paymentMethod}${reference}. If already paid, ignore this message. Thank you.`
+      : `Dear ${tenantName}, rent for Unit ${unitNumber} is unpaid: ${currency} ${rentDue}. Pay via ${paymentMethod}${reference}. If already paid, ignore this message. Thank you.`;
+  return withIdentity(body, opts.businessIdentity);
 }
 
 // "Overdue Notice": firmer tone for a past-due balance, without the curt
@@ -228,7 +236,7 @@ export function overdueNoticeMessage(opts: {
 }): string {
   const { tenantName, unitNumber, amountDue, totalBalance, currency } = opts;
   return withIdentity(
-    `Dear ${tenantName}, the rent for Unit ${unitNumber} is overdue by ${currency} ${amountDue}. Kindly settle this amount to avoid a late payment fee. Your total balance is ${currency} ${totalBalance}. Thank you.`,
+    `Dear ${tenantName}, the rent for Unit ${unitNumber} is overdue by ${currency} ${amountDue}. Kindly settle this amount to avoid a late payment fee. Your total balance is ${currency} ${totalBalance}. If already paid, ignore this message. Thank you.`,
     opts.businessIdentity,
   );
 }
@@ -268,12 +276,15 @@ export function rentDueSoonMessage(opts: {
   year: number;
   rentAmount: number;
   paymentMethod: string;
+  /** Empty in Send-Money mode — there is no reference to quote. */
+  accountNumber: string;
   currency: string;
   businessIdentity?: string | string[];
 }): string {
-  const { tenantName, unitNumber, nextMonthName, year, rentAmount, paymentMethod, currency } = opts;
+  const { tenantName, unitNumber, nextMonthName, year, rentAmount, paymentMethod, accountNumber, currency } = opts;
+  const reference = accountNumber ? `, quoting ${accountNumber} as the account reference` : '';
   return withIdentity(
-    `Dear ${tenantName}, a friendly reminder that ${nextMonthName} ${year} rent of ${currency} ${rentAmount} for Unit ${unitNumber} falls due on the 1st. Please pay via ${paymentMethod}, quoting your unit number as the account reference. Thank you.`,
+    `Dear ${tenantName}, a friendly reminder that ${nextMonthName} ${year} rent of ${currency} ${rentAmount} for Unit ${unitNumber} falls due on the 1st. Please pay via ${paymentMethod}${reference}. Thank you.`,
     opts.businessIdentity,
   );
 }
@@ -314,7 +325,7 @@ export function waterBillingNoticeMessage(opts: {
       ? ` Meter: prev ${prev}, curr ${curr} (${Math.round((curr - prev) * 100) / 100} units).`
       : '';
   return withIdentity(
-    `Dear ${tenantName}, your water charge for Unit ${unitNumber} for ${monthName} ${year} is ${currency} ${amount}.${proof} It appears on your statement and can be paid together with your rent via ${paymentMethod}.`,
+    `Dear ${tenantName}, water for Unit ${unitNumber} for ${monthName} ${year} is unpaid: ${currency} ${amount}.${proof} Pay with your rent via ${paymentMethod}. If already paid, ignore this message. Thank you.`,
     opts.businessIdentity,
   );
 }
@@ -344,12 +355,15 @@ export function welcomeMessage(opts: {
   unitNumber: string;
   rentAmount: number;
   paymentMethod: string;
+  /** Empty in Send-Money mode — there is no reference to quote. */
+  accountNumber: string;
   currency: string;
   businessIdentity?: string | string[];
 }): string {
-  const { tenantName, unitNumber, rentAmount, paymentMethod, currency } = opts;
+  const { tenantName, unitNumber, rentAmount, paymentMethod, accountNumber, currency } = opts;
+  const reference = accountNumber ? `, quoting ${accountNumber} as the account reference` : '';
   return withIdentity(
-    `Dear ${tenantName}, welcome to Unit ${unitNumber}! Rent of ${currency} ${rentAmount} falls due on the 1st of each month. Pay via ${paymentMethod}, quoting your unit number as the account reference. We wish you a comfortable stay.`,
+    `Dear ${tenantName}, welcome to Unit ${unitNumber}! Rent of ${currency} ${rentAmount} falls due on the 1st of each month. Pay via ${paymentMethod}${reference}. We wish you a comfortable stay.`,
     opts.businessIdentity,
   );
 }
@@ -360,10 +374,18 @@ export function welcomeMessage(opts: {
 // click-to-chat (wa.me) link with the composed text pre-filled, so the text
 // never leaves the system unencrypted and there is no provider cost.
 
+// The WhatsApp pay line, shared by the hardcoded builder and customized
+// templates (via the {{pay_line}} merge field): the account reference rides
+// along only when one exists (Send Money has none).
+export function whatsappPayLine(accountNumber: string, paymentMethod: string): string {
+  return accountNumber
+    ? `Please make payment to Account ${accountNumber} via ${paymentMethod}.`
+    : `Please make payment via ${paymentMethod}.`;
+}
+
 // WhatsApp statement: current rent, previous balance and the total due, with
 // an "ignore if already paid" line to cut back-and-forth.
-export function whatsappBalanceDueMessage(opts: {
-  tenantName: string;
+export function whatsappBalanceDueMessage(opts: {  tenantName: string;
   unitNumber: string;
   monthName: string;
   year: number;
@@ -375,7 +397,7 @@ export function whatsappBalanceDueMessage(opts: {
   currency: string;
 }): string {
   const { tenantName, unitNumber, monthName, year, currentRent, previousBalance, totalDue, accountNumber, paymentMethod, currency } = opts;
-  return `Hello ${tenantName}, 🌟 Your rent statement for ${monthName} ${year} is ready for Unit ${unitNumber}. 💰 Current Rent: ${currency} ${currentRent} ➕ Previous Balance: ${currency} ${previousBalance} 🧾 Total Due: ${currency} ${totalDue}. Please make payment to Account ${accountNumber} via ${paymentMethod}. If you have already paid, please ignore this message. Thank you!`;
+  return `Hello ${tenantName}, 🌟 Your rent statement for ${monthName} ${year} is ready for Unit ${unitNumber}. 💰 Current Rent: ${currency} ${currentRent} ➕ Previous Balance: ${currency} ${previousBalance} 🧾 Total Due: ${currency} ${totalDue}. ${whatsappPayLine(accountNumber, paymentMethod)} If you have already paid, please ignore this message. Thank you!`;
 }
 
 // WhatsApp overdue notice: softer than SMS but still firm, with a chat link.

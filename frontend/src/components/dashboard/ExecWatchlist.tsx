@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Banknote, Eye, Search, Send } from 'lucide-react';
 import { Button, EmptyState, Select, SkeletonTable, StatusBadge, TextInput } from '../ui';
+import { BulkReminderButton } from '../BulkReminderButton';
 import { money, plural } from '../../lib/format';
 import type { ArrearRow } from '../../pages/Arrears';
 
@@ -29,8 +30,11 @@ export function ExecWatchlist({ rows, loading, error, currency }: ExecWatchlistP
   const visible = useMemo(() => {
     const all = rows ?? [];
     const q = query.trim().toLowerCase();
+    // "Open balances" means owing on EITHER side — a credit on one side never
+    // hides a debt on the other (same audience as the one-click reminder).
+    const owes = (r: ArrearRow) => r.rentBalance > 0 || r.waterBalance > 0;
     return all
-      .filter((r) => (status ? r.status === status : r.totalOutstanding > 0))
+      .filter((r) => (status ? r.status === status : owes(r)))
       .filter((r) =>
         q
           ? r.tenantName.toLowerCase().includes(q) ||
@@ -44,7 +48,7 @@ export function ExecWatchlist({ rows, loading, error, currency }: ExecWatchlistP
       .slice(0, MAX_ROWS);
   }, [rows, query, status]);
 
-  const openCount = (rows ?? []).filter((r) => r.totalOutstanding > 0).length;
+  const openCount = (rows ?? []).filter((r) => r.rentBalance > 0 || r.waterBalance > 0).length;
   // Distinguish "nothing to chase" from "your filter hid it". Both look
   // identical in the table, but they call for different actions — telling an
   // operator to clear a search that never ran, or to loosen a status that is
@@ -85,10 +89,11 @@ export function ExecWatchlist({ rows, loading, error, currency }: ExecWatchlistP
             <option value="CLEARED">Cleared</option>
             <option value="OVERPAID">Overpaid</option>
           </Select>
-          {/* Opens the SMS composer with the arrears audience — nothing is
-              sent from here; a human still reviews and presses send. */}
-          <Button variant="primary" onClick={() => navigate('/sms?compose=arrears')}>
-            <Send size={14} strokeWidth={2} aria-hidden /> Send Reminders
+          {/* One click sends a personalised balance SMS to everyone owing
+              (rent or water); Review opens the composer for a human check. */}
+          <BulkReminderButton owingCount={rows === null ? undefined : openCount} />
+          <Button variant="secondary" onClick={() => navigate('/sms?compose=arrears')}>
+            <Send size={14} strokeWidth={2} aria-hidden /> Review
           </Button>
         </div>
       </div>

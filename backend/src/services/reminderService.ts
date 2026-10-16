@@ -11,7 +11,7 @@
 // flow lived in smsService and reached into emailService for the email twin —
 // now both channel modules stay channel-only.
 
-import { queryOne } from '../config/db';
+import { query, queryOne } from '../config/db';
 import { MONTH_NAMES } from '../types';
 import {
   lateFeeNoticeMessage,
@@ -22,6 +22,7 @@ import {
   welcomeMessage,
   whatsappBalanceDueMessage,
   whatsappOverdueMessage,
+  whatsappPayLine,
 } from '../utils/businessRules';
 import { badRequest, notFound } from '../utils/httpError';
 import { logAudit } from './auditService';
@@ -32,7 +33,7 @@ import { getCustomTemplate, type TemplateKind } from './templateService';
 import { renderMergeFields, type MergeVars } from '../utils/mergeFields';
 import { tenantBalances } from './tenantLedger';
 import { queuePreparedEmail } from './emailService';
-import { queueSms } from './smsService';
+import { dispatchAutoSend, queueSms } from './smsService';
 
 // The shared figures every reminder channel composes from. previousRent
 // (YTD expected minus THIS month's expected) drives the statement's
@@ -99,13 +100,25 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
   const previousRentBalance = ledger.previousRentBalance;
 
   const identity = await getBusinessIdentity();
-  // Payment channel line: the reconciled paybill number when branding has
-  // one, otherwise a generic instruction.
+  // Payment instruction: PayBill with a unit account reference when the
+  // operator collects that way; plain Send Money to the business contact phone
+  // when they don't (Send Money has no reference field, so accountNumber
+  // stays empty and every composer drops its reference clause); otherwise a
+  // generic walk-in line that keeps the unit reference.
   const paybill = await getPaybillInstructions();
-  const paymentMethod = paybill.enabled && paybill.number
-    ? `M-Pesa PayBill ${paybill.number}`
-    : 'M-Pesa or at the office';
-  const accountNumber = `Unit ${tenant.unit_number ?? tenantId}`;
+  const unitAccount = `Unit ${tenant.unit_number ?? tenantId}`;
+  let paymentMethod: string;
+  let accountNumber: string;
+  if (paybill.enabled && paybill.number) {
+    paymentMethod = `M-Pesa PayBill ${paybill.number}`;
+    accountNumber = unitAccount;
+  } else if (identity.phone?.trim()) {
+    paymentMethod = `M-Pesa to ${identity.phone.trim()}`;
+    accountNumber = '';
+  } else {
+    paymentMethod = 'M-Pesa or at the office';
+    accountNumber = unitAccount;
+  }
 
   // Latest meter reading for the unit in the reporting year — the proof
   // behind the water-billing notice. Falls back to null (clause omitted)
@@ -232,7 +245,8 @@ async function whatsappReminder(
               current_rent: f.currentRent,
               previous_balance: f.previousRentBalance,
               total_due: Math.max(f.combinedBalance, 0),
-              account: f.accountNumber,
+              account: `Unit ${f.unitNumber}`,
+              pay_line: whatsappPayLine(f.accountNumber, f.paymentMethod),
               payment_method: f.paymentMethod,
               currency: f.currency,
             }
@@ -371,12 +385,18 @@ const TEMPLATE_KIND_BY_REMINDER: Record<ReminderKind, TemplateKind> = {
 
 // Merge fields for a customized template — exactly the fields the Message
 // Templates editor offers for that kind, resolved from the live ledger.
+// {{account}} is always the unit label (never empty); the mode-aware
+// {{account_clause}} / {{reference_clause}} / {{pay_line}} carry the reference
+// phrasing and vanish when no reference exists (Send Money).
 function mergeVarsFor(kind: ReminderKind, f: ReminderFigures, baseVars: MergeVars, nextMonth: number): MergeVars {
+  const unitLabel = `Unit ${f.unitNumber}`;
+  const accountClause = f.accountNumber ? ` with account ${f.accountNumber}` : '';
+  const referenceClause = f.accountNumber ? `, quoting ${f.accountNumber} as the account reference` : '';
   switch (kind) {
     case 'BALANCE_DUE':
-      return { ...baseVars, total_due: Math.max(f.combinedBalance, 0), account: f.accountNumber, payment_method: f.paymentMethod };
+      return { ...baseVars, account: unitLabel, account_clause: accountClause, rent_due: Math.max(f.rentBalance, 0), water_due: Math.max(f.waterBalance, 0), total_due: Math.max(f.combinedBalance, 0), payment_method: f.paymentMethod };
     case 'DUE_SOON':
-      return { ...baseVars, next_month: MONTH_NAMES[nextMonth - 1], amount: Math.max(f.currentRent, 0), payment_method: f.paymentMethod };
+      return { ...baseVars, reference_clause: referenceClause, next_month: MONTH_NAMES[nextMonth - 1], amount: Math.max(f.currentRent, 0), payment_method: f.paymentMethod };
     case 'WATER_BILLING': {
       const prev = f.latestWaterReading?.previous ?? null;
       const curr = f.latestWaterReading?.current ?? null;
@@ -392,7 +412,7 @@ function mergeVarsFor(kind: ReminderKind, f: ReminderFigures, baseVars: MergeVar
     case 'LATE_FEE':
       return { ...baseVars, amount_due: Math.max(f.rentBalance, 0) };
     case 'WELCOME':
-      return { ...baseVars, amount: Math.max(f.currentRent, 0), payment_method: f.paymentMethod };
+      return { ...baseVars, account: unitLabel, reference_clause: referenceClause, amount: Math.max(f.currentRent, 0), payment_method: f.paymentMethod };
     case 'OVERDUE':
     default:
       return { ...baseVars, amount_due: Math.max(f.rentBalance, 0), total_due: Math.max(f.combinedBalance, 0) };
@@ -406,14 +426,16 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
   switch (kind) {
     case 'BALANCE_DUE':
       return monthlyBalanceDueMessage({
-        tenantName: f.tenantName, unitNumber: f.unitNumber, monthName: f.monthName, year: f.year,
+        tenantName: f.tenantName, unitNumber: f.unitNumber,
+        rentDue: Math.max(f.rentBalance, 0),
+        waterDue: Math.max(f.waterBalance, 0),
         totalDue: Math.max(f.combinedBalance, 0), accountNumber: f.accountNumber,
         paymentMethod: f.paymentMethod, currency: f.currency, businessIdentity: identity,
       });
     case 'DUE_SOON':
       return rentDueSoonMessage({
         tenantName: f.tenantName, unitNumber: f.unitNumber, nextMonthName: MONTH_NAMES[nextMonth - 1], year: nextYear,
-        rentAmount: Math.max(f.currentRent, 0), paymentMethod: f.paymentMethod, currency: f.currency, businessIdentity: identity,
+        rentAmount: Math.max(f.currentRent, 0), paymentMethod: f.paymentMethod, accountNumber: f.accountNumber, currency: f.currency, businessIdentity: identity,
       });
     case 'WATER_BILLING':
       return waterBillingNoticeMessage({
@@ -431,7 +453,7 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
     case 'WELCOME':
       return welcomeMessage({
         tenantName: f.tenantName, unitNumber: f.unitNumber, rentAmount: Math.max(f.currentRent, 0),
-        paymentMethod: f.paymentMethod, currency: f.currency, businessIdentity: identity,
+        paymentMethod: f.paymentMethod, accountNumber: f.accountNumber, currency: f.currency, businessIdentity: identity,
       });
     case 'OVERDUE':
     default:
@@ -440,4 +462,94 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
         totalBalance: Math.max(f.combinedBalance, 0), currency: f.currency, businessIdentity: identity,
       });
   }
+}
+
+// --- One-click bulk arrears reminders ---------------------------------------
+// Single-operator action: queue a personalised SMS for EVERY ACTIVE tenant
+// with money owing on EITHER side of the ledger — rent OR water. The gate is
+// per-side (rentBalance / waterBalance), never the net combined figure, so a
+// rent credit can never mask a water debt and a paid-up tenant (both sides
+// clear or in credit) is always skipped. The `audience` narrows WHO is
+// reminded (ALL = rent-or-water debtors, RENT = rent debtors only, WATER =
+// water debtors only) while the kind still follows what EACH tenant actually
+// owes, so every message quotes its recipient's own bill:
+//   rent owed + net positive -> BALANCE_DUE statement (combined total covers both)
+//   rent owed + netted to zero by a water credit -> OVERDUE (leads with the rent owed)
+//   rent clear but water owed -> WATER_BILLING notice (water amount + meter proof)
+// Custom Message Templates apply exactly as they do for a hand-queued
+// reminder. Queue-only: rows auto-dispatch when the SMS pipeline is on,
+// otherwise they wait as PENDING for manual send from the SMS page.
+// Idempotency is deliberately NOT enforced here: the operator explicitly
+// pressed the button, so a second press is a conscious re-send, not a
+// scheduler accident.
+export type BulkAudience = 'ALL' | 'RENT' | 'WATER';
+
+export interface BulkArrearsResult {
+  total: number;
+  audience: BulkAudience;
+  owing: number;
+  queued: number;
+  skippedPaid: number;
+  skippedNoPhone: number;
+  /** Owes money, but only on the bill outside the chosen audience. */
+  skippedOtherBill: number;
+}
+
+export async function sendBulkArrearsReminders(opts: {
+  userId?: number | null;
+  audience?: BulkAudience;
+}): Promise<BulkArrearsResult> {
+  const audience = opts.audience ?? 'ALL';
+  const settings = await getSettings();
+  const year = settings.reporting_year;
+  const month = new Date().getUTCMonth() + 1;
+
+  const tenants = await query<{ id: number }>(
+    `SELECT id FROM tenants WHERE status = 'ACTIVE' ORDER BY id`,
+  );
+
+  let owing = 0;
+  let queued = 0;
+  let skippedPaid = 0;
+  let skippedNoPhone = 0;
+  let skippedOtherBill = 0;
+
+  for (const tenant of tenants) {
+    const ledger = await tenantBalances(tenant.id, year, month);
+    const rentOwing = ledger.rentBalance > 0.009;
+    const waterOwing = ledger.waterBalance > 0.009;
+    const inAudience =
+      audience === 'ALL' ? rentOwing || waterOwing : audience === 'RENT' ? rentOwing : waterOwing;
+    if (!inAudience) {
+      if (!rentOwing && !waterOwing) skippedPaid += 1;
+      else skippedOtherBill += 1;
+      continue;
+    }
+    owing += 1;
+    const kind: ReminderKind =
+      rentOwing && ledger.combinedBalance > 0.009
+        ? 'BALANCE_DUE'
+        : rentOwing
+          ? 'OVERDUE'
+          : 'WATER_BILLING';
+    const sent = await prepareReminder(tenant.id, kind, 'SMS', {
+      userId: opts.userId ?? null,
+      templateKind: 'MANUAL_BULK_ARREARS',
+    });
+    if (sent?.smsId) {
+      dispatchAutoSend(sent.smsId);
+      queued += 1;
+    } else {
+      skippedNoPhone += 1;
+    }
+  }
+
+  await logAudit({
+    userId: opts.userId ?? null,
+    action: 'BULK_ARREARS_REMINDERS',
+    entity: 'tenants',
+    newValue: { audience, total: tenants.length, owing, queued, skippedPaid, skippedNoPhone, skippedOtherBill },
+  });
+
+  return { total: tenants.length, audience, owing, queued, skippedPaid, skippedNoPhone, skippedOtherBill };
 }

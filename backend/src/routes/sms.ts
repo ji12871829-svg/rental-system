@@ -5,6 +5,8 @@ import { validateBody, validateParams, listQuerySchema as baseListQuerySchema } 
 import { asyncHandler } from '../utils/asyncHandler';
 import { applyDeliveryReport, applyTextbeeDeliveryReport, getSmsBalance, listInbox, listSms, markInboxRead, recordReceivedSms, sendSmsNotification, sendTenantSmsCampaign, sendTestSms } from '../services/smsService';
 import { getSmsConfig, verifyTextbeeSignature, type TextbeeWebhookEvent } from '../services/smsProvider';
+import { sendBulkArrearsReminders } from '../services/reminderService';
+import { autoSendEnabled } from '../services/smsService';
 import { env } from '../config/env';
 
 const router = Router();
@@ -151,6 +153,24 @@ const smsCampaignSchema = z.object({
 router.post('/campaign', managerOrAdmin, validateBody(smsCampaignSchema), asyncHandler(async (req, res) => {
   const result = await sendTenantSmsCampaign({ ...(req.body as { tenantIds?: number[]; message: string }), userId: req.user!.userId });
   res.status(201).json({ data: result });
+}));
+
+// One-click bulk arrears reminders — the button the operator asked for: one
+// POST queues a personalised SMS (each tenant's message matches their own
+// bill — balance statement for rent debtors, water notice for water-only
+// debtors) for EVERY ACTIVE tenant with money owing. The optional audience
+// narrows the blast to rent debtors or water debtors only; omitted it covers
+// both. No recipient picking, no second step. Rows auto-send when the SMS
+// pipeline is on, otherwise they wait as PENDING on the SMS page. 201:
+// accepted (queued), not yet delivered.
+const bulkArrearsSchema = z.object({
+  audience: z.enum(['ALL', 'RENT', 'WATER']).optional().default('ALL'),
+});
+
+router.post('/reminders/bulk-arrears', managerOrAdmin, validateBody(bulkArrearsSchema), asyncHandler(async (req, res) => {
+  const { audience } = req.body as { audience: 'ALL' | 'RENT' | 'WATER' };
+  const result = await sendBulkArrearsReminders({ userId: req.user!.userId, audience });
+  res.status(201).json({ data: { ...result, autoSend: autoSendEnabled() } });
 }));
 
 const paramsSchema = z.object({ id: z.coerce.number().int().positive() });

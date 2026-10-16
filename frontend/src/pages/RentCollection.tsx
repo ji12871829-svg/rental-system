@@ -105,6 +105,16 @@ export default function RentCollection() {
     [monthFilter, yearFilter, refreshKey]
   );
 
+  // M-Pesa prompt availability: mock mode answers success without sending
+  // anything to the tenant's phone, so the prompt button only renders when
+  // Daraja is live. Send-Money operators record the payment once it lands.
+  const { data: mpesaConfig } = useFetch(
+    () => api.get<{ data: { provider: string; live: boolean } }>('/api/mpesa/config'),
+    []
+  );
+  const stkKnown = mpesaConfig !== null;
+  const stkLive = mpesaConfig?.data.live === true;
+
   const selectedTenant = useMemo(
     () => (tenantId === '' ? null : tenants?.data.find((t) => t.id === tenantId) ?? null),
     [tenantId, tenants]
@@ -268,12 +278,24 @@ export default function RentCollection() {
               <Button onClick={recordPayment} disabled={busy || stkBusy} loading={busy} success={saved}>
                 {saved ? 'Saved' : 'Record Rent Payment'}
               </Button>
-              <Button variant="secondary" onClick={requestStkPush} disabled={busy || saved} loading={stkBusy}>
-                {stkBusy ? 'Sending prompt…' : 'Send M-Pesa Prompt'}
-              </Button>
+              {/* STK prompts only exist on Daraja: mock mode answers success
+                  without sending anything to the tenant's phone, so the
+                  button is hidden unless live. Send-Money operators record
+                  the payment below once it lands. */}
+              {stkLive ? (
+                <Button variant="secondary" onClick={requestStkPush} disabled={busy || saved} loading={stkBusy}>
+                  {stkBusy ? 'Sending prompt…' : 'Send M-Pesa Prompt'}
+                </Button>
+              ) : stkKnown ? (
+                <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
+                  M-Pesa prompts need Daraja + PayBill — with Send-Money collection, record the payment here once it lands on your phone.
+                </p>
+              ) : null}
             </div>
             <p className="text-xs text-gray-400">
-              M-Pesa prompts use the tenant&apos;s unit number as the account reference. Confirmed payments post automatically; manual entries also support multiple payments per month.
+              {stkLive
+                ? <>M-Pesa prompts use the tenant&apos;s unit number as the account reference. Confirmed payments post automatically; manual entries also support multiple payments per month.</>
+                : <>Record Send-Money payments above once they land; receipts go out by SMS and email automatically, and manual entries support multiple payments per month.</>}
             </p>
           </div>
         </div>

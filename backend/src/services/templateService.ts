@@ -79,12 +79,12 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     kind: 'SMS_BALANCE_DUE',
     label: 'Balance Due Statement',
     channel: 'SMS' as const,
-    description: 'The "Balance Due" reminder an operator sends from the SMS page or a tenant card.',
-    fields: ['name', 'unit', 'month', 'year', 'total_due', 'account', 'payment_method', 'currency', 'business'],
+    description: 'The itemized arrears reminder an operator sends from the SMS page, a tenant card, or the one-click bulk button — rent and water stated separately. {{account_clause}} carries the account reference and vanishes when the operator collects by Send Money (no reference exists). Rent-only arrears automatically shorten when nothing is customized.',
+    fields: ['name', 'unit', 'rent_due', 'water_due', 'total_due', 'account', 'account_clause', 'payment_method', 'currency', 'business'],
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, your rent statement for {{month}} {{year}} (Unit {{unit}}) is ready. Total Due: {{currency}} {{total_due}}. To pay, use {{payment_method}} with account {{account}}.',
+      'Dear {{name}}, Unit {{unit}} arrears: Rent {{currency}} {{rent_due}} + Water {{currency}} {{water_due}} = Total {{currency}} {{total_due}}. Pay via {{payment_method}}{{account_clause}}. If already paid, ignore this message. Thank you.',
   },
   {
     kind: 'SMS_OVERDUE',
@@ -95,7 +95,7 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, the rent for Unit {{unit}} is overdue by {{currency}} {{amount_due}}. Kindly settle this amount to avoid a late payment fee. Your total balance is {{currency}} {{total_due}}. Thank you.',
+      'Dear {{name}}, the rent for Unit {{unit}} is overdue by {{currency}} {{amount_due}}. Kindly settle this amount to avoid a late payment fee. Your total balance is {{currency}} {{total_due}}. If already paid, ignore this message. Thank you.',
   },
   {
     kind: 'SMS_LANDLORD_ALERT',
@@ -115,23 +115,23 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     channel: 'SMS' as const,
     description:
       'The automatic "rent is due" nudge sent on the last day of each month for the month that starts the next day (when Automatic monthly reminders are on in Settings).',
-    fields: ['name', 'unit', 'next_month', 'amount', 'currency', 'payment_method', 'business'],
+    fields: ['name', 'unit', 'next_month', 'amount', 'currency', 'payment_method', 'reference_clause', 'business'],
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, a friendly reminder that {{next_month}} rent of {{currency}} {{amount}} for Unit {{unit}} falls due on the 1st. Please pay via {{payment_method}}, quoting your unit number as the account reference. Thank you.',
+      'Dear {{name}}, a friendly reminder that {{next_month}} rent of {{currency}} {{amount}} for Unit {{unit}} falls due on the 1st. Please pay via {{payment_method}}{{reference_clause}}. Thank you.',
   },
   {
     kind: 'SMS_WATER_BILLING',
     label: 'Water Billing Notice',
     channel: 'SMS' as const,
     description:
-      'Tells the tenant the month\'s water charge has been billed to their ledger. Sent only when an operator sends it — billing water never spends SMS credit on its own.',
+      'Reminds the tenant their water charge is still unpaid. Sent only when an operator sends it — billing water never spends SMS credit on its own.',
     fields: ['name', 'unit', 'month', 'year', 'amount', 'previous_reading', 'current_reading', 'units_used', 'payment_method', 'currency', 'business'],
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, your water charge for Unit {{unit}} for {{month}} {{year}} is {{currency}} {{amount}}. Meter: prev {{previous_reading}}, curr {{current_reading}} ({{units_used}} units). It appears on your statement and can be paid together with your rent via {{payment_method}}.',
+      'Dear {{name}}, water for Unit {{unit}} for {{month}} {{year}} is unpaid: {{currency}} {{amount}}. Meter: prev {{previous_reading}}, curr {{current_reading}} ({{units_used}} units). Pay with your rent via {{payment_method}}. If already paid, ignore this message. Thank you.',
   },
   {
     kind: 'SMS_LATE_FEE',
@@ -151,22 +151,22 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     channel: 'SMS' as const,
     description:
       'A one-time welcome when a tenancy starts: when rent falls due and how to pay it. Sent only when an operator sends it.',
-    fields: ['name', 'unit', 'amount', 'payment_method', 'currency', 'business'],
+    fields: ['name', 'unit', 'amount', 'account', 'reference_clause', 'payment_method', 'currency', 'business'],
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, welcome to Unit {{unit}}! Rent of {{currency}} {{amount}} falls due on the 1st of each month. Pay via {{payment_method}}, quoting your unit number as the account reference. We wish you a comfortable stay.',
+      'Dear {{name}}, welcome to Unit {{unit}}! Rent of {{currency}} {{amount}} falls due on the 1st of each month. Pay via {{payment_method}}{{reference_clause}}. We wish you a comfortable stay.',
   },
   {
     kind: 'WHATSAPP_BALANCE_DUE',
     label: 'WhatsApp Balance Due',
     channel: 'WHATSAPP' as const,
     description: 'Pre-filled text for the WhatsApp click-to-chat balance statement (you press send in WhatsApp).',
-    fields: ['name', 'unit', 'month', 'year', 'current_rent', 'previous_balance', 'total_due', 'account', 'payment_method', 'currency'],
+    fields: ['name', 'unit', 'month', 'year', 'current_rent', 'previous_balance', 'total_due', 'account', 'pay_line', 'payment_method', 'currency'],
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Hello {{name}}, 🌟 Your rent statement for {{month}} {{year}} is ready for Unit {{unit}}. 💰 Current Rent: {{currency}} {{current_rent}} ➕ Previous Balance: {{currency}} {{previous_balance}} 🧾 Total Due: {{currency}} {{total_due}}. Please make payment to Account {{account}} via {{payment_method}}. If you have already paid, please ignore this message. Thank you!',
+      'Hello {{name}}, 🌟 Your rent statement for {{month}} {{year}} is ready for Unit {{unit}}. 💰 Current Rent: {{currency}} {{current_rent}} ➕ Previous Balance: {{currency}} {{previous_balance}} 🧾 Total Due: {{currency}} {{total_due}}. {{pay_line}} If you have already paid, please ignore this message. Thank you!',
   },
   {
     kind: 'WHATSAPP_OVERDUE',

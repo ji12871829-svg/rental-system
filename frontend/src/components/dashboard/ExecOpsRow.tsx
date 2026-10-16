@@ -11,6 +11,7 @@ import { ChevronRight, ClipboardCheck, Droplets, MessageSquareText, Wallet } fro
 import { Link } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from '../charts';
 import { ChartCard } from './primitives';
+import { BulkReminderButton } from '../BulkReminderButton';
 import { useFetch } from '../ui';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -102,7 +103,7 @@ export function ExecBulkOps({ data, arrears }: ExecBulkOpsProps) {
   // (a 403 from a widget nobody can use is noise, not feedback).
   const isManager = user?.role === 'ADMIN' || user?.role === 'PROPERTY_MANAGER';
 
-  const inArrears = arrears ? arrears.filter((r) => r.totalOutstanding > 0).length : null;
+  const inArrears = arrears ? arrears.filter((r) => r.rentBalance > 0 || r.waterBalance > 0).length : null;
   const waterUnits = data.charts.outstandingWaterByUnit.filter((w) => w.waterOutstanding > 0).length;
 
   // NB: the review queue is mounted at /api/mpesa/review (see routes/mpesaReview.ts
@@ -122,13 +123,13 @@ export function ExecBulkOps({ data, arrears }: ExecBulkOpsProps) {
     {
       to: '/sms?compose=arrears',
       icon: <MessageSquareText size={15} strokeWidth={1.75} />,
-      title: 'Push rent reminders',
+      title: 'Review rent reminders',
       meta: inArrears === null ? 'Checking arrears…' : inArrears === 0 ? 'Nobody is in arrears' : `${plural(inArrears, 'tenant')} in arrears`,
     },
     {
       to: '/rent?new=1',
       icon: <Wallet size={15} strokeWidth={1.75} />,
-      title: 'Collect rent / STK push',
+      title: 'Collect rent',
       meta: inArrears === null ? 'Record a payment' : `${plural(inArrears, 'invoice')} awaiting payment`,
     },
     {
@@ -159,6 +160,11 @@ export function ExecBulkOps({ data, arrears }: ExecBulkOpsProps) {
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-gray-900">Bulk Operations</h3>
         <span className="text-[11px] font-medium text-gray-400">One click, straight to the task</span>
+      </div>
+
+      <div className="mt-3">
+        {/* One click: personalised balance SMS to everyone owing rent or water. */}
+        <BulkReminderButton owingCount={inArrears} className="w-full" />
       </div>
 
       <div className="mt-3 flex flex-col gap-2">
