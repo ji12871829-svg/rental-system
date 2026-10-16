@@ -19,6 +19,7 @@ export interface BrandingRow {
   contact_email: string | null;
   privacy_email: string | null;
   contact_phone: string | null;
+  send_money_phone: string | null;
   retention_period: string | null;
   response_days: string | null;
   jurisdiction: string | null;
@@ -49,6 +50,7 @@ async function getBranding(): Promise<BrandingRow> {
     contact_email: row?.contact_email ?? (env.businessEmail || null),
     privacy_email: row?.privacy_email ?? null,
     contact_phone: row?.contact_phone ?? (env.businessPhone || null),
+    send_money_phone: row?.send_money_phone ?? null,
     retention_period: row?.retention_period ?? null,
     response_days: row?.response_days ?? null,
     jurisdiction: row?.jurisdiction ?? null,
@@ -77,6 +79,7 @@ export interface BrandingInput {
   contactEmail?: string | null;
   privacyEmail?: string | null;
   contactPhone?: string | null;
+  sendMoneyPhone?: string | null;
   retentionPeriod?: string | null;
   responseDays?: string | null;
   jurisdiction?: string | null;
@@ -96,6 +99,7 @@ const COLUMNS: Record<keyof BrandingInput, string> = {
   contactEmail: 'contact_email',
   privacyEmail: 'privacy_email',
   contactPhone: 'contact_phone',
+  sendMoneyPhone: 'send_money_phone',
   retentionPeriod: 'retention_period',
   responseDays: 'response_days',
   jurisdiction: 'jurisdiction',
@@ -171,6 +175,7 @@ export interface BrandingView extends Omit<BrandingRow, 'logo_data'> {
   contactEmail: string | null;
   privacyEmail: string | null;
   contactPhone: string | null;
+  sendMoneyPhone: string | null;
   retentionPeriod: string | null;
   responseDays: string | null;
   propertyScope: string | null;
@@ -241,6 +246,7 @@ export function toView(row: BrandingRow): BrandingView {
     contactEmail: row.contact_email,
     privacyEmail: row.privacy_email,
     contactPhone: row.contact_phone,
+  sendMoneyPhone: row.send_money_phone,
     retentionPeriod: row.retention_period,
     responseDays: row.response_days,
     propertyScope: row.property_scope,
@@ -363,6 +369,8 @@ export interface BusinessIdentity {
   name: string | null;
   regNo: string | null;
   phone: string | null;
+  /** Dedicated Send-Money receiving line (null when the operator uses one number for everything). */
+  sendMoneyPhone: string | null;
   email: string | null;
   logo: { bytes: Buffer; mimeType: string } | null;
 }
@@ -372,6 +380,7 @@ function identityOf(row: BrandingRow): BusinessIdentity {
     name: row.legal_name,
     regNo: row.registration_number,
     phone: row.contact_phone,
+    sendMoneyPhone: row.send_money_phone,
     email: row.contact_email,
     logo: row.logo_data && row.logo_mime_type
       ? { bytes: Buffer.from(row.logo_data, 'base64'), mimeType: row.logo_mime_type }

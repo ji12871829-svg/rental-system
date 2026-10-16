@@ -289,13 +289,14 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
       expect((await smsRowsFor(paidTenantId)).length).toBe(before.paid);
     });
 
-    it('send-money mode points at the business phone with no account reference', async () => {
-      // The operator collects by Send Money: no PayBill, business phone on
-      // file. Reminders must name the phone and never mention an account.
+    it('send-money mode points at the dedicated money line with no account reference', async () => {
+      // The operator collects by Send Money on a dedicated line while the
+      // contact phone stays a different number: reminders must name the
+      // money line and never mention an account.
       const setRes = await request(app)
         .put('/api/branding')
         .set(auth(adminToken))
-        .send({ contactPhone: '0712000000', paybillEnabled: false });
+        .send({ sendMoneyPhone: '0712000001', contactPhone: '0712000002', paybillEnabled: false });
       expect(setRes.status).toBe(200);
       try {
         const before = (await smsRowsFor(rentTenantId)).length;
@@ -306,8 +307,31 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
         expect(res.status).toBe(201);
         const rows = await smsRowsFor(rentTenantId);
         expect(rows.length).toBe(before + 1);
-        expect(rows[0].message).toContain('M-Pesa to 0712000000');
+        expect(rows[0].message).toContain('M-Pesa to 0712000001');
+        expect(rows[0].message).not.toContain('0712000002');
         expect(rows[0].message).not.toContain('PayBill');
+        expect(rows[0].message).not.toContain('account');
+      } finally {
+        await request(app).put('/api/branding').set(auth(adminToken)).send({ sendMoneyPhone: null, contactPhone: null });
+      }
+    });
+
+    it('send-money mode falls back to the contact phone when no money line is set', async () => {
+      const setRes = await request(app)
+        .put('/api/branding')
+        .set(auth(adminToken))
+        .send({ sendMoneyPhone: null, contactPhone: '0712000003', paybillEnabled: false });
+      expect(setRes.status).toBe(200);
+      try {
+        const before = (await smsRowsFor(rentTenantId)).length;
+        const res = await request(app)
+          .post('/api/sms/reminders/bulk-arrears')
+          .set(auth(adminToken))
+          .send({ audience: 'RENT' });
+        expect(res.status).toBe(201);
+        const rows = await smsRowsFor(rentTenantId);
+        expect(rows.length).toBe(before + 1);
+        expect(rows[0].message).toContain('M-Pesa to 0712000003');
         expect(rows[0].message).not.toContain('account');
       } finally {
         await request(app).put('/api/branding').set(auth(adminToken)).send({ contactPhone: null });

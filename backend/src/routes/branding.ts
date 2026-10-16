@@ -29,6 +29,7 @@ const updateSchema = z.object({
   contactEmail: z.string().email().max(255).nullable().optional().or(z.literal('')),
   privacyEmail: z.string().email().max(255).nullable().optional().or(z.literal('')),
   contactPhone: z.string().max(60).nullable().optional(),
+  sendMoneyPhone: z.string().max(30).nullable().optional(),
   retentionPeriod: z.string().max(100).nullable().optional(),
   responseDays: z.string().max(20).nullable().optional(),
   jurisdiction: z.string().max(100).nullable().optional(),

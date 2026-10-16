@@ -1704,6 +1704,23 @@ describe('Business branding API', () => {
     const anon = await request(app).put('/api/branding').send({ legalName: 'X' });
     expect(anon.status).toBe(401);
   });
+
+  it('round-trips the dedicated Send-Money line and clears it with an empty string', async () => {
+    const set = await request(app)
+      .put('/api/branding')
+      .set(auth(adminToken))
+      .send({ sendMoneyPhone: '0743799002' });
+    expect(set.status).toBe(200);
+    expect(set.body.data.sendMoneyPhone).toBe('0743799002');
+    expect(set.body.data.send_money_phone).toBe('0743799002');
+
+    const cleared = await request(app)
+      .put('/api/branding')
+      .set(auth(adminToken))
+      .send({ sendMoneyPhone: '' });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.data.sendMoneyPhone).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -81,7 +81,7 @@ interface TestSmsResultView {
 const IDENTITY_FIELDS: {
   key: keyof Pick<BrandingView,
     | 'legalName' | 'registrationNumber' | 'address' | 'contactEmail'
-    | 'privacyEmail' | 'contactPhone' | 'retentionPeriod' | 'responseDays'
+    | 'privacyEmail' | 'contactPhone' | 'sendMoneyPhone' | 'retentionPeriod' | 'responseDays'
     | 'jurisdiction' | 'propertyScope' | 'paymentChannels' | 'refundWindowDays'>;
   label: string;
   placeholder: string;
@@ -93,7 +93,8 @@ const IDENTITY_FIELDS: {
   { key: 'legalName', label: 'Company legal name', placeholder: 'e.g. Olbano Property Management Ltd', maxLength: 200, hint: 'Shown on receipts, legal pages and footers — also drives the monogram initials.' },
   { key: 'registrationNumber', label: 'Registration number', placeholder: 'e.g. BN-2026-123456', maxLength: 100, hint: 'Printed with the legal name on receipts and legal pages.' },
   { key: 'address', label: 'Business address', placeholder: 'e.g. P.O. Box 123, Nairobi', maxLength: 500, hint: 'Physical or postal address for the receipt footer and legal pages.', wide: true },
-  { key: 'contactPhone', label: 'Phone number', placeholder: 'e.g. +254 700 000 000', maxLength: 60, hint: 'Include the country code — it becomes a tap-to-call link on PDF receipts. No PayBill? This is the number tenants send M-Pesa to: reminders say “Send M-Pesa to” it, with no account reference.' },
+  { key: 'contactPhone', label: 'Phone number', placeholder: 'e.g. +254 700 000 000', maxLength: 60, hint: 'Include the country code — calls, landlord alerts and receipt footers use this number.' },
+  { key: 'sendMoneyPhone', label: 'M-Pesa receiving number', placeholder: 'e.g. 0743 799 002', maxLength: 30, hint: 'The line tenants send rent to. Reminders say “Send M-Pesa to” this number, with no account reference. Empty = the phone number above is used.' },
   { key: 'contactEmail', label: 'General queries email', placeholder: 'e.g. info@example.com', maxLength: 255, type: 'email', hint: 'Tenant questions go here; also the fallback sender for receipt emails.' },
   { key: 'privacyEmail', label: 'Privacy email', placeholder: 'e.g. privacy@example.com — or the general one', maxLength: 255, type: 'email', hint: 'Data-protection requests go here. Left empty, the general email is used.' },
   { key: 'retentionPeriod', label: 'Record retention period', placeholder: 'e.g. 7 years', maxLength: 100, hint: 'How long records are kept after move-out, as it should read on legal pages.' },
@@ -586,7 +587,7 @@ export default function Settings() {
       {canEditIdentity && (
         <form ref={shakePaybillRef} onSubmit={savePaybill} className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
           <h2 className="card-heading">Tenant PayBill</h2>
-          <p className="mt-1 mb-4 text-sm text-gray-500">One landlord PayBill for all tenants. Rent uses the unit number; water uses the unit number followed by <b>-WATER</b>. Collect by Send Money instead? Leave the PayBill off and set your business phone number above — reminders then point tenants at that number, with no account reference.</p>
+          <p className="mt-1 mb-4 text-sm text-gray-500">One landlord PayBill for all tenants. Rent uses the unit number; water uses the unit number followed by <b>-WATER</b>. Collect by Send Money instead? Leave the PayBill off and set your M-Pesa receiving number above — reminders then point tenants at that number, with no account reference.</p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="PayBill number" hint="Digits only, 5 to 10 digits.">
               <TextInput value={paybillNumber} inputMode="numeric" pattern="[0-9]{5,10}" onChange={(e) => setPaybillNumber(e.target.value)} disabled={paybillBusy} />

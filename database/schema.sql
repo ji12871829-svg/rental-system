@@ -469,6 +469,7 @@ CREATE TABLE IF NOT EXISTS business_branding (
   contact_email       VARCHAR(255),
   privacy_email       VARCHAR(255),
   contact_phone       VARCHAR(60),
+  send_money_phone    VARCHAR(30),
   retention_period    VARCHAR(100),
   response_days       VARCHAR(20),
   jurisdiction        VARCHAR(100),

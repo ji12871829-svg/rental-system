@@ -63,6 +63,40 @@ interface ReminderFigures {
   latestWaterReading: { previous: number; current: number } | null;
 }
 
+export interface PaymentInstructions {
+  /** Short method for {{payment_method}} — never carries the reference. */
+  paymentMethod: string;
+  /**
+   * Unit account reference — EMPTY when none exists (Send Money has no
+   * reference field). Every composer drops its reference clause on empty
+   * rather than printing it blank.
+   */
+  accountNumber: string;
+}
+
+// Pure: which payment instruction tenants are told, from the operator's
+// collection setup. PayBill with a unit reference when they collect that
+// way; plain Send Money to the dedicated money line (falling back to the
+// business contact phone) when they don't; otherwise a generic walk-in line
+// that keeps the unit reference.
+export function resolvePaymentInstructions(input: {
+  paybillEnabled: boolean;
+  paybillNumber: string | null;
+  sendMoneyPhone: string | null;
+  contactPhone: string | null;
+  unitLabel: string;
+}): PaymentInstructions {
+  const unitAccount = `Unit ${input.unitLabel}`;
+  if (input.paybillEnabled && input.paybillNumber) {
+    return { paymentMethod: `M-Pesa PayBill ${input.paybillNumber}`, accountNumber: unitAccount };
+  }
+  const moneyPhone = input.sendMoneyPhone?.trim() || input.contactPhone?.trim() || '';
+  if (moneyPhone) {
+    return { paymentMethod: `M-Pesa to ${moneyPhone}`, accountNumber: '' };
+  }
+  return { paymentMethod: 'M-Pesa or at the office', accountNumber: unitAccount };
+}
+
 async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures> {
   const tenant = await queryOne<{
     full_name: string;
@@ -100,25 +134,14 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
   const previousRentBalance = ledger.previousRentBalance;
 
   const identity = await getBusinessIdentity();
-  // Payment instruction: PayBill with a unit account reference when the
-  // operator collects that way; plain Send Money to the business contact phone
-  // when they don't (Send Money has no reference field, so accountNumber
-  // stays empty and every composer drops its reference clause); otherwise a
-  // generic walk-in line that keeps the unit reference.
   const paybill = await getPaybillInstructions();
-  const unitAccount = `Unit ${tenant.unit_number ?? tenantId}`;
-  let paymentMethod: string;
-  let accountNumber: string;
-  if (paybill.enabled && paybill.number) {
-    paymentMethod = `M-Pesa PayBill ${paybill.number}`;
-    accountNumber = unitAccount;
-  } else if (identity.phone?.trim()) {
-    paymentMethod = `M-Pesa to ${identity.phone.trim()}`;
-    accountNumber = '';
-  } else {
-    paymentMethod = 'M-Pesa or at the office';
-    accountNumber = unitAccount;
-  }
+  const { paymentMethod, accountNumber } = resolvePaymentInstructions({
+    paybillEnabled: paybill.enabled,
+    paybillNumber: paybill.number,
+    sendMoneyPhone: identity.sendMoneyPhone,
+    contactPhone: identity.phone,
+    unitLabel: tenant.unit_number ?? String(tenantId),
+  });
 
   // Latest meter reading for the unit in the reporting year — the proof
   // behind the water-billing notice. Falls back to null (clause omitted)
@@ -160,8 +183,7 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
   };
 }
 
-export type ReminderKind = 'BALANCE_DUE' | 'OVERDUE' | 'DUE_SOON' | 'WATER_BILLING' | 'LATE_FEE' | 'WELCOME';
-// The three notice kinds report an event rather than an amount owed, and are
+export type ReminderKind = 'BALANCE_DUE' | 'OVERDUE' | 'DUE_SOON' | 'WATER_BILLING' | 'LATE_FEE' | 'WELCOME';// The three notice kinds report an event rather than an amount owed, and are
 // SMS-only: WhatsApp and email have no composition for them, so the route
 // refuses the combination instead of silently falling back to a statement.
 export const NOTICE_KINDS: ReadonlySet<ReminderKind> = new Set<ReminderKind>(['WATER_BILLING', 'LATE_FEE', 'WELCOME']);

@@ -106,7 +106,7 @@ function termsFooterHtml(): string {
 // logo is configured it is inlined as a base64 data URI (most clients,
 // incl. Gmail, render data-URI images; none require remote fetch
 // authorization, so the logo survives strict privacy settings).
-export function receiptEmailHtml(r: ReceiptDocument, identity: BusinessIdentity = { name: null, regNo: null, phone: null, email: null, logo: null }): string {
+export function receiptEmailHtml(r: ReceiptDocument, identity: BusinessIdentity = { name: null, regNo: null, phone: null, sendMoneyPhone: null, email: null, logo: null }): string {
   const typeLabel = receiptTypeLabel(r.receipt_type);
   const logoSrc = identity.logo ? `data:${identity.logo.mimeType};base64,${identity.logo.bytes.toString('base64')}` : null;
   const logoHtml = logoSrc

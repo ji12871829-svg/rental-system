@@ -15,6 +15,7 @@ export interface BrandingView {
   contact_email: string | null;
   privacy_email: string | null;
   contact_phone: string | null;
+  send_money_phone: string | null;
   retention_period: string | null;
   response_days: string | null;
   jurisdiction: string | null;
@@ -27,6 +28,7 @@ export interface BrandingView {
   contactEmail: string | null;
   privacyEmail: string | null;
   contactPhone: string | null;
+  sendMoneyPhone: string | null;
   retentionPeriod: string | null;
   responseDays: string | null;
   propertyScope: string | null;
