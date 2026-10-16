@@ -212,10 +212,13 @@ export function monthlyBalanceDueMessage(opts: {
   businessIdentity?: string | string[];
 }): string {
   const { tenantName, unitNumber, rentDue, waterDue, totalDue, accountNumber, paymentMethod, currency } = opts;
+  // accountNumber is empty in Send-Money mode (no reference field exists),
+  // so the reference clause is dropped rather than printed blank.
+  const reference = accountNumber ? ` with account ${accountNumber}` : '';
   const body =
     waterDue > 0
-      ? `Dear ${tenantName}, Unit ${unitNumber} arrears: Rent ${currency} ${rentDue} + Water ${currency} ${waterDue} = Total ${currency} ${totalDue}. Pay via ${paymentMethod} with account ${accountNumber}. If already paid, ignore this message. Thank you.`
-      : `Dear ${tenantName}, rent for Unit ${unitNumber} is unpaid: ${currency} ${rentDue}. Pay via ${paymentMethod} with account ${accountNumber}. If already paid, ignore this message. Thank you.`;
+      ? `Dear ${tenantName}, Unit ${unitNumber} arrears: Rent ${currency} ${rentDue} + Water ${currency} ${waterDue} = Total ${currency} ${totalDue}. Pay via ${paymentMethod}${reference}. If already paid, ignore this message. Thank you.`
+      : `Dear ${tenantName}, rent for Unit ${unitNumber} is unpaid: ${currency} ${rentDue}. Pay via ${paymentMethod}${reference}. If already paid, ignore this message. Thank you.`;
   return withIdentity(body, opts.businessIdentity);
 }
 
@@ -273,12 +276,15 @@ export function rentDueSoonMessage(opts: {
   year: number;
   rentAmount: number;
   paymentMethod: string;
+  /** Empty in Send-Money mode — there is no reference to quote. */
+  accountNumber: string;
   currency: string;
   businessIdentity?: string | string[];
 }): string {
-  const { tenantName, unitNumber, nextMonthName, year, rentAmount, paymentMethod, currency } = opts;
+  const { tenantName, unitNumber, nextMonthName, year, rentAmount, paymentMethod, accountNumber, currency } = opts;
+  const reference = accountNumber ? `, quoting ${accountNumber} as the account reference` : '';
   return withIdentity(
-    `Dear ${tenantName}, a friendly reminder that ${nextMonthName} ${year} rent of ${currency} ${rentAmount} for Unit ${unitNumber} falls due on the 1st. Please pay via ${paymentMethod}, quoting your unit number as the account reference. Thank you.`,
+    `Dear ${tenantName}, a friendly reminder that ${nextMonthName} ${year} rent of ${currency} ${rentAmount} for Unit ${unitNumber} falls due on the 1st. Please pay via ${paymentMethod}${reference}. Thank you.`,
     opts.businessIdentity,
   );
 }
@@ -349,12 +355,15 @@ export function welcomeMessage(opts: {
   unitNumber: string;
   rentAmount: number;
   paymentMethod: string;
+  /** Empty in Send-Money mode — there is no reference to quote. */
+  accountNumber: string;
   currency: string;
   businessIdentity?: string | string[];
 }): string {
-  const { tenantName, unitNumber, rentAmount, paymentMethod, currency } = opts;
+  const { tenantName, unitNumber, rentAmount, paymentMethod, accountNumber, currency } = opts;
+  const reference = accountNumber ? `, quoting ${accountNumber} as the account reference` : '';
   return withIdentity(
-    `Dear ${tenantName}, welcome to Unit ${unitNumber}! Rent of ${currency} ${rentAmount} falls due on the 1st of each month. Pay via ${paymentMethod}, quoting your unit number as the account reference. We wish you a comfortable stay.`,
+    `Dear ${tenantName}, welcome to Unit ${unitNumber}! Rent of ${currency} ${rentAmount} falls due on the 1st of each month. Pay via ${paymentMethod}${reference}. We wish you a comfortable stay.`,
     opts.businessIdentity,
   );
 }
@@ -365,10 +374,18 @@ export function welcomeMessage(opts: {
 // click-to-chat (wa.me) link with the composed text pre-filled, so the text
 // never leaves the system unencrypted and there is no provider cost.
 
+// The WhatsApp pay line, shared by the hardcoded builder and customized
+// templates (via the {{pay_line}} merge field): the account reference rides
+// along only when one exists (Send Money has none).
+export function whatsappPayLine(accountNumber: string, paymentMethod: string): string {
+  return accountNumber
+    ? `Please make payment to Account ${accountNumber} via ${paymentMethod}.`
+    : `Please make payment via ${paymentMethod}.`;
+}
+
 // WhatsApp statement: current rent, previous balance and the total due, with
 // an "ignore if already paid" line to cut back-and-forth.
-export function whatsappBalanceDueMessage(opts: {
-  tenantName: string;
+export function whatsappBalanceDueMessage(opts: {  tenantName: string;
   unitNumber: string;
   monthName: string;
   year: number;
@@ -380,7 +397,7 @@ export function whatsappBalanceDueMessage(opts: {
   currency: string;
 }): string {
   const { tenantName, unitNumber, monthName, year, currentRent, previousBalance, totalDue, accountNumber, paymentMethod, currency } = opts;
-  return `Hello ${tenantName}, 🌟 Your rent statement for ${monthName} ${year} is ready for Unit ${unitNumber}. 💰 Current Rent: ${currency} ${currentRent} ➕ Previous Balance: ${currency} ${previousBalance} 🧾 Total Due: ${currency} ${totalDue}. Please make payment to Account ${accountNumber} via ${paymentMethod}. If you have already paid, please ignore this message. Thank you!`;
+  return `Hello ${tenantName}, 🌟 Your rent statement for ${monthName} ${year} is ready for Unit ${unitNumber}. 💰 Current Rent: ${currency} ${currentRent} ➕ Previous Balance: ${currency} ${previousBalance} 🧾 Total Due: ${currency} ${totalDue}. ${whatsappPayLine(accountNumber, paymentMethod)} If you have already paid, please ignore this message. Thank you!`;
 }
 
 // WhatsApp overdue notice: softer than SMS but still firm, with a chat link.

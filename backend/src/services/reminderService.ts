@@ -22,6 +22,7 @@ import {
   welcomeMessage,
   whatsappBalanceDueMessage,
   whatsappOverdueMessage,
+  whatsappPayLine,
 } from '../utils/businessRules';
 import { badRequest, notFound } from '../utils/httpError';
 import { logAudit } from './auditService';
@@ -99,13 +100,25 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
   const previousRentBalance = ledger.previousRentBalance;
 
   const identity = await getBusinessIdentity();
-  // Payment channel line: the reconciled paybill number when branding has
-  // one, otherwise a generic instruction.
+  // Payment instruction: PayBill with a unit account reference when the
+  // operator collects that way; plain Send Money to the business contact phone
+  // when they don't (Send Money has no reference field, so accountNumber
+  // stays empty and every composer drops its reference clause); otherwise a
+  // generic walk-in line that keeps the unit reference.
   const paybill = await getPaybillInstructions();
-  const paymentMethod = paybill.enabled && paybill.number
-    ? `M-Pesa PayBill ${paybill.number}`
-    : 'M-Pesa or at the office';
-  const accountNumber = `Unit ${tenant.unit_number ?? tenantId}`;
+  const unitAccount = `Unit ${tenant.unit_number ?? tenantId}`;
+  let paymentMethod: string;
+  let accountNumber: string;
+  if (paybill.enabled && paybill.number) {
+    paymentMethod = `M-Pesa PayBill ${paybill.number}`;
+    accountNumber = unitAccount;
+  } else if (identity.phone?.trim()) {
+    paymentMethod = `M-Pesa to ${identity.phone.trim()}`;
+    accountNumber = '';
+  } else {
+    paymentMethod = 'M-Pesa or at the office';
+    accountNumber = unitAccount;
+  }
 
   // Latest meter reading for the unit in the reporting year — the proof
   // behind the water-billing notice. Falls back to null (clause omitted)
@@ -232,7 +245,8 @@ async function whatsappReminder(
               current_rent: f.currentRent,
               previous_balance: f.previousRentBalance,
               total_due: Math.max(f.combinedBalance, 0),
-              account: f.accountNumber,
+              account: `Unit ${f.unitNumber}`,
+              pay_line: whatsappPayLine(f.accountNumber, f.paymentMethod),
               payment_method: f.paymentMethod,
               currency: f.currency,
             }
@@ -371,12 +385,18 @@ const TEMPLATE_KIND_BY_REMINDER: Record<ReminderKind, TemplateKind> = {
 
 // Merge fields for a customized template — exactly the fields the Message
 // Templates editor offers for that kind, resolved from the live ledger.
+// {{account}} is always the unit label (never empty); the mode-aware
+// {{account_clause}} / {{reference_clause}} / {{pay_line}} carry the reference
+// phrasing and vanish when no reference exists (Send Money).
 function mergeVarsFor(kind: ReminderKind, f: ReminderFigures, baseVars: MergeVars, nextMonth: number): MergeVars {
+  const unitLabel = `Unit ${f.unitNumber}`;
+  const accountClause = f.accountNumber ? ` with account ${f.accountNumber}` : '';
+  const referenceClause = f.accountNumber ? `, quoting ${f.accountNumber} as the account reference` : '';
   switch (kind) {
     case 'BALANCE_DUE':
-      return { ...baseVars, rent_due: Math.max(f.rentBalance, 0), water_due: Math.max(f.waterBalance, 0), total_due: Math.max(f.combinedBalance, 0), account: f.accountNumber, payment_method: f.paymentMethod };
+      return { ...baseVars, account: unitLabel, account_clause: accountClause, rent_due: Math.max(f.rentBalance, 0), water_due: Math.max(f.waterBalance, 0), total_due: Math.max(f.combinedBalance, 0), payment_method: f.paymentMethod };
     case 'DUE_SOON':
-      return { ...baseVars, next_month: MONTH_NAMES[nextMonth - 1], amount: Math.max(f.currentRent, 0), payment_method: f.paymentMethod };
+      return { ...baseVars, reference_clause: referenceClause, next_month: MONTH_NAMES[nextMonth - 1], amount: Math.max(f.currentRent, 0), payment_method: f.paymentMethod };
     case 'WATER_BILLING': {
       const prev = f.latestWaterReading?.previous ?? null;
       const curr = f.latestWaterReading?.current ?? null;
@@ -392,7 +412,7 @@ function mergeVarsFor(kind: ReminderKind, f: ReminderFigures, baseVars: MergeVar
     case 'LATE_FEE':
       return { ...baseVars, amount_due: Math.max(f.rentBalance, 0) };
     case 'WELCOME':
-      return { ...baseVars, amount: Math.max(f.currentRent, 0), payment_method: f.paymentMethod };
+      return { ...baseVars, account: unitLabel, reference_clause: referenceClause, amount: Math.max(f.currentRent, 0), payment_method: f.paymentMethod };
     case 'OVERDUE':
     default:
       return { ...baseVars, amount_due: Math.max(f.rentBalance, 0), total_due: Math.max(f.combinedBalance, 0) };
@@ -415,7 +435,7 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
     case 'DUE_SOON':
       return rentDueSoonMessage({
         tenantName: f.tenantName, unitNumber: f.unitNumber, nextMonthName: MONTH_NAMES[nextMonth - 1], year: nextYear,
-        rentAmount: Math.max(f.currentRent, 0), paymentMethod: f.paymentMethod, currency: f.currency, businessIdentity: identity,
+        rentAmount: Math.max(f.currentRent, 0), paymentMethod: f.paymentMethod, accountNumber: f.accountNumber, currency: f.currency, businessIdentity: identity,
       });
     case 'WATER_BILLING':
       return waterBillingNoticeMessage({
@@ -433,7 +453,7 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
     case 'WELCOME':
       return welcomeMessage({
         tenantName: f.tenantName, unitNumber: f.unitNumber, rentAmount: Math.max(f.currentRent, 0),
-        paymentMethod: f.paymentMethod, currency: f.currency, businessIdentity: identity,
+        paymentMethod: f.paymentMethod, accountNumber: f.accountNumber, currency: f.currency, businessIdentity: identity,
       });
     case 'OVERDUE':
     default:

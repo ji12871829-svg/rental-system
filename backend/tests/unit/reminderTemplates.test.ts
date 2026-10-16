@@ -7,6 +7,7 @@ import {
   lateFeeNoticeMessage,
   monthlyBalanceDueMessage,
   overdueNoticeMessage,
+  rentDueSoonMessage,
   SMS_TWO_SEGMENT_GSM7_LIMIT,
   waterBillingNoticeMessage,
   welcomeMessage,
@@ -195,11 +196,85 @@ describe('welcomeMessage', () => {
       unitNumber: 'B4',
       rentAmount: 9000,
       paymentMethod: 'M-Pesa PayBill 247252',
+      accountNumber: 'Unit B4',
       currency: 'KSh',
     });
     expect(msg).toContain('welcome to Unit B4!');
     expect(msg).toContain('Rent of KSh 9000 falls due on the 1st of each month');
-    expect(msg).toContain('quoting your unit number as the account reference');
+    expect(msg).toContain('Pay via M-Pesa PayBill 247252, quoting Unit B4 as the account reference');
+  });
+});
+
+describe('Send-Money mode (no PayBill, no account reference)', () => {
+  // When the operator collects by Send Money, accountNumber arrives empty and
+  // every reference clause must vanish rather than print blank.
+  it('balance reminder points at the phone with no account clause', () => {
+    const msg = monthlyBalanceDueMessage({
+      ...base,
+      rentDue: 9000,
+      waterDue: 1200,
+      totalDue: 10200,
+      accountNumber: '',
+      paymentMethod: 'M-Pesa to 0712000000',
+      currency: 'KSh',
+    });
+    expect(msg).toBe(
+      'Dear Jane Wanjiku, Unit B4 arrears: Rent KSh 9000 + Water KSh 1200 = Total KSh 10200. Pay via M-Pesa to 0712000000. If already paid, ignore this message. Thank you.',
+    );
+  });
+
+  it('due-soon nudge drops the quoting clause', () => {
+    const msg = rentDueSoonMessage({
+      ...base,
+      nextMonthName: 'November',
+      year: 2026,
+      rentAmount: 9000,
+      paymentMethod: 'M-Pesa to 0712000000',
+      accountNumber: '',
+      currency: 'KSh',
+    });
+    expect(msg).toContain('Please pay via M-Pesa to 0712000000. Thank you.');
+    expect(msg).not.toContain('quoting');
+    expect(msg).not.toContain('account reference');
+  });
+
+  it('welcome drops the quoting clause', () => {
+    const msg = welcomeMessage({
+      ...base,
+      rentAmount: 9000,
+      paymentMethod: 'M-Pesa to 0712000000',
+      accountNumber: '',
+      currency: 'KSh',
+    });
+    expect(msg).toContain('Pay via M-Pesa to 0712000000. We wish you a comfortable stay.');
+    expect(msg).not.toContain('account reference');
+  });
+
+  it('whatsapp pay line drops the account', () => {
+    const msg = whatsappBalanceDueMessage({
+      ...base,
+      monthName: 'September',
+      year: 2026,
+      currentRent: 9000,
+      previousBalance: 1500,
+      totalDue: 10500,
+      accountNumber: '',
+      paymentMethod: 'M-Pesa to 0712000000',
+      currency: 'KSh',
+    });
+    expect(msg).toContain('Please make payment via M-Pesa to 0712000000.');
+    expect(msg).not.toContain('Account');
+  });
+
+  it('send-money variants stay within the two-segment budget', () => {
+    const long = 'A Very Long Tenant Name That Operators Sometimes Type';
+    const method = 'M-Pesa to 0712000000';
+    for (const msg of [
+      monthlyBalanceDueMessage({ tenantName: long, unitNumber: 'B12', rentDue: 123456, waterDue: 78901, totalDue: 202357, accountNumber: '', paymentMethod: method, currency: 'KSh' }),
+      rentDueSoonMessage({ tenantName: long, unitNumber: 'B12', nextMonthName: 'September', year: 2026, rentAmount: 123456, paymentMethod: method, accountNumber: '', currency: 'KSh' }),
+    ]) {
+      expect(gsm7EffectiveLength(msg)).toBeLessThanOrEqual(SMS_TWO_SEGMENT_GSM7_LIMIT);
+    }
   });
 });
 
@@ -214,7 +289,7 @@ describe('notice budget and charset', () => {
       () => waterBillingNoticeMessage({ tenantName: long, unitNumber: 'B12', monthName: 'September', year: 2026, amount: 123456, paymentMethod: 'M-Pesa PayBill 247252', currency: 'KSh', businessIdentity: identity }),
       () => waterBillingNoticeMessage({ tenantName: long, unitNumber: 'B12', monthName: 'September', year: 2026, amount: 123456, paymentMethod: 'M-Pesa PayBill 247252', currency: 'KSh', previousReading: 1234.5, currentReading: 2345.75, businessIdentity: identity }),
       () => lateFeeNoticeMessage({ tenantName: long, unitNumber: 'B12', amountDue: 123456, currency: 'KSh', businessIdentity: identity }),
-      () => welcomeMessage({ tenantName: long, unitNumber: 'B12', rentAmount: 123456, paymentMethod: 'M-Pesa PayBill 247252', currency: 'KSh', businessIdentity: identity }),
+      () => welcomeMessage({ tenantName: long, unitNumber: 'B12', rentAmount: 123456, paymentMethod: 'M-Pesa PayBill 247252', accountNumber: 'Unit B12', currency: 'KSh', businessIdentity: identity }),
     ]) {
       const msg = build();
       // eslint-disable-next-line no-control-regex -- GSM-7 charset check, not a control-char check

@@ -273,4 +273,13 @@ describe('composeRentStatementEmail', () => {
     expect(email.html).toContain('Account <strong>Unit B4</strong> via M-Pesa PayBill 247252');
     expect(email.text).toContain('If you have already paid, please disregard this statement.');
   });
+
+  it('drops the account reference in Send-Money mode instead of printing it blank', () => {
+    const email = composeRentStatementEmail({ ...input, accountNumber: '', paymentMethod: 'M-Pesa to 0712000000' });
+    expect(email.html).toContain('Please make payment via M-Pesa to 0712000000.');
+    expect(email.html).not.toContain('Account <strong>');
+    expect(email.html).not.toContain('account reference');
+    expect(email.text).toContain('Please make payment via M-Pesa to 0712000000.');
+    expect(email.text).not.toContain('account reference');
+  });
 });

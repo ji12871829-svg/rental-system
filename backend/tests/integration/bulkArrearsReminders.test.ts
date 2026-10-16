@@ -270,8 +270,7 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
       expect((await smsRowsFor(phonelessTenantId)).length).toBe(before.phoneless);
     });
 
-    it("audience WATER reminds water debtors only — the rent-only debtor hears nothing new", async () => {
-      const before = {
+    it("audience WATER reminds water debtors only — the rent-only debtor hears nothing new", async () => {      const before = {
         rent: (await smsRowsFor(rentTenantId)).length,
         water: (await smsRowsFor(waterTenantId)).length,
         both: (await smsRowsFor(bothTenantId)).length,
@@ -288,6 +287,31 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
       expect((await smsRowsFor(bothTenantId)).length).toBe(before.both + 1);
       expect((await smsRowsFor(rentTenantId)).length).toBe(before.rent);
       expect((await smsRowsFor(paidTenantId)).length).toBe(before.paid);
+    });
+
+    it('send-money mode points at the business phone with no account reference', async () => {
+      // The operator collects by Send Money: no PayBill, business phone on
+      // file. Reminders must name the phone and never mention an account.
+      const setRes = await request(app)
+        .put('/api/branding')
+        .set(auth(adminToken))
+        .send({ contactPhone: '0712000000', paybillEnabled: false });
+      expect(setRes.status).toBe(200);
+      try {
+        const before = (await smsRowsFor(rentTenantId)).length;
+        const res = await request(app)
+          .post('/api/sms/reminders/bulk-arrears')
+          .set(auth(adminToken))
+          .send({ audience: 'RENT' });
+        expect(res.status).toBe(201);
+        const rows = await smsRowsFor(rentTenantId);
+        expect(rows.length).toBe(before + 1);
+        expect(rows[0].message).toContain('M-Pesa to 0712000000');
+        expect(rows[0].message).not.toContain('PayBill');
+        expect(rows[0].message).not.toContain('account');
+      } finally {
+        await request(app).put('/api/branding').set(auth(adminToken)).send({ contactPhone: null });
+      }
     });
   });
 });

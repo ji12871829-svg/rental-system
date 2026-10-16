@@ -193,6 +193,14 @@ export function composeRentStatementEmail(input: {
   identity: IdentityFields;
 }): ComposedEmail {
   const { tenantName, unitNumber, monthName, year, previousBalance, currentRent, utilitiesAmount, totalDue, currency, accountNumber, paymentMethod } = input;
+  // Send-Money mode carries no account reference (accountNumber arrives
+  // empty) — the reference clause is dropped rather than printed blank.
+  const payLine = accountNumber
+    ? `Please make payment to Account <strong>${escapeHtml(accountNumber)}</strong> via ${escapeHtml(paymentMethod)}, quoting your unit number as the account reference.`
+    : `Please make payment via ${escapeHtml(paymentMethod)}.`;
+  const payText = accountNumber
+    ? `Please make payment to Account ${accountNumber} via ${paymentMethod}, quoting your unit number as the account reference.`
+    : `Please make payment via ${paymentMethod}.`;
   const subject = `Rent Statement & Invoice for ${monthName} ${year} - Unit ${unitNumber}`;
   const line = (label: string, value: string, strong = false) =>
     `<tr><td style="padding:9px 0;border-bottom:1px solid #f3f4f6;color:${strong ? '#111827' : '#374151'}${strong ? ';font-weight:700' : ''}">${label}</td><td style="padding:9px 0;border-bottom:1px solid #f3f4f6;text-align:right;${strong ? 'font-weight:800;font-size:16px' : 'font-weight:700'}">${escapeHtml(value)}</td></tr>`;
@@ -205,7 +213,7 @@ export function composeRentStatementEmail(input: {
 <p>Dear ${escapeHtml(tenantName)},</p>
 <p>Please find below your rent statement and invoice for <strong>${escapeHtml(monthName)} ${year}</strong>, Unit <strong>${escapeHtml(unitNumber)}</strong>.</p>
 <table style="margin:14px 0;border-collapse:collapse;width:100%;border-top:2px solid #111827">${rows}</table>
-<p style="margin:14px 0">Please make payment to Account <strong>${escapeHtml(accountNumber)}</strong> via ${escapeHtml(paymentMethod)}, quoting your unit number as the account reference.</p>
+<p style="margin:14px 0">${payLine}</p>
 <p style="margin:14px 0">If you have already paid, please disregard this statement. No further action is needed.</p>
 <p style="margin:14px 0;color:#374151">If any figure looks unfamiliar, reply to this email and we will review your account with you.</p>`;
   const text = [
@@ -218,7 +226,7 @@ export function composeRentStatementEmail(input: {
     `Utilities/Other (water): ${utilitiesAmount}`,
     `Total Amount Due: ${totalDue}`,
     '',
-    `Please make payment to Account ${accountNumber} via ${paymentMethod}, quoting your unit number as the account reference.`,
+    `${payText}`,
     '',
     'If you have already paid, please disregard this statement. No further action is needed.',
     '',
