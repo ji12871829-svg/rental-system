@@ -231,6 +231,15 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
 
     // Phoneless owing tenant: counted, never queued.
     expect(await smsRowsFor(phonelessTenantId)).toHaveLength(0);
+
+    // The response names every skip: the paid tenant as PAID, the phoneless
+    // debtor as NO_PHONE — and none of the reminded tenants appear in it.
+    const skipped = res.body.data.skipped as Array<{ tenantId: number; tenantName: string; reason: string }>;
+    expect(skipped.find((s) => s.tenantId === paidTenantId)?.reason).toBe('PAID');
+    expect(skipped.find((s) => s.tenantId === phonelessTenantId)?.reason).toBe('NO_PHONE');
+    for (const id of [rentTenantId, waterTenantId, bothTenantId]) {
+      expect(skipped.some((s) => s.tenantId === id)).toBe(false);
+    }
   });
 
   it('rejects an unknown audience without queueing anything', async () => {
@@ -263,6 +272,8 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
       expect(res.status).toBe(201);
       expect(res.body.data.audience).toBe('RENT');
       expect(res.body.data.skippedOtherBill).toBeGreaterThanOrEqual(1);
+      const skipped = res.body.data.skipped as Array<{ tenantId: number; reason: string; bill: string | null }>;
+      expect(skipped.find((s) => s.tenantId === waterTenantId)).toMatchObject({ reason: 'OTHER_BILL', bill: 'WATER' });
       expect((await smsRowsFor(rentTenantId)).length).toBe(before.rent + 1);
       expect((await smsRowsFor(bothTenantId)).length).toBe(before.both + 1);
       expect((await smsRowsFor(waterTenantId)).length).toBe(before.water);

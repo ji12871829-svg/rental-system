@@ -25,7 +25,20 @@ afterEach(cleanup);
 beforeEach(() => {
   mockedPost.mockReset();
   mockedPost.mockResolvedValue({
-    data: { total: 4, audience: 'ALL', owing: 2, queued: 2, skippedPaid: 1, skippedNoPhone: 1, skippedOtherBill: 0, autoSend: false },
+    data: {
+      total: 4,
+      audience: 'ALL',
+      owing: 2,
+      queued: 2,
+      skippedPaid: 1,
+      skippedNoPhone: 1,
+      skippedOtherBill: 0,
+      skipped: [
+        { tenantId: 21, tenantName: 'Cleared Carol', unitNumber: '3', reason: 'PAID', bill: null },
+        { tenantId: 22, tenantName: 'No-Phone Noah', unitNumber: '4', reason: 'NO_PHONE', bill: null },
+      ],
+      autoSend: false,
+    },
   });
   vi.stubGlobal('confirm', vi.fn(() => true));
 });
@@ -64,7 +77,7 @@ describe('BulkReminderButton', () => {
     expect(url).toBe('/api/sms/reminders/bulk-arrears');
     expect(body).toEqual({ audience: 'ALL' });
     expect(sent).toBe(1);
-    expect(await screen.findByText(/2 queued/)).toBeInTheDocument();
+    expect(await screen.findByText(/2 reminders queued/)).toBeInTheDocument();
   });
 
   it('aborts when the wallet confirm is dismissed', () => {
@@ -102,7 +115,7 @@ describe('BulkReminderButton', () => {
 
   it('reports water-only skips in the rent-audience toast', async () => {
     mockedPost.mockResolvedValue({
-      data: { total: 4, audience: 'RENT', owing: 2, queued: 2, skippedPaid: 0, skippedNoPhone: 0, skippedOtherBill: 1, autoSend: false },
+      data: { total: 4, audience: 'RENT', owing: 2, queued: 2, skippedPaid: 0, skippedNoPhone: 0, skippedOtherBill: 1, skipped: [], autoSend: false },
     });
     render(
       <ToastProvider>
@@ -111,6 +124,21 @@ describe('BulkReminderButton', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /Remind owing rent/ }));
     await waitFor(() => expect(mockedPost).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText(/owe only water/)).toBeInTheDocument();
+    expect(await screen.findByText(/2 reminders queued/)).toBeInTheDocument();
+  });
+
+  it('opens a breakdown modal naming each skipped tenant and why', async () => {
+    render(
+      <ToastProvider>
+        <BulkReminderButton owingCount={2} onSent={() => {}} />
+      </ToastProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Remind 2 owing/ }));
+    await waitFor(() => expect(mockedPost).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/Bulk reminders — 2 queued/)).toBeInTheDocument();
+    expect(screen.getByText(/Cleared Carol/)).toBeInTheDocument();
+    expect(screen.getByText('Already cleared')).toBeInTheDocument();
+    expect(screen.getByText(/No-Phone Noah/)).toBeInTheDocument();
+    expect(screen.getByText('No phone number')).toBeInTheDocument();
   });
 });

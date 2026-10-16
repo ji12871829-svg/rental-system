@@ -9,10 +9,20 @@
 // wait as PENDING on the SMS page.
 import { useContext, useState } from 'react';
 import { Send } from 'lucide-react';
-import { Button, Select, ToastContext } from './ui';
+import { Button, Modal, Select, ToastContext } from './ui';
 import { api } from '../lib/api';
 
 export type BulkAudience = 'ALL' | 'RENT' | 'WATER';
+
+type BulkSkipReason = 'NO_PHONE' | 'PAID' | 'OTHER_BILL';
+
+interface BulkSkippedTenant {
+  tenantId: number;
+  tenantName: string;
+  unitNumber: string | null;
+  reason: BulkSkipReason;
+  bill: 'RENT' | 'WATER' | null;
+}
 
 export interface BulkArrearsResponse {
   total: number;
@@ -22,6 +32,7 @@ export interface BulkArrearsResponse {
   skippedPaid: number;
   skippedNoPhone: number;
   skippedOtherBill: number;
+  skipped: BulkSkippedTenant[];
   autoSend: boolean;
 }
 
@@ -45,6 +56,13 @@ interface BulkReminderButtonProps {
   onSent?: (result: BulkArrearsResponse) => void;
 }
 
+/** Human reason per skipped tenant for the breakdown modal. */
+function skipReasonText(s: BulkSkippedTenant): string {
+  if (s.reason === 'NO_PHONE') return 'No phone number';
+  if (s.reason === 'PAID') return 'Already cleared';
+  return s.bill === 'WATER' ? 'Owes only water' : 'Owes only rent';
+}
+
 export function BulkReminderButton({
   owingCount,
   audienceCounts,
@@ -61,6 +79,7 @@ export function BulkReminderButton({
   const toast = toastCtx?.toast ?? (() => {});
   const [busy, setBusy] = useState(false);
   const [audience, setAudience] = useState<BulkAudience>(defaultAudience);
+  const [report, setReport] = useState<BulkArrearsResponse | null>(null);
 
   const countFor = (a: BulkAudience): number | null | undefined =>
     a === 'ALL' ? owingCount : a === 'RENT' ? audienceCounts?.rent : audienceCounts?.water;
@@ -92,16 +111,14 @@ export function BulkReminderButton({
     try {
       const res = await api.post<{ data: BulkArrearsResponse }>('/api/sms/reminders/bulk-arrears', { audience });
       const r = res.data;
-      const parts = [`${r.queued} queued`];
-      if (r.skippedNoPhone > 0) parts.push(`${r.skippedNoPhone} skipped (no phone)`);
-      if (r.skippedOtherBill > 0) parts.push(`${r.skippedOtherBill} ${meta.otherBill || 'owe another bill'} — skipped`);
-      if (r.skippedPaid > 0) parts.push(`${r.skippedPaid} already cleared`);
+      const skippedCount = r.skipped?.length ?? 0;
       toast(
         'success',
         r.queued === 0
           ? `Nothing to remind — no tenant owes ${meta.bill}.`
-          : `Reminders: ${parts.join(', ')}. ${r.autoSend ? 'Sending now.' : 'Auto-send is off — they wait as Pending on the SMS page.'}`
+          : `${r.queued} reminder${r.queued === 1 ? '' : 's'} queued${skippedCount > 0 ? `, ${skippedCount} skipped — details below` : ''}. ${r.autoSend ? 'Sending now.' : 'Auto-send is off — they wait as Pending on the SMS page.'}`
       );
+      setReport(r);
       onSent?.(r);
     } catch (err) {
       toast('error', (err as Error).message);
@@ -124,7 +141,12 @@ export function BulkReminderButton({
     </Button>
   );
 
-  if (!showAudiencePicker) return button;
+  if (!showAudiencePicker) return (
+    <>
+      {button}
+      <SkippedReportModal report={report} onClose={() => setReport(null)} />
+    </>
+  );
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -145,6 +167,49 @@ export function BulkReminderButton({
         </option>
       </Select>
       {button}
+      <SkippedReportModal report={report} onClose={() => setReport(null)} />
     </div>
+  );
+}
+
+/** Post-send breakdown: who got reminded and exactly who was skipped and why. */
+function SkippedReportModal({ report, onClose }: { report: BulkArrearsResponse | null; onClose: () => void }) {
+  if (!report) return null;
+  const skipped = report.skipped ?? [];
+  return (
+    <Modal open title={`Bulk reminders — ${report.queued} queued`} onClose={onClose}>
+      <div className="space-y-3 text-sm">
+        <p className="text-gray-600">
+          {report.queued === 0
+            ? 'Nobody was reminded.'
+            : `${report.queued} tenant${report.queued === 1 ? '' : 's'} got a personalised reminder. `}
+          {report.autoSend ? 'Sending now.' : 'They wait as Pending on the SMS page.'}
+        </p>
+        {skipped.length > 0 ? (
+          <div>
+            <h3 className="mb-1 font-semibold text-gray-900">
+              Skipped ({skipped.length})
+            </h3>
+            <ul className="max-h-64 space-y-1.5 overflow-y-auto">
+              {skipped.map((s) => (
+                <li key={s.tenantId} className="flex items-baseline justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2">
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium text-gray-900">
+                      {s.tenantName}{s.unitNumber ? ` · Unit ${s.unitNumber}` : ''}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-xs text-gray-500">{skipReasonText(s)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p className="text-gray-500">Nobody was skipped — every owing tenant was reminded.</p>
+        )}
+        <div className="flex justify-end">
+          <Button variant="secondary" onClick={onClose}>Close</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }

@@ -506,6 +506,17 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
 // scheduler accident.
 export type BulkAudience = 'ALL' | 'RENT' | 'WATER';
 
+type BulkSkipReason = 'NO_PHONE' | 'PAID' | 'OTHER_BILL';
+
+interface BulkSkippedTenant {
+  tenantId: number;
+  tenantName: string;
+  unitNumber: string | null;
+  reason: BulkSkipReason;
+  /** Which bill they owe, when reason is OTHER_BILL (the bill outside the audience). */
+  bill: 'RENT' | 'WATER' | null;
+}
+
 export interface BulkArrearsResult {
   total: number;
   audience: BulkAudience;
@@ -515,6 +526,8 @@ export interface BulkArrearsResult {
   skippedNoPhone: number;
   /** Owes money, but only on the bill outside the chosen audience. */
   skippedOtherBill: number;
+  /** Every skipped tenant by name, so the operator can see exactly who and why. */
+  skipped: BulkSkippedTenant[];
 }
 
 export async function sendBulkArrearsReminders(opts: {
@@ -526,8 +539,10 @@ export async function sendBulkArrearsReminders(opts: {
   const year = settings.reporting_year;
   const month = new Date().getUTCMonth() + 1;
 
-  const tenants = await query<{ id: number }>(
-    `SELECT id FROM tenants WHERE status = 'ACTIVE' ORDER BY id`,
+  const tenants = await query<{ id: number; full_name: string; unit_number: string | null }>(
+    `SELECT t.id, t.full_name, u.unit_number
+     FROM tenants t LEFT JOIN units u ON u.id = t.unit_id
+     WHERE t.status = 'ACTIVE' ORDER BY t.id`,
   );
 
   let owing = 0;
@@ -535,6 +550,7 @@ export async function sendBulkArrearsReminders(opts: {
   let skippedPaid = 0;
   let skippedNoPhone = 0;
   let skippedOtherBill = 0;
+  const skipped: BulkSkippedTenant[] = [];
 
   for (const tenant of tenants) {
     const ledger = await tenantBalances(tenant.id, year, month);
@@ -543,8 +559,19 @@ export async function sendBulkArrearsReminders(opts: {
     const inAudience =
       audience === 'ALL' ? rentOwing || waterOwing : audience === 'RENT' ? rentOwing : waterOwing;
     if (!inAudience) {
-      if (!rentOwing && !waterOwing) skippedPaid += 1;
-      else skippedOtherBill += 1;
+      if (!rentOwing && !waterOwing) {
+        skippedPaid += 1;
+        skipped.push({ tenantId: tenant.id, tenantName: tenant.full_name, unitNumber: tenant.unit_number, reason: 'PAID', bill: null });
+      } else {
+        skippedOtherBill += 1;
+        skipped.push({
+          tenantId: tenant.id,
+          tenantName: tenant.full_name,
+          unitNumber: tenant.unit_number,
+          reason: 'OTHER_BILL',
+          bill: rentOwing ? 'RENT' : 'WATER',
+        });
+      }
       continue;
     }
     owing += 1;
@@ -563,6 +590,7 @@ export async function sendBulkArrearsReminders(opts: {
       queued += 1;
     } else {
       skippedNoPhone += 1;
+      skipped.push({ tenantId: tenant.id, tenantName: tenant.full_name, unitNumber: tenant.unit_number, reason: 'NO_PHONE', bill: null });
     }
   }
 
@@ -573,5 +601,5 @@ export async function sendBulkArrearsReminders(opts: {
     newValue: { audience, total: tenants.length, owing, queued, skippedPaid, skippedNoPhone, skippedOtherBill },
   });
 
-  return { total: tenants.length, audience, owing, queued, skippedPaid, skippedNoPhone, skippedOtherBill };
+  return { total: tenants.length, audience, owing, queued, skippedPaid, skippedNoPhone, skippedOtherBill, skipped };
 }
