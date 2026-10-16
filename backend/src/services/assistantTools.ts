@@ -6,6 +6,8 @@
 import { arrears, dashboard } from './financeService';
 import { tenantBalances } from './tenantLedger';
 import { getBriefing } from './assistantBriefing';
+import { bestMatches } from '../utils/fuzzyMatch';
+import { query } from '../config/db';
 import type { ToolDef } from './assistantProvider';
 
 export const BRIEFING_TOOL_DEF: ToolDef = {
@@ -77,23 +79,53 @@ export async function runTool(name: string, args: unknown, year: number): Promis
     const q = String(a.query ?? '').trim().toLowerCase();
     if (!q) throw new Error('find_tenant needs a query string.');
     const rows = (await arrears(year)) as ArrearsRow[];
+    // Digits-only phone matching must not fire on digitless queries: ''
+    // is included in everything, so without this guard any all-letters
+    // query matched every tenant with a phone number.
+    const qDigits = q.replace(/\D/g, '');
     const hits = rows
       .filter(
         (r) =>
           r.tenantName.toLowerCase().includes(q) ||
           r.unitNumber.toLowerCase() === q ||
-          (r.phoneNumber ?? '').replace(/\D/g, '').includes(q.replace(/\D/g, '')),
+          (qDigits !== '' && (r.phoneNumber ?? '').replace(/\D/g, '').includes(qDigits)),
       )
       .slice(0, 5);
+    // Fuzzy fallback for misheard names ("Peter Otino" for Peter Otieno):
+    // only when nothing matched exactly, across all active tenants (not just
+    // arrears rows), clearly labeled so the model can say "did you mean…".
+    let fuzzy: { id: number; fullName: string; unitNumber: string; phoneNumber: string | null }[] = [];
+    if (hits.length === 0 && q.length >= 3) {
+      const all = await query<{ id: number; full_name: string; unit_number: string | null; phone_number: string | null }>(
+        `SELECT t.id, t.full_name, u.unit_number, t.phone_number FROM tenants t
+         LEFT JOIN units u ON u.id = t.unit_id WHERE t.status = 'ACTIVE'`,
+      );
+      fuzzy = bestMatches(q, all, (t) => t.full_name).map((m) => ({
+        id: m.candidate.id,
+        fullName: m.candidate.full_name,
+        unitNumber: m.candidate.unit_number ?? '?',
+        phoneNumber: m.candidate.phone_number,
+      }));
+    }
     const matches: {
       id: number; fullName: string; unitNumber: string;
       phoneNumber: string | null; rentBalance: number; waterBalance: number;
+      match: 'exact' | 'fuzzy';
     }[] = [];
     for (const h of hits) {
       const b = await tenantBalances(h.tenantId, year);
       matches.push({
         id: h.tenantId, fullName: h.tenantName, unitNumber: h.unitNumber,
         phoneNumber: h.phoneNumber, rentBalance: b.rentBalance, waterBalance: b.waterBalance,
+        match: 'exact',
+      });
+    }
+    for (const f of fuzzy) {
+      const b = await tenantBalances(f.id, year);
+      matches.push({
+        id: f.id, fullName: f.fullName, unitNumber: f.unitNumber,
+        phoneNumber: f.phoneNumber, rentBalance: b.rentBalance, waterBalance: b.waterBalance,
+        match: 'fuzzy',
       });
     }
     return { matches };
