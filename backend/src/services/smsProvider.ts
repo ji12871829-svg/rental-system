@@ -36,6 +36,7 @@
 //     money or text real numbers, even if credentials are present.
 //   - A live provider with missing credentials records a FAILED row with a
 //     clear reason instead of crashing or silently pretending success.
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { env, isTest } from '../config/env';
 import { getSmsProviderOverride } from './settingsService';
 
@@ -262,6 +263,58 @@ export function parseAtDeliveryOutcome(report: AtDeliveryReport): DeliveryOutcom
   if (report.status && /buffer|absent/i.test(report.status)) return null;
   if (!report.status && report.statusCode === undefined) return null;
   return 'FAILED_ON_NETWORK';
+}
+
+// --- textbee webhooks --------------------------------------------------------
+// textbee POSTs JSON to our subscription URL per event, signing the raw body
+// (HMAC-SHA256, hex) in the X-Signature header with the subscription secret.
+// Envelope fields are identical across events; delivery events add
+// smsBatchId (the id our send stored as provider_message_id) + recipient,
+// MESSAGE_RECEIVED adds sender + receivedAt instead.
+
+export interface TextbeeWebhookEvent {
+  webhookEvent?: string;
+  smsId?: string;
+  smsBatchId?: string;
+  status?: string;
+  recipient?: string;
+  sender?: string;
+  message?: string;
+  deviceId?: string;
+  idempotencyKey?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  receivedAt?: string;
+  sentAt?: string;
+  deliveredAt?: string;
+  failedAt?: string;
+}
+
+/**
+ * Map a textbee delivery event to our outcome. Only terminal states map:
+ *   MESSAGE_DELIVERED  → DELIVERED (carrier confirmed the handset)
+ *   MESSAGE_FAILED     → FAILED_ON_NETWORK (phone/carrier rejected the send)
+ *   everything else    → null (MESSAGE_SENT merely left the phone — our row
+ *                        is already SENT; UNKNOWN_STATE is log-only per
+ *                        textbee's docs: the message may still have arrived)
+ */
+export function parseTextbeeDeliveryOutcome(event: TextbeeWebhookEvent): DeliveryOutcome | null {
+  if (event.webhookEvent === 'MESSAGE_DELIVERED') return 'DELIVERED';
+  if (event.webhookEvent === 'MESSAGE_FAILED') return 'FAILED_ON_NETWORK';
+  return null;
+}
+
+/**
+ * Verify a textbee webhook delivery. Pure (secret passed in) so tests never
+ * touch env. timingSafeEqual so a forged signature learns nothing byte by
+ * byte; length-checked first because timingSafeEqual throws on mismatch.
+ */
+export function verifyTextbeeSignature(rawBody: Buffer, signature: string | undefined, secret: string): boolean {
+  if (!secret || !signature) return false;
+  const expected = createHmac('sha256', secret).update(rawBody).digest('hex');
+  const a = Buffer.from(signature);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 async function africasTalkingSend(phoneNumber: string, message: string): Promise<SendResult> {

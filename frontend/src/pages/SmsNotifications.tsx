@@ -86,6 +86,18 @@ function SmsBody({ message }: { message: string }) {
   );
 }
 
+interface InboxRow {
+  id: number;
+  sender: string;
+  message: string;
+  received_at: string | null;
+  read_at: string | null;
+  created_at: string;
+  tenant_id: number | null;
+  tenant_name: string | null;
+  unit_number: string | null;
+}
+
 export default function SmsNotifications() {
   const { toast } = useToast();
   const [q, setQ] = useState('');
@@ -145,6 +157,31 @@ export default function SmsNotifications() {
   const spend = (data?.meta?.spendByCurrency ?? []) as SpendByCurrency[];
 
   const refresh = () => setRefreshKey((k) => k + 1);
+
+  // Tenant replies (textbee MESSAGE_RECEIVED webhook → sms_inbox). History and
+  // inbox share the page as tabs; the inbox badge counts unread so a reply
+  // never sits unnoticed. Marking read is manual — triage stays deliberate.
+  const [view, setView] = useState<'history' | 'inbox'>('history');
+  const [inboxPage, setInboxPage] = useState(1);
+  const { data: inboxData, loading: inboxLoading, error: inboxError } = useFetch(
+    () => api.list<InboxRow>(`/api/sms/inbox${qs({ page: inboxPage, limit: 20 })}`),
+    [inboxPage, refreshKey, view],
+    { enabled: view === 'inbox' }
+  );
+  const { data: unreadData } = useFetch(
+    () => api.list<InboxRow>(`/api/sms/inbox${qs({ page: 1, limit: 1, unreadOnly: '1' })}`),
+    [refreshKey]
+  );
+  const unreadCount = unreadData?.pagination?.total ?? 0;
+
+  async function markRead(id: number) {
+    try {
+      await api.post(`/api/sms/inbox/${id}/read`);
+      refresh();
+    } catch (err) {
+      toast('error', (err as Error).message);
+    }
+  }
 
   async function send(s: Sms) {
     try {
@@ -262,6 +299,73 @@ export default function SmsNotifications() {
         </div>
       )}
 
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="flex rounded-lg border border-gray-200 bg-white p-0.5 shadow-sm" role="tablist" aria-label="SMS views">
+          {(['history', 'inbox'] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              aria-selected={view === tab}
+              onClick={() => setView(tab)}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                view === tab ? 'bg-brand-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {tab === 'history' ? 'History' : 'Received'}
+              {tab === 'inbox' && unreadCount > 0 && (
+                <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${view === tab ? 'bg-white text-brand-700' : 'bg-red-100 text-red-700'}`}>
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {view === 'inbox' ? (
+        <>
+          {inboxLoading && <SkeletonTable cols={4} />}
+          {inboxError && <div className="text-sm text-red-600">{inboxError}</div>}
+          {!inboxLoading && !inboxError && inboxData && (
+            <>
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Received</th><th>From</th><th>Message</th><th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inboxData.data.map((m) => (
+                      <tr key={m.id} className={m.read_at ? undefined : 'bg-amber-50/60'}>
+                        <td className="whitespace-nowrap text-xs text-gray-500">{formatDate(m.received_at ?? m.created_at)}</td>
+                        <td>
+                          <div className="font-medium">
+                            {m.tenant_name ?? <a href={`tel:${m.sender.replace(/[^+\d]/g, '')}`} className="underline-offset-2 hover:text-brand-700 hover:underline">{m.sender}</a>}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {m.tenant_name ? `${m.sender}${m.unit_number ? ` · Unit ${m.unit_number}` : ''}` : 'Unknown sender'}
+                          </div>
+                        </td>
+                        <td className="max-w-[420px] text-sm text-gray-800 whitespace-pre-wrap">{m.message || '—'}</td>
+                        <td>
+                          {!m.read_at && (
+                            <Button variant="ghost" className="!px-2 !py-1 text-xs" onClick={() => markRead(m.id)}>Mark read</Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {inboxData.data.length === 0 && <div className="p-6"><EmptyState message="No replies yet — tenant texts to your SIM appear here once the textbee webhook is connected. See docs/runbooks/RUNBOOK-textbee-webhook.md." /></div>}
+              </div>
+              <Pagination page={inboxData.pagination.page} totalPages={inboxData.pagination.totalPages} onChange={setInboxPage} />
+            </>
+          )}
+        </>
+      ) : (
+      <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-2">
           <TextInput placeholder="Search message or tenant…" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-xs" />
@@ -353,6 +457,7 @@ export default function SmsNotifications() {
           <Pagination page={data.pagination.page} totalPages={data.pagination.totalPages} onChange={setPage} />
         </>
       )}
+      </>)}
 
       <Modal open={viewMessage !== null} title={`SMS to ${viewMessage?.tenant_name ?? ''}`} onClose={() => setViewMessage(null)}>
         {viewMessage && (

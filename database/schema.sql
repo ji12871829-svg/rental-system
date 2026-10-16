@@ -370,6 +370,24 @@ CREATE INDEX IF NOT EXISTS idx_sms_status ON sms_notifications(status);
 CREATE INDEX IF NOT EXISTS idx_sms_provider_message ON sms_notifications(provider_message_id);
 
 -- ---------------------------------------------------------------------------
+-- sms_inbox — inbound tenant replies (textbee MESSAGE_RECEIVED webhook).
+-- No receipt/reminder row to attach to, so its own newest-first table.
+-- Dedupe key is the webhook idempotency key (retries reuse it).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sms_inbox (
+  id              SERIAL PRIMARY KEY,
+  sender          TEXT NOT NULL,
+  message         TEXT NOT NULL DEFAULT '',
+  device_id       TEXT,
+  textbee_sms_id  TEXT,
+  idempotency_key TEXT UNIQUE,
+  received_at     TIMESTAMPTZ,
+  read_at         TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sms_inbox_created ON sms_inbox(created_at DESC);
+
+-- ---------------------------------------------------------------------------
 -- email_notifications — receipt emails, same lifecycle as SMS: a row is
 -- created when a send is requested, then flips to SENT/FAILED with the
 -- provider's message id. The rendered receipt HTML is stored so the record
