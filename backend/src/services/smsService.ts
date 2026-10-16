@@ -35,6 +35,10 @@ export interface ReceiptLike {
   water_amount: string;
   total_amount: string;
   balance: string;
+  // Payment date (receipts.payment_date) — present on live rows, fetched by
+  // prepareForReceipt for the "received on" line. Optional so older callers
+  // and test fixtures without it keep the previous wording.
+  payment_date?: string | Date;
 }
 
 // Builds the SMS text for a receipt (spec §34 examples). When a business
@@ -133,6 +137,7 @@ async function resolveReceiptTemplate(
     month: MONTH_NAMES[receipt.billing_month - 1],
     year: receipt.billing_year,
     receipt: receipt.receipt_number,
+    date: receipt.payment_date !== undefined ? calendarDate(receipt.payment_date) : '',
   };
   const fullVars: Record<string, string | number> =
     receipt.receipt_type === 'RENT'
@@ -147,6 +152,15 @@ async function resolveReceiptTemplate(
             balance: toNumber(receipt.balance),
           };
   return renderMergeFields(custom.body, fullVars);
+}
+
+// Calendar date for SMS text: pg DATE columns arrive as Date objects
+// (midnight UTC) or ISO strings — either way the YYYY-MM-DD prefix is the
+// wall date the operator and tenant both recognize. No time, no timezone
+// math, and ASCII-only for the GSM-7 budget.
+function calendarDate(value: string | Date): string {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
 }
 
 // The ONE persist point for SMS: creates a PENDING sms_notifications row and
@@ -190,6 +204,16 @@ export async function prepareForReceipt(
   );
   const row = tenant.rows[0];
   if (!row || !row.phone_number) return null; // no phone → nothing to notify
+
+  // Received-on date for the receipt wording. Read in-transaction (same exec)
+  // so a receipt created moments ago in the caller's uncommitted transaction
+  // is visible; absent on older in-memory shapes, which keep prior wording.
+  const paidOn = await exec.query(
+    'SELECT payment_date FROM receipts WHERE id = $1',
+    [receipt.id],
+  );
+  const paidDate = paidOn.rows[0]?.payment_date as string | Date | undefined;
+  if (paidDate !== undefined) receipt.payment_date = paidDate;
 
   // Identity comes from business_branding (DB, env fallback) so Settings
   // edits apply to new SMS immediately.
