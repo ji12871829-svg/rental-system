@@ -103,7 +103,7 @@ export interface StatementPdfData {
 
 export async function tenantStatementPdfBytes(
   data: StatementPdfData,
-  identity: BusinessIdentity = { name: null, regNo: null, phone: null, email: null, logo: null }
+  identity: BusinessIdentity = { name: null, regNo: null, phone: null, sendMoneyPhone: null, email: null, logo: null }
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const page = doc.addPage([PAGE_W, PAGE_H]);

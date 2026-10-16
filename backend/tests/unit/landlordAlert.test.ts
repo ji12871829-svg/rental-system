@@ -62,6 +62,7 @@ beforeEach(() => {
     name: 'Olbano Plaza',
     regNo: null,
     phone: '0706719042',
+    sendMoneyPhone: null,
     email: null,
     logo: null,
   });
@@ -95,7 +96,7 @@ describe('prepareLandlordAlert', () => {
   });
 
   it('skips when no contact phone is on file', async () => {
-    identityMock.mockResolvedValue({ name: 'Olbano Plaza', regNo: null, phone: null, email: null, logo: null });
+    identityMock.mockResolvedValue({ name: 'Olbano Plaza', regNo: null, phone: null, sendMoneyPhone: null, email: null, logo: null });
     const { exec, queries } = execWith(tenantRow);
     expect(await prepareLandlordAlert(receipt(), exec as never)).toBeNull();
     expect(queries).toHaveLength(1);

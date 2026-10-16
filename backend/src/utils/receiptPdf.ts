@@ -34,7 +34,7 @@ const RULE = rgb(0.85, 0.87, 0.9);
 
 export async function receiptPdfBytes(
   r: ReceiptDocument,
-  identity: BusinessIdentity = { name: null, regNo: null, phone: null, email: null, logo: null }
+  identity: BusinessIdentity = { name: null, regNo: null, phone: null, sendMoneyPhone: null, email: null, logo: null }
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const page = doc.addPage([PAGE_W, PAGE_H]);
