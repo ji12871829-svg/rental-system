@@ -79,12 +79,12 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     kind: 'SMS_BALANCE_DUE',
     label: 'Balance Due Statement',
     channel: 'SMS' as const,
-    description: 'The "Balance Due" reminder an operator sends from the SMS page or a tenant card.',
-    fields: ['name', 'unit', 'month', 'year', 'total_due', 'account', 'payment_method', 'currency', 'business'],
+    description: 'The itemized arrears reminder an operator sends from the SMS page, a tenant card, or the one-click bulk button — rent and water stated separately.',
+    fields: ['name', 'unit', 'rent_due', 'water_due', 'total_due', 'account', 'payment_method', 'currency', 'business'],
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, your rent statement for {{month}} {{year}} (Unit {{unit}}) is ready. Total Due: {{currency}} {{total_due}}. To pay, use {{payment_method}} with account {{account}}.',
+      'Dear {{name}}, Unit {{unit}} arrears: Rent {{currency}} {{rent_due}} + Water {{currency}} {{water_due}} = Total {{currency}} {{total_due}}. Pay via {{payment_method}} with account {{account}}. If already paid, ignore this message. Thank you.',
   },
   {
     kind: 'SMS_OVERDUE',
@@ -95,7 +95,7 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, the rent for Unit {{unit}} is overdue by {{currency}} {{amount_due}}. Kindly settle this amount to avoid a late payment fee. Your total balance is {{currency}} {{total_due}}. Thank you.',
+      'Dear {{name}}, the rent for Unit {{unit}} is overdue by {{currency}} {{amount_due}}. Kindly settle this amount to avoid a late payment fee. Your total balance is {{currency}} {{total_due}}. If already paid, ignore this message. Thank you.',
   },
   {
     kind: 'SMS_LANDLORD_ALERT',
@@ -126,12 +126,12 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     label: 'Water Billing Notice',
     channel: 'SMS' as const,
     description:
-      'Tells the tenant the month\'s water charge has been billed to their ledger. Sent only when an operator sends it — billing water never spends SMS credit on its own.',
+      'Reminds the tenant their water charge is still unpaid. Sent only when an operator sends it — billing water never spends SMS credit on its own.',
     fields: ['name', 'unit', 'month', 'year', 'amount', 'previous_reading', 'current_reading', 'units_used', 'payment_method', 'currency', 'business'],
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, your water charge for Unit {{unit}} for {{month}} {{year}} is {{currency}} {{amount}}. Meter: prev {{previous_reading}}, curr {{current_reading}} ({{units_used}} units). It appears on your statement and can be paid together with your rent via {{payment_method}}.',
+      'Dear {{name}}, water for Unit {{unit}} for {{month}} {{year}} is unpaid: {{currency}} {{amount}}. Meter: prev {{previous_reading}}, curr {{current_reading}} ({{units_used}} units). Pay with your rent via {{payment_method}}. If already paid, ignore this message. Thank you.',
   },
   {
     kind: 'SMS_LATE_FEE',

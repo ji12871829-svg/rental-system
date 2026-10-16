@@ -374,7 +374,7 @@ const TEMPLATE_KIND_BY_REMINDER: Record<ReminderKind, TemplateKind> = {
 function mergeVarsFor(kind: ReminderKind, f: ReminderFigures, baseVars: MergeVars, nextMonth: number): MergeVars {
   switch (kind) {
     case 'BALANCE_DUE':
-      return { ...baseVars, total_due: Math.max(f.combinedBalance, 0), account: f.accountNumber, payment_method: f.paymentMethod };
+      return { ...baseVars, rent_due: Math.max(f.rentBalance, 0), water_due: Math.max(f.waterBalance, 0), total_due: Math.max(f.combinedBalance, 0), account: f.accountNumber, payment_method: f.paymentMethod };
     case 'DUE_SOON':
       return { ...baseVars, next_month: MONTH_NAMES[nextMonth - 1], amount: Math.max(f.currentRent, 0), payment_method: f.paymentMethod };
     case 'WATER_BILLING': {
@@ -406,7 +406,9 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
   switch (kind) {
     case 'BALANCE_DUE':
       return monthlyBalanceDueMessage({
-        tenantName: f.tenantName, unitNumber: f.unitNumber, monthName: f.monthName, year: f.year,
+        tenantName: f.tenantName, unitNumber: f.unitNumber,
+        rentDue: Math.max(f.rentBalance, 0),
+        waterDue: Math.max(f.waterBalance, 0),
         totalDue: Math.max(f.combinedBalance, 0), accountNumber: f.accountNumber,
         paymentMethod: f.paymentMethod, currency: f.currency, businessIdentity: identity,
       });

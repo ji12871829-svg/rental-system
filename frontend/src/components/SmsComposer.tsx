@@ -33,8 +33,8 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, string> = {
     'Regards, Olbano Plaza Management.',
   ].join(' '),
   water: [
-    'Dear {{name}}, your water charge for Unit {{unit}} has been billed to your account.',
-    'Pay it together with rent via M-Pesa using your unit number as the reference. Regards, Olbano Plaza Management.',
+    'Dear {{name}}, this is a reminder that water for your Unit {{unit}} is unpaid.',
+    'Please pay via M-Pesa using your unit number as the account reference. If you already paid, kindly ignore this message.',
   ].join(' '),
   latefee: [
     'Dear {{name}}, rent for Unit {{unit}} was not received by the due date, so a late fee has been applied.',

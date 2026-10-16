@@ -3,13 +3,18 @@
 // The operator's single button: one POST queues a personalised SMS for EVERY
 // ACTIVE tenant with money owing on EITHER side of the ledger (rent OR
 // water — the gate is per-side, never the net, so a credit on one side can
-// never mask a debt on the other). Guards under test:
-//   1. Rent-owing tenant with a phone -> PENDING BALANCE_DUE row (own figures).
-//   2. Water-only debtor (rent clear, water billed) -> PENDING WATER_BILLING row.
-//   3. Fully paid tenant (rent overpaid, nothing else) -> NEVER queued.
-//   4. Owing tenant without a phone -> counted, never queued.
-//   5. 401 without a session, 403 for STAFF (managerOrAdmin).
-//   6. Response counts queueing, not delivery (auto-send is off under test).
+// never mask a debt on the other). Each message states what is actually
+// unpaid — rent-only, water-only, or the itemized Rent + Water = Total split.
+// Guards under test:
+//   1. Rent-only debtor with a phone -> PENDING row naming the unpaid rent.
+//   2. Water-only debtor (rent clear, water billed) -> PENDING row naming the unpaid water.
+//   3. Owes-both debtor -> PENDING row with the itemized Rent + Water = Total split.
+//   4. Fully paid tenant (rent overpaid, nothing else) -> NEVER queued.
+//   5. Owing tenant without a phone -> counted, never queued.
+//   6. 401 without a session, 403 for STAFF (managerOrAdmin); 400 on a bad audience.
+//   7. Audience RENT reaches rent debtors (incl. owes-both) but not water-only;
+//      audience WATER the mirror image; paid tenants hear nothing either way.
+//   8. Response counts queueing, not delivery (auto-send is off under test).
 //
 // Hermetic: the suite creates its own units/tenants/payments/readings and
 // removes them in afterAll (payments and readings are ON DELETE RESTRICT, so
@@ -29,18 +34,21 @@ let rentUnitId = 0;
 let paidUnitId = 0;
 let waterUnitId = 0;
 let phonelessUnitId = 0;
+let bothUnitId = 0;
 let rentTenantId = 0;
 let paidTenantId = 0;
 let waterTenantId = 0;
 let phonelessTenantId = 0;
+let bothTenantId = 0;
 
 const FIXTURE_TENANTS = [
   'Bulk Arrears Phone Tenant',
   'Bulk Arrears Paid Tenant',
   'Bulk Arrears Water Tenant',
   'Bulk Arrears Phoneless Tenant',
+  'Bulk Arrears Both Tenant',
 ];
-const FIXTURE_UNITS = ['ZBULK1', 'ZBULK2', 'ZBULK3', 'ZBULK4'];
+const FIXTURE_UNITS = ['ZBULK1', 'ZBULK2', 'ZBULK3', 'ZBULK4', 'ZBULK5'];
 
 function auth(token: string) {
   return { Authorization: `Bearer ${token}` };
@@ -58,8 +66,8 @@ async function removeStaleFixtures(): Promise<void> {
 }
 
 async function cleanup(): Promise<void> {
-  const tenantIds = [rentTenantId, paidTenantId, waterTenantId, phonelessTenantId].filter(Boolean);
-  const unitIds = [rentUnitId, paidUnitId, waterUnitId, phonelessUnitId].filter(Boolean);
+  const tenantIds = [rentTenantId, paidTenantId, waterTenantId, phonelessTenantId, bothTenantId].filter(Boolean);
+  const unitIds = [rentUnitId, paidUnitId, waterUnitId, phonelessUnitId, bothUnitId].filter(Boolean);
   if (tenantIds.length) {
     await pool.query(`DELETE FROM water_meter_readings WHERE tenant_id = ANY($1::int[])`, [tenantIds]).catch(() => {});
     await pool.query(`DELETE FROM water_payments WHERE tenant_id = ANY($1::int[])`, [tenantIds]).catch(() => {});
@@ -129,6 +137,7 @@ beforeAll(async () => {
   paidUnitId = await makeUnit('ZBULK2', false);
   waterUnitId = await makeUnit('ZBULK3', true);
   phonelessUnitId = await makeUnit('ZBULK4', false);
+  bothUnitId = await makeUnit('ZBULK5', true);
 
   // Rent owing: moved in at the year's start, nothing paid — the ledger shows
   // a full YTD rent balance (the "has not paid rent" case).
@@ -155,6 +164,17 @@ beforeAll(async () => {
   // Unreachable debtor: a full-year rent tenancy with no payments (genuinely
   // owing on the rent side) but no phone — counted, never queued.
   phonelessTenantId = await makeTenant('Bulk Arrears Phoneless Tenant', null, phonelessUnitId);
+
+  // Owes both: rent unpaid AND a metered water bill unpaid — the audience
+  // every blast includes, receiving the itemized Rent + Water = Total wording.
+  bothTenantId = await makeTenant('Bulk Arrears Both Tenant', '254711000004', bothUnitId);
+  await pool.query(
+    `INSERT INTO water_meter_readings
+       (unit_id, tenant_id, reading_date, billing_month, billing_year,
+        previous_reading, current_reading, consumption, water_rate, water_bill)
+     VALUES ($1, $2, make_date($3, 2, 15), 2, $3, 0, 10, 10, 100, 1000)`,
+    [bothUnitId, bothTenantId, reportingYear],
+  );
 });
 
 afterAll(async () => {
@@ -183,11 +203,12 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
     // The phoneless debtor genuinely owes rent, so the no-phone path fires.
     expect(res.body.data.skippedNoPhone).toBeGreaterThanOrEqual(1);
 
-    // Rent debtor: one PENDING row with their own figures — not raw tokens.
+    // Rent-only debtor: the shorter single-figure wording naming the unpaid rent.
     const rentRows = await smsRowsFor(rentTenantId);
     expect(rentRows).toHaveLength(1);
     expect(rentRows[0].status).toBe('PENDING');
     expect(rentRows[0].message).toContain('Bulk Arrears Phone Tenant');
+    expect(rentRows[0].message).toMatch(/rent for Unit .* is unpaid/);
     expect(rentRows[0].message).not.toContain('{{');
 
     // Water-only debtor: reminded about the water charge (KSh 1000 of it),
@@ -195,8 +216,15 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
     const waterRows = await smsRowsFor(waterTenantId);
     expect(waterRows).toHaveLength(1);
     expect(waterRows[0].status).toBe('PENDING');
-    expect(waterRows[0].message).toMatch(/water/i);
+    expect(waterRows[0].message).toMatch(/water for Unit .* is unpaid/);
     expect(waterRows[0].message).toContain('1000');
+
+    // Owes-both debtor: the itemized Rent + Water = Total wording.
+    const bothRows = await smsRowsFor(bothTenantId);
+    expect(bothRows).toHaveLength(1);
+    expect(bothRows[0].status).toBe('PENDING');
+    expect(bothRows[0].message).toContain('Bulk Arrears Both Tenant');
+    expect(bothRows[0].message).toMatch(/arrears: Rent KSh \d+ \+ Water KSh 1000 = Total KSh \d+/);
 
     // Paid-up tenant: nothing queued, ever — no row from this batch.
     expect(await smsRowsFor(paidTenantId)).toHaveLength(0);
@@ -224,6 +252,7 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
       const before = {
         rent: (await smsRowsFor(rentTenantId)).length,
         water: (await smsRowsFor(waterTenantId)).length,
+        both: (await smsRowsFor(bothTenantId)).length,
         paid: (await smsRowsFor(paidTenantId)).length,
         phoneless: (await smsRowsFor(phonelessTenantId)).length,
       };
@@ -235,6 +264,7 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
       expect(res.body.data.audience).toBe('RENT');
       expect(res.body.data.skippedOtherBill).toBeGreaterThanOrEqual(1);
       expect((await smsRowsFor(rentTenantId)).length).toBe(before.rent + 1);
+      expect((await smsRowsFor(bothTenantId)).length).toBe(before.both + 1);
       expect((await smsRowsFor(waterTenantId)).length).toBe(before.water);
       expect((await smsRowsFor(paidTenantId)).length).toBe(before.paid);
       expect((await smsRowsFor(phonelessTenantId)).length).toBe(before.phoneless);
@@ -244,6 +274,7 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
       const before = {
         rent: (await smsRowsFor(rentTenantId)).length,
         water: (await smsRowsFor(waterTenantId)).length,
+        both: (await smsRowsFor(bothTenantId)).length,
         paid: (await smsRowsFor(paidTenantId)).length,
       };
       const res = await request(app)
@@ -254,6 +285,7 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
       expect(res.body.data.audience).toBe('WATER');
       expect(res.body.data.skippedOtherBill).toBeGreaterThanOrEqual(1);
       expect((await smsRowsFor(waterTenantId)).length).toBe(before.water + 1);
+      expect((await smsRowsFor(bothTenantId)).length).toBe(before.both + 1);
       expect((await smsRowsFor(rentTenantId)).length).toBe(before.rent);
       expect((await smsRowsFor(paidTenantId)).length).toBe(before.paid);
     });

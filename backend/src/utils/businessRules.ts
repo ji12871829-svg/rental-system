@@ -190,28 +190,33 @@ export function combinedReceiptMessage(opts: {
 }
 
 // --- Tenant reminder templates ----------------------------------------------
-// Staff-initiated statements/overdue notices (SMS page + Tenants page actions).
-// Same 2-segment GSM-7 budget and identity-line budgeting as the receipts.
+// Staff-initiated arrears reminders (Tenants page actions, the one-click bulk
+// button, the scheduled overdue chase). Every message states what is actually
+// unpaid — rent and water are itemized, never folded into a bare total — so
+// the text a tenant receives matches the bill they owe. Same 2-segment GSM-7
+// budget and identity-line budgeting as the receipts.
 
-// "Monthly Rent & Balance Due": a month's statement. Sent any time; when the
-// month is still current the wording stays neutral ("is ready"), and the
-// balance is the figure the ledger shows for that month.
+// "Monthly Rent & Balance Due": itemized arrears reminder. When water is owed
+// the split is spelled out (Rent X + Water Y = Total Z); rent-only arrears
+// get the shorter single-figure wording. YTD arrears are cumulative, so no
+// month is named — naming one month would misdescribe the figure.
 export function monthlyBalanceDueMessage(opts: {
   tenantName: string;
   unitNumber: string;
-  monthName: string;
-  year: number;
+  rentDue: number;
+  waterDue: number;
   totalDue: number;
   accountNumber: string;
   paymentMethod: string;
   currency: string;
   businessIdentity?: string | string[];
 }): string {
-  const { tenantName, unitNumber, monthName, year, totalDue, accountNumber, paymentMethod, currency } = opts;
-  return withIdentity(
-    `Dear ${tenantName}, your rent statement for ${monthName} ${year} (Unit ${unitNumber}) is ready. Total Due: ${currency} ${totalDue}. To pay, use ${paymentMethod} with account ${accountNumber}.`,
-    opts.businessIdentity,
-  );
+  const { tenantName, unitNumber, rentDue, waterDue, totalDue, accountNumber, paymentMethod, currency } = opts;
+  const body =
+    waterDue > 0
+      ? `Dear ${tenantName}, Unit ${unitNumber} arrears: Rent ${currency} ${rentDue} + Water ${currency} ${waterDue} = Total ${currency} ${totalDue}. Pay via ${paymentMethod} with account ${accountNumber}. If already paid, ignore this message. Thank you.`
+      : `Dear ${tenantName}, rent for Unit ${unitNumber} is unpaid: ${currency} ${rentDue}. Pay via ${paymentMethod} with account ${accountNumber}. If already paid, ignore this message. Thank you.`;
+  return withIdentity(body, opts.businessIdentity);
 }
 
 // "Overdue Notice": firmer tone for a past-due balance, without the curt
@@ -228,7 +233,7 @@ export function overdueNoticeMessage(opts: {
 }): string {
   const { tenantName, unitNumber, amountDue, totalBalance, currency } = opts;
   return withIdentity(
-    `Dear ${tenantName}, the rent for Unit ${unitNumber} is overdue by ${currency} ${amountDue}. Kindly settle this amount to avoid a late payment fee. Your total balance is ${currency} ${totalBalance}. Thank you.`,
+    `Dear ${tenantName}, the rent for Unit ${unitNumber} is overdue by ${currency} ${amountDue}. Kindly settle this amount to avoid a late payment fee. Your total balance is ${currency} ${totalBalance}. If already paid, ignore this message. Thank you.`,
     opts.businessIdentity,
   );
 }
@@ -314,7 +319,7 @@ export function waterBillingNoticeMessage(opts: {
       ? ` Meter: prev ${prev}, curr ${curr} (${Math.round((curr - prev) * 100) / 100} units).`
       : '';
   return withIdentity(
-    `Dear ${tenantName}, your water charge for Unit ${unitNumber} for ${monthName} ${year} is ${currency} ${amount}.${proof} It appears on your statement and can be paid together with your rent via ${paymentMethod}.`,
+    `Dear ${tenantName}, water for Unit ${unitNumber} for ${monthName} ${year} is unpaid: ${currency} ${amount}.${proof} Pay with your rent via ${paymentMethod}. If already paid, ignore this message. Thank you.`,
     opts.businessIdentity,
   );
 }

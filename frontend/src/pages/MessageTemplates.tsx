@@ -72,6 +72,8 @@ const SAMPLE_VARS: Record<string, string> = {
   currency: 'KES',
   business: 'Olbano Plaza',
   total_due: '13,500',
+  rent_due: '12,000',
+  water_due: '1,500',
   account: 'A4',
   payment_method: 'M-Pesa',
   current_rent: '12,000',
