@@ -95,6 +95,10 @@ export function buildMessage(receipt: ReceiptLike, opts: {
   const businessIdentity = identityVariants.length ? identityVariants : undefined;
 
   const monthName = MONTH_NAMES[receipt.billing_month - 1];
+  // The calendar pay day rides every receipt SMS: which day the money landed,
+  // next to the billing month it covers. Legacy in-memory shapes without a
+  // payment_date keep the previous wording.
+  const paidDate = receipt.payment_date !== undefined ? calendarDate(receipt.payment_date) : null;
   const base = {
     tenantName: opts.tenantName,
     unitNumber: opts.unitNumber,
@@ -104,6 +108,7 @@ export function buildMessage(receipt: ReceiptLike, opts: {
     balance: toNumber(receipt.balance),
     currency: opts.currency,
     businessIdentity,
+    paidDate,
   };
   if (receipt.receipt_type === 'WATER') {
     return waterReceiptMessage({ ...base, waterPaid: toNumber(receipt.water_amount) });

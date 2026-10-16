@@ -21,8 +21,7 @@ describe('SMS templates (spec §34)', () => {
     );
   });
 
-  it('mentions the outstanding balance when a partial payment is made', () => {
-    const msg = rentReceiptMessage({
+  it('mentions the outstanding balance when a partial payment is made', () => {    const msg = rentReceiptMessage({
       tenantName: 'John',
       unitNumber: '15',
       monthName: 'September',
@@ -33,6 +32,47 @@ describe('SMS templates (spec §34)', () => {
       currency: 'KSh',
     });
     expect(msg).toContain('Your outstanding balance is KSh 5000');
+  });
+
+  it('states the calendar pay day next to the amount when known', () => {
+    const rent = rentReceiptMessage({
+      tenantName: 'John',
+      unitNumber: '15',
+      monthName: 'September',
+      year: 2026,
+      rentPaid: 9000,
+      balance: 0,
+      receiptNumber: 'RC-2026-0001',
+      currency: 'KSh',
+      paidDate: '2026-10-12',
+    });
+    expect(rent).toContain('we have received KSh 9000 on 2026-10-12 for Unit 15 rent, September 2026');
+    const water = waterReceiptMessage({
+      tenantName: 'Grace',
+      unitNumber: '15',
+      monthName: 'February',
+      year: 2026,
+      waterPaid: 1000,
+      balance: 600,
+      receiptNumber: 'WC-2026-0001',
+      currency: 'KSh',
+      paidDate: '2026-10-12',
+    });
+    expect(water).toContain('we have received KSh 1000 on 2026-10-12 for Unit 15 water, February 2026');
+    const combined = combinedReceiptMessage({
+      tenantName: 'John',
+      unitNumber: '15',
+      monthName: 'September',
+      year: 2026,
+      rentPaid: 9000,
+      waterPaid: 1600,
+      totalPaid: 10600,
+      balance: 0,
+      receiptNumber: 'RWC-2026-0001',
+      currency: 'KSh',
+      paidDate: '2026-10-12',
+    });
+    expect(combined).toContain('we have received KSh 10600 on 2026-10-12 for Unit 15, September 2026');
   });
 
   it('builds a combined rent + water receipt message', () => {
