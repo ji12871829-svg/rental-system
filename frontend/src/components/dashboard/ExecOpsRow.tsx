@@ -129,7 +129,7 @@ export function ExecBulkOps({ data, arrears }: ExecBulkOpsProps) {
     {
       to: '/rent?new=1',
       icon: <Wallet size={15} strokeWidth={1.75} />,
-      title: 'Collect rent / STK push',
+      title: 'Collect rent',
       meta: inArrears === null ? 'Record a payment' : `${plural(inArrears, 'invoice')} awaiting payment`,
     },
     {
