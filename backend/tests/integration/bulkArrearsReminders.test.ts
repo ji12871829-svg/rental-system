@@ -28,6 +28,7 @@ let reportingYear = 2026;
 let rentUnitId = 0;
 let paidUnitId = 0;
 let waterUnitId = 0;
+let phonelessUnitId = 0;
 let rentTenantId = 0;
 let paidTenantId = 0;
 let waterTenantId = 0;
@@ -39,7 +40,7 @@ const FIXTURE_TENANTS = [
   'Bulk Arrears Water Tenant',
   'Bulk Arrears Phoneless Tenant',
 ];
-const FIXTURE_UNITS = ['ZBULK1', 'ZBULK2', 'ZBULK3'];
+const FIXTURE_UNITS = ['ZBULK1', 'ZBULK2', 'ZBULK3', 'ZBULK4'];
 
 function auth(token: string) {
   return { Authorization: `Bearer ${token}` };
@@ -58,7 +59,7 @@ async function removeStaleFixtures(): Promise<void> {
 
 async function cleanup(): Promise<void> {
   const tenantIds = [rentTenantId, paidTenantId, waterTenantId, phonelessTenantId].filter(Boolean);
-  const unitIds = [rentUnitId, paidUnitId, waterUnitId].filter(Boolean);
+  const unitIds = [rentUnitId, paidUnitId, waterUnitId, phonelessUnitId].filter(Boolean);
   if (tenantIds.length) {
     await pool.query(`DELETE FROM water_meter_readings WHERE tenant_id = ANY($1::int[])`, [tenantIds]).catch(() => {});
     await pool.query(`DELETE FROM water_payments WHERE tenant_id = ANY($1::int[])`, [tenantIds]).catch(() => {});
@@ -127,6 +128,7 @@ beforeAll(async () => {
   rentUnitId = await makeUnit('ZBULK1', false);
   paidUnitId = await makeUnit('ZBULK2', false);
   waterUnitId = await makeUnit('ZBULK3', true);
+  phonelessUnitId = await makeUnit('ZBULK4', false);
 
   // Rent owing: moved in at the year's start, nothing paid — the ledger shows
   // a full YTD rent balance (the "has not paid rent" case).
@@ -150,8 +152,9 @@ beforeAll(async () => {
     [waterUnitId, waterTenantId, reportingYear],
   );
 
-  // Owing (full-year tenancy, no payments anywhere) but unreachable.
-  phonelessTenantId = await makeTenant('Bulk Arrears Phoneless Tenant', null, null);
+  // Unreachable debtor: a full-year rent tenancy with no payments (genuinely
+  // owing on the rent side) but no phone — counted, never queued.
+  phonelessTenantId = await makeTenant('Bulk Arrears Phoneless Tenant', null, phonelessUnitId);
 });
 
 afterAll(async () => {
@@ -177,6 +180,8 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
     expect(res.body.data.queued).toBeGreaterThanOrEqual(2);
     expect(res.body.data.owing).toBeGreaterThanOrEqual(2);
     expect(res.body.data.skippedPaid).toBeGreaterThanOrEqual(1);
+    // The phoneless debtor genuinely owes rent, so the no-phone path fires.
+    expect(res.body.data.skippedNoPhone).toBeGreaterThanOrEqual(1);
 
     // Rent debtor: one PENDING row with their own figures — not raw tokens.
     const rentRows = await smsRowsFor(rentTenantId);
@@ -198,5 +203,59 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
 
     // Phoneless owing tenant: counted, never queued.
     expect(await smsRowsFor(phonelessTenantId)).toHaveLength(0);
+  });
+
+  it('rejects an unknown audience without queueing anything', async () => {
+    const before = {
+      rent: (await smsRowsFor(rentTenantId)).length,
+      water: (await smsRowsFor(waterTenantId)).length,
+    };
+    const res = await request(app)
+      .post('/api/sms/reminders/bulk-arrears')
+      .set(auth(adminToken))
+      .send({ audience: 'EVERYONE' });
+    expect(res.status).toBe(400);
+    expect((await smsRowsFor(rentTenantId)).length).toBe(before.rent);
+    expect((await smsRowsFor(waterTenantId)).length).toBe(before.water);
+  });
+
+  describe('audience targeting', () => {
+    it("audience RENT reminds rent debtors only — the water-only debtor hears nothing new", async () => {
+      const before = {
+        rent: (await smsRowsFor(rentTenantId)).length,
+        water: (await smsRowsFor(waterTenantId)).length,
+        paid: (await smsRowsFor(paidTenantId)).length,
+        phoneless: (await smsRowsFor(phonelessTenantId)).length,
+      };
+      const res = await request(app)
+        .post('/api/sms/reminders/bulk-arrears')
+        .set(auth(adminToken))
+        .send({ audience: 'RENT' });
+      expect(res.status).toBe(201);
+      expect(res.body.data.audience).toBe('RENT');
+      expect(res.body.data.skippedOtherBill).toBeGreaterThanOrEqual(1);
+      expect((await smsRowsFor(rentTenantId)).length).toBe(before.rent + 1);
+      expect((await smsRowsFor(waterTenantId)).length).toBe(before.water);
+      expect((await smsRowsFor(paidTenantId)).length).toBe(before.paid);
+      expect((await smsRowsFor(phonelessTenantId)).length).toBe(before.phoneless);
+    });
+
+    it("audience WATER reminds water debtors only — the rent-only debtor hears nothing new", async () => {
+      const before = {
+        rent: (await smsRowsFor(rentTenantId)).length,
+        water: (await smsRowsFor(waterTenantId)).length,
+        paid: (await smsRowsFor(paidTenantId)).length,
+      };
+      const res = await request(app)
+        .post('/api/sms/reminders/bulk-arrears')
+        .set(auth(adminToken))
+        .send({ audience: 'WATER' });
+      expect(res.status).toBe(201);
+      expect(res.body.data.audience).toBe('WATER');
+      expect(res.body.data.skippedOtherBill).toBeGreaterThanOrEqual(1);
+      expect((await smsRowsFor(waterTenantId)).length).toBe(before.water + 1);
+      expect((await smsRowsFor(rentTenantId)).length).toBe(before.rent);
+      expect((await smsRowsFor(paidTenantId)).length).toBe(before.paid);
+    });
   });
 });

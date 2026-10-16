@@ -156,13 +156,20 @@ router.post('/campaign', managerOrAdmin, validateBody(smsCampaignSchema), asyncH
 }));
 
 // One-click bulk arrears reminders — the button the operator asked for: one
-// POST queues a personalised BALANCE_DUE SMS (live rent + water figures per
-// tenant) for EVERY ACTIVE tenant with combinedBalance > 0. No body, no
-// recipient picking, no second step. Rows auto-send when the SMS pipeline is
-// on, otherwise they wait as PENDING on the SMS page. 201: accepted (queued),
-// not yet delivered.
-router.post('/reminders/bulk-arrears', managerOrAdmin, asyncHandler(async (req, res) => {
-  const result = await sendBulkArrearsReminders({ userId: req.user!.userId });
+// POST queues a personalised SMS (each tenant's message matches their own
+// bill — balance statement for rent debtors, water notice for water-only
+// debtors) for EVERY ACTIVE tenant with money owing. The optional audience
+// narrows the blast to rent debtors or water debtors only; omitted it covers
+// both. No recipient picking, no second step. Rows auto-send when the SMS
+// pipeline is on, otherwise they wait as PENDING on the SMS page. 201:
+// accepted (queued), not yet delivered.
+const bulkArrearsSchema = z.object({
+  audience: z.enum(['ALL', 'RENT', 'WATER']).optional().default('ALL'),
+});
+
+router.post('/reminders/bulk-arrears', managerOrAdmin, validateBody(bulkArrearsSchema), asyncHandler(async (req, res) => {
+  const { audience } = req.body as { audience: 'ALL' | 'RENT' | 'WATER' };
+  const result = await sendBulkArrearsReminders({ userId: req.user!.userId, audience });
   res.status(201).json({ data: { ...result, autoSend: autoSendEnabled() } });
 }));
 

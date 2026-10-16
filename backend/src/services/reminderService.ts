@@ -447,8 +447,10 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
 // with money owing on EITHER side of the ledger — rent OR water. The gate is
 // per-side (rentBalance / waterBalance), never the net combined figure, so a
 // rent credit can never mask a water debt and a paid-up tenant (both sides
-// clear or in credit) is always skipped. The kind follows what is actually
-// owed so the quoted amount is always positive and sane:
+// clear or in credit) is always skipped. The `audience` narrows WHO is
+// reminded (ALL = rent-or-water debtors, RENT = rent debtors only, WATER =
+// water debtors only) while the kind still follows what EACH tenant actually
+// owes, so every message quotes its recipient's own bill:
 //   rent owed + net positive -> BALANCE_DUE statement (combined total covers both)
 //   rent owed + netted to zero by a water credit -> OVERDUE (leads with the rent owed)
 //   rent clear but water owed -> WATER_BILLING notice (water amount + meter proof)
@@ -458,17 +460,24 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
 // Idempotency is deliberately NOT enforced here: the operator explicitly
 // pressed the button, so a second press is a conscious re-send, not a
 // scheduler accident.
+export type BulkAudience = 'ALL' | 'RENT' | 'WATER';
+
 export interface BulkArrearsResult {
   total: number;
+  audience: BulkAudience;
   owing: number;
   queued: number;
   skippedPaid: number;
   skippedNoPhone: number;
+  /** Owes money, but only on the bill outside the chosen audience. */
+  skippedOtherBill: number;
 }
 
 export async function sendBulkArrearsReminders(opts: {
   userId?: number | null;
+  audience?: BulkAudience;
 }): Promise<BulkArrearsResult> {
+  const audience = opts.audience ?? 'ALL';
   const settings = await getSettings();
   const year = settings.reporting_year;
   const month = new Date().getUTCMonth() + 1;
@@ -481,13 +490,17 @@ export async function sendBulkArrearsReminders(opts: {
   let queued = 0;
   let skippedPaid = 0;
   let skippedNoPhone = 0;
+  let skippedOtherBill = 0;
 
   for (const tenant of tenants) {
     const ledger = await tenantBalances(tenant.id, year, month);
     const rentOwing = ledger.rentBalance > 0.009;
     const waterOwing = ledger.waterBalance > 0.009;
-    if (!rentOwing && !waterOwing) {
-      skippedPaid += 1;
+    const inAudience =
+      audience === 'ALL' ? rentOwing || waterOwing : audience === 'RENT' ? rentOwing : waterOwing;
+    if (!inAudience) {
+      if (!rentOwing && !waterOwing) skippedPaid += 1;
+      else skippedOtherBill += 1;
       continue;
     }
     owing += 1;
@@ -513,8 +526,8 @@ export async function sendBulkArrearsReminders(opts: {
     userId: opts.userId ?? null,
     action: 'BULK_ARREARS_REMINDERS',
     entity: 'tenants',
-    newValue: { total: tenants.length, owing, queued, skippedPaid, skippedNoPhone },
+    newValue: { audience, total: tenants.length, owing, queued, skippedPaid, skippedNoPhone, skippedOtherBill },
   });
 
-  return { total: tenants.length, owing, queued, skippedPaid, skippedNoPhone };
+  return { total: tenants.length, audience, owing, queued, skippedPaid, skippedNoPhone, skippedOtherBill };
 }

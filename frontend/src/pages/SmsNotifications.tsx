@@ -133,6 +133,16 @@ export default function SmsNotifications() {
     () => (arrearsData?.data ?? []).filter((r) => r.rentBalance > 0 || r.waterBalance > 0).map((r) => r.tenantId),
     [arrearsData]
   );
+  const audienceCounts = useMemo(
+    () =>
+      arrearsData
+        ? {
+            rent: arrearsData.data.filter((r) => r.rentBalance > 0).length,
+            water: arrearsData.data.filter((r) => r.waterBalance > 0).length,
+          }
+        : undefined,
+    [arrearsData]
+  );
   // Hold the composer until the arrears audience resolves (or fails — then it
   // opens unfiltered rather than stranding the operator on the history).
   const preselectReady = composeParam !== 'arrears' || !wantArrearsAudience || arrearsData !== null || arrearsError !== null;
@@ -279,8 +289,15 @@ export default function SmsNotifications() {
             <MessageSquareText size={15} strokeWidth={1.75} aria-hidden />
             {composerOpen ? 'Close composer' : 'Compose confirmation…'}
           </Button>
-          {/* One click: personalised balance SMS to everyone owing rent or water. */}
-          <BulkReminderButton owingCount={arrearsData ? arrearsIds.length : undefined} variant="primary" onSent={refresh} />
+          {/* One click: everyone owing — or rent / water debtors alone. Each
+              message matches its tenant's own bill. */}
+          <BulkReminderButton
+            owingCount={arrearsData ? arrearsIds.length : undefined}
+            audienceCounts={audienceCounts}
+            showAudiencePicker
+            variant="primary"
+            onSent={refresh}
+          />
         </div>
         {arrearsIds.length > 0 && <span className="text-xs text-gray-500">{arrearsIds.length} tenant{arrearsIds.length === 1 ? '' : 's'} with an open balance</span>}
       </div>

@@ -83,6 +83,8 @@ export default function Arrears() {
       // never mask a water debt (and vice versa), matching the bulk-reminder
       // audience on the backend.
       owing: list.filter((r) => r.rentBalance > 0 || r.waterBalance > 0).length,
+      rentOwing: list.filter((r) => r.rentBalance > 0).length,
+      waterOwing: list.filter((r) => r.waterBalance > 0).length,
     };
   }, [data]);
 
@@ -93,8 +95,13 @@ export default function Arrears() {
         subtitle="Who owes what — rent and water balances per occupied unit, with months in arrears"
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {/* One click: personalised balance SMS to everyone owing rent or water. */}
-            <BulkReminderButton owingCount={loading ? undefined : totals.owing} />
+            {/* One click: personalised SMS to everyone owing — or rent / water
+                debtors alone. Each message matches its tenant's own bill. */}
+            <BulkReminderButton
+              owingCount={loading ? undefined : totals.owing}
+              audienceCounts={loading ? undefined : { rent: totals.rentOwing, water: totals.waterOwing }}
+              showAudiencePicker
+            />
             <Select value={year} onChange={(e) => setYear(e.target.value)} className="w-28">
               {[now.getFullYear(), now.getFullYear() - 1, now.getFullYear() + 1].map((y) => <option key={y} value={y}>{y}</option>)}
             </Select>

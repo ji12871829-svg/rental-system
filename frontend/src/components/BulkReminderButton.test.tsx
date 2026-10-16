@@ -25,7 +25,7 @@ afterEach(cleanup);
 beforeEach(() => {
   mockedPost.mockReset();
   mockedPost.mockResolvedValue({
-    data: { total: 4, owing: 2, queued: 2, skippedPaid: 1, skippedNoPhone: 1, autoSend: false },
+    data: { total: 4, audience: 'ALL', owing: 2, queued: 2, skippedPaid: 1, skippedNoPhone: 1, skippedOtherBill: 0, autoSend: false },
   });
   vi.stubGlobal('confirm', vi.fn(() => true));
 });
@@ -58,10 +58,11 @@ describe('BulkReminderButton', () => {
     fireEvent.click(screen.getByRole('button', { name: /Remind 2 owing/ }));
     await waitFor(() => expect(mockedPost).toHaveBeenCalledTimes(1));
 
-    const [url] = mockedPost.mock.calls[0] as [string];
-    // No recipients in the body — the audience is the server's live ledger,
-    // never a client-side selection that could include a paid-up tenant.
+    const [url, body] = mockedPost.mock.calls[0] as [string, Record<string, unknown>];
+    // The audience rides the body — the server derives WHO from the live
+    // ledger, never a client-side selection that could include a paid tenant.
     expect(url).toBe('/api/sms/reminders/bulk-arrears');
+    expect(body).toEqual({ audience: 'ALL' });
     expect(sent).toBe(1);
     expect(await screen.findByText(/2 queued/)).toBeInTheDocument();
   });
@@ -76,5 +77,40 @@ describe('BulkReminderButton', () => {
   it('renders without a ToastProvider — only the pop-up degrades', () => {
     render(<BulkReminderButton owingCount={3} />);
     expect(screen.getByRole('button', { name: /Remind 3 owing/ })).toBeInTheDocument();
+  });
+
+  it('posts the chosen audience when the picker selects rent debtors', async () => {
+    render(
+      <ToastProvider>
+        <BulkReminderButton owingCount={5} audienceCounts={{ rent: 4, water: 1 }} showAudiencePicker onSent={() => {}} />
+      </ToastProvider>,
+    );
+    // Picker labels carry each group's count.
+    expect(screen.getByRole('option', { name: /Everyone owing \(5\)/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Rent owing \(4\)/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Water owing \(1\)/ })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Reminder audience'), { target: { value: 'RENT' } });
+    expect(screen.getByRole('button', { name: /Remind 4 owing rent/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Remind 4 owing rent/ }));
+    await waitFor(() => expect(mockedPost).toHaveBeenCalledTimes(1));
+    const [url, body] = mockedPost.mock.calls[0] as [string, Record<string, unknown>];
+    expect(url).toBe('/api/sms/reminders/bulk-arrears');
+    expect(body).toEqual({ audience: 'RENT' });
+  });
+
+  it('reports water-only skips in the rent-audience toast', async () => {
+    mockedPost.mockResolvedValue({
+      data: { total: 4, audience: 'RENT', owing: 2, queued: 2, skippedPaid: 0, skippedNoPhone: 0, skippedOtherBill: 1, autoSend: false },
+    });
+    render(
+      <ToastProvider>
+        <BulkReminderButton owingCount={5} showAudiencePicker defaultAudience="RENT" onSent={() => {}} />
+      </ToastProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Remind owing rent/ }));
+    await waitFor(() => expect(mockedPost).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/owe only water/)).toBeInTheDocument();
   });
 });
