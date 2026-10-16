@@ -339,6 +339,9 @@ export default function SmsNotifications() {
                         {s.status === 'PENDING' && (
                           <Button variant="ghost" className="!px-2 !py-1 text-xs text-emerald-700" onClick={() => send(s)}>Send</Button>
                         )}
+                        {s.status === 'FAILED' && (
+                          <Button variant="ghost" className="!px-2 !py-1 text-xs text-emerald-700" onClick={() => send(s)}>Retry</Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -393,6 +396,11 @@ export default function SmsNotifications() {
             {viewMessage.status === 'PENDING' && (
               <div className="flex justify-end">
                 <Button onClick={() => { setViewMessage(null); send(viewMessage); }}>Send Now</Button>
+              </div>
+            )}
+            {viewMessage.status === 'FAILED' && (
+              <div className="flex justify-end">
+                <Button onClick={() => { setViewMessage(null); send(viewMessage); }}>Retry Now</Button>
               </div>
             )}
           </div>
