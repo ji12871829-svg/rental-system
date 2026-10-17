@@ -89,7 +89,7 @@ export default function Dashboard() {
     return null;
   }
 
-  const { reportingYear, currency, property, sms, email } = data;
+  const { reportingYear, currency, property, sms, email, whatsapp } = data;
 
   return (
     <div>
@@ -123,8 +123,8 @@ export default function Dashboard() {
         <ExecTurnovers vacantUnits={property.vacantUnits} />
       </div>
 
-      {/* 6. Delivery strip — SMS + email health; renders nothing when healthy */}
-      <XrmDeliveryStrip data={{ sms, email }} />
+      {/* 6. Delivery strip — SMS · WhatsApp · email health; renders nothing when healthy */}
+      <XrmDeliveryStrip data={{ sms, email, whatsapp }} />
     </div>
   );
 }

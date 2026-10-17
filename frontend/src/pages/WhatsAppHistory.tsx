@@ -194,16 +194,22 @@ export default function WhatsAppHistory() {
                     <td>
                       <div className="flex gap-1">
                         <Button variant="ghost" className="!px-2 !py-1 text-xs" onClick={() => setViewMsg(m)}>View</Button>
-                        {m.status === 'PENDING' && (
-                          <Button variant="ghost" className="!px-2 !py-1 text-xs text-emerald-700" onClick={() => send(m)}>Send</Button>
-                        )}
-                        {(m.status === 'FAILED' || m.status === 'ERRONEOUS') && (
+                        {m.status === 'ERRONEOUS' ? (
                           <Button
                             variant="ghost"
                             className="!px-2 !py-1 text-xs text-emerald-700"
-                            onClick={() => (m.status === 'ERRONEOUS' ? openResend(m) : send(m))}
+                            onClick={() => openResend(m)}
                           >
-                            Send again
+                            Fix &amp; send
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            className="!px-2 !py-1 text-xs text-emerald-700"
+                            title={m.status === 'SENT' ? 'This message already went out — clicking delivers a duplicate copy.' : undefined}
+                            onClick={() => send(m)}
+                          >
+                            {m.status === 'PENDING' ? 'Send' : 'Send again'}
                           </Button>
                         )}
                       </div>
@@ -249,20 +255,23 @@ export default function WhatsAppHistory() {
                 </div>
               </div>
             )}
-            {viewMsg.status !== 'SENT' && (
-              <div className="flex justify-end">
-                <Button
-                  onClick={() => {
-                    const target = viewMsg;
-                    setViewMsg(null);
-                    if (target.status === 'ERRONEOUS') openResend(target);
-                    else send(target);
-                  }}
-                >
-                  {viewMsg.status === 'PENDING' ? 'Send Now' : 'Send Again'}
-                </Button>
+            {viewMsg.status === 'SENT' && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                <strong>Already delivered.</strong> Sending again delivers a duplicate copy to {viewMsg.phone_number} — the new attempt replaces the stored reference and bumps the attempt count on this row.
               </div>
             )}
+            <div className="flex justify-end">
+              <Button
+                onClick={() => {
+                  const target = viewMsg;
+                  setViewMsg(null);
+                  if (target.status === 'ERRONEOUS') openResend(target);
+                  else send(target);
+                }}
+              >
+                {viewMsg.status === 'PENDING' ? 'Send Now' : 'Send Again'}
+              </Button>
+            </div>
           </div>
         )}
       </Modal>

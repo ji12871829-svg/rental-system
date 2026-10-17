@@ -8,6 +8,7 @@ import { arrearsReportPdfBytes } from '../utils/arrearsReportPdf';
 import { toNumber, round2 } from '../utils/money';
 import { tenantStatementPdfBytes, type StatementPdfData, type StatementPdfMonthRow } from '../utils/tenantStatementPdf';
 import { getSmsBalance } from './smsService';
+import { getWhatsappConfig } from './whatsappProvider';
 
 // Shape of the Dashboard's compact messaging-health strip (SMS + email).
 type BalanceStatusLike = ReturnType<typeof getSmsBalance> extends Promise<infer T> ? T : never;
@@ -24,6 +25,19 @@ interface EmailHealth {
   sentThisMonth: number;
   failedThisMonth: number;
   pendingCount: number;
+  lastFailure: { at: string; reason: string } | null;
+}
+
+interface WhatsappHealth {
+  // Cloud API configured (WHATSAPP_TOKEN + PHONE_NUMBER_ID) — drives the
+  // "Not set up" vs live badge on the dashboard strip.
+  live: boolean;
+  sentThisMonth: number;
+  failedThisMonth: number;
+  pendingCount: number;
+  // Terminal rejections (131030 = number not on WhatsApp / not allowlisted).
+  // Retry sweeps skip these forever, so they need an operator's eye.
+  erroneousCount: number;
   lastFailure: { at: string; reason: string } | null;
 }
 import { getBusinessIdentity } from './brandingService';
@@ -168,7 +182,7 @@ export async function dashboard(year?: number): Promise<DashboardData> {
   const outstandingWater = await outstandingWaterByUnit(targetYear);
   // Compact SMS health for the Dashboard's SMS strip (balance + this month's
   // counts). Composed here so the page needs one request.
-  const [sms, email] = await Promise.all([dashboardSmsHealth(), dashboardEmailHealth()]);
+  const [sms, email, whatsapp] = await Promise.all([dashboardSmsHealth(), dashboardEmailHealth(), dashboardWhatsappHealth()]);
 
   return {
     reportingYear: targetYear,
@@ -185,6 +199,7 @@ export async function dashboard(year?: number): Promise<DashboardData> {
       pendingCount: email.pendingCount,
       lastFailure: email.lastFailure,
     },
+    whatsapp,
     property: {
       totalUnits,
       occupiedUnits: occupied,
@@ -668,6 +683,46 @@ async function dashboardEmailHealth(): Promise<EmailHealth> {
     sentThisMonth: Number(counts?.sent ?? 0),
     failedThisMonth: Number(counts?.failed ?? 0),
     pendingCount: Number(counts?.pending ?? 0),
+    lastFailure: lastFailure
+      ? {
+          at: (lastFailure.sent_at ?? lastFailure.created_at).toISOString(),
+          reason: (lastFailure.failure_reason ?? 'Unknown failure').slice(0, 300),
+        }
+      : null,
+  };
+}
+
+// Dashboard WhatsApp health: the Cloud API mode (live vs click-to-chat) plus
+// this month's send/failed/pending/erroneous counts and the most recent
+// rejection reason. Never throws; the strip must not break the dashboard
+// render (same contract as the SMS/email health helpers).
+async function dashboardWhatsappHealth(): Promise<WhatsappHealth> {
+  const [config, counts, lastFailure] = await Promise.all([
+    Promise.resolve(getWhatsappConfig()),
+    queryOne<{ sent: string; failed: string; pending: string; erroneous: string }>(
+      `SELECT
+         COUNT(*) FILTER (WHERE status = 'SENT')::text AS sent,
+         COUNT(*) FILTER (WHERE status = 'FAILED')::text AS failed,
+         COUNT(*) FILTER (WHERE status = 'PENDING')::text AS pending,
+         COUNT(*) FILTER (WHERE status = 'ERRONEOUS')::text AS erroneous
+       FROM whatsapp_notifications
+       WHERE created_at >= date_trunc('month', NOW())`,
+      []
+    ),
+    queryOne<{ sent_at: Date | null; created_at: Date; failure_reason: string | null }>(
+      `SELECT sent_at, created_at, failure_reason
+       FROM whatsapp_notifications
+       WHERE status IN ('FAILED', 'ERRONEOUS') AND created_at >= date_trunc('month', NOW())
+       ORDER BY COALESCE(sent_at, created_at) DESC
+       LIMIT 1`
+    ),
+  ]);
+  return {
+    live: config.live,
+    sentThisMonth: Number(counts?.sent ?? 0),
+    failedThisMonth: Number(counts?.failed ?? 0),
+    pendingCount: Number(counts?.pending ?? 0),
+    erroneousCount: Number(counts?.erroneous ?? 0),
     lastFailure: lastFailure
       ? {
           at: (lastFailure.sent_at ?? lastFailure.created_at).toISOString(),
