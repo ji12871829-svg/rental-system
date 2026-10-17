@@ -287,6 +287,48 @@ export function overdueNoticeMessage(opts: {
   );
 }
 
+// "Final Notice": the firm escalation for a tenant who has ignored the
+// routine reminders — the exact wording the operator asked for to create
+// urgency ("pay or face eviction"). It names what is owed (itemized exactly
+// like the rest of the family), demands payment by the same pay-by deadline,
+// and warns of the consequence the operator can lawfully pursue: termination
+// of the tenancy and eviction proceedings under the lease. It deliberately
+// does NOT threaten locking a tenant out or cutting off access — that is an
+// unlawful eviction and would expose the business to police/court trouble,
+// so the fear here sits entirely on the lawful track. The office contact
+// closes the loop for a tenant who has already paid.
+export function finalNoticeMessage(opts: {
+  tenantName: string;
+  unitNumber: string;
+  /** Unpaid months, e.g. "Oct 2026" or "Aug, Sep, Oct 2026". */
+  period: string;
+  rentDue: number;
+  waterDue: number;
+  totalDue: number;
+  accountNumber: string;
+  paymentMethod: string;
+  currency: string;
+  /** Pay-by date, e.g. "10 Nov 2026" (paymentDeadlineLabel). */
+  deadline: string;
+  /** Business contact phone for the "already paid? call" clause — omitted when unset. */
+  contactPhone: string | null;
+  businessIdentity?: string | string[];
+}): string {
+  const { tenantName, unitNumber, period, rentDue, waterDue, totalDue, accountNumber, paymentMethod, currency, deadline, contactPhone } = opts;
+  // accountNumber is empty in Send-Money mode (no reference field exists),
+  // so the reference clause is dropped rather than printed blank.
+  const reference = accountNumber ? ` with account ${accountNumber}` : '';
+  const call = contactPhone ? ` Already paid or unable to pay? Call ${contactPhone}.` : '';
+  const consequence = `, or we will begin termination of your tenancy and eviction proceedings as per the lease.${call} Thank you.`;
+  const body =
+    rentDue > 0
+      ? waterDue > 0
+        ? `Dear ${tenantName}, FINAL NOTICE: Unit ${unitNumber} arrears ${period}: Rent ${currency} ${rentDue} + Water ${currency} ${waterDue} = Total ${currency} ${totalDue} is unpaid despite reminders. Pay by ${deadline} via ${paymentMethod}${reference}${consequence}`
+        : `Dear ${tenantName}, FINAL NOTICE: the rent for Unit ${unitNumber} is overdue by ${currency} ${rentDue} (${period}) and reminders have gone unanswered. Pay by ${deadline} via ${paymentMethod}${reference}${consequence}`
+      : `Dear ${tenantName}, FINAL NOTICE: water for Unit ${unitNumber} (${period}) of ${currency} ${waterDue} is unpaid despite reminders. Pay by ${deadline} with your rent via ${paymentMethod}${consequence}`;
+  return withIdentity(body, opts.businessIdentity);
+}
+
 // --- Owner-facing alert ------------------------------------------------------
 // "You just got paid": the operator's own phone learns about a rent receipt
 // the moment it is recorded (landlord alert, notify_landlord_on_payment).

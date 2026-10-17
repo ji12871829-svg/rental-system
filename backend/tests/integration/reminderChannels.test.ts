@@ -286,3 +286,76 @@ describe('Tenant reminders — no contact point, unknown tenant, validation', ()
     expect(res.body.error).toBe('BAD_REQUEST');
   });
 });
+
+// --- Final Notice (SMS escalation) --------------------------------------------
+// The per-tenant escalation for a tenant who has ignored the routine chase:
+// SMS-only like the notices, but an amount-owed statement — and deliberately
+// OUTSIDE the bulk reminder's three-per-month allowance. The chase stops at
+// three texts; the Final Notice is what the operator fires after that.
+describe('Tenant reminders — Final Notice (SMS escalation)', () => {
+  it('queues the FINAL NOTICE wording even when the monthly chase allowance is spent', async () => {
+    // Three chase reminders this month: from here on a bulk press skips this
+    // tenant — the Final Notice must still go through.
+    await pool.query(
+      `INSERT INTO sms_notifications (tenant_id, phone_number, message, status, template_kind)
+       SELECT $1, '254700000001', 'seeded chase ' || n, 'SENT', 'MANUAL_BULK_ARREARS'
+       FROM generate_series(1, 3) AS n`,
+      [tenantId],
+    );
+    const res = await request(app)
+      .post(`/api/tenants/${tenantId}/sms-reminder`)
+      .set(auth(adminToken))
+      .send({ kind: 'FINAL_NOTICE', channel: 'SMS' });
+
+    expect(res.status).toBe(202);
+    expect(res.body.data.smsId).toBeGreaterThan(0);
+    expect(res.body.data.message).toContain('FINAL NOTICE');
+    expect(res.body.data.message).toContain('ZREM1');
+    expect(res.body.data.message).toContain('termination of your tenancy and eviction proceedings');
+
+    const { rows } = await pool.query(
+      `SELECT template_kind, status, message FROM sms_notifications WHERE id = $1`,
+      [res.body.data.smsId],
+    );
+    expect(rows).toHaveLength(1);
+    // Tagged under its own kind — outside the reminder cap family, and shown
+    // under its own name on the SMS page.
+    expect(rows[0].template_kind).toBe('FINAL_NOTICE');
+    expect(rows[0].status).toBe('PENDING');
+    expect(rows[0].message).toBe(res.body.data.message);
+
+    const audit = await auditRow('SMS_REMINDER_QUEUED', tenantId);
+    expect(audit).toBeDefined();
+    expect(audit.new_value.kind).toBe('FINAL_NOTICE');
+    expect(Number(audit.new_value.smsId)).toBe(Number(res.body.data.smsId));
+  });
+
+  it('refuses WhatsApp and email — the escalation is SMS-only', async () => {
+    const before = await countRows('sms_notifications', tenantId);
+    const resWhatsapp = await request(app)
+      .post(`/api/tenants/${tenantId}/sms-reminder`)
+      .set(auth(adminToken))
+      .send({ kind: 'FINAL_NOTICE', channel: 'WHATSAPP' });
+    expect(resWhatsapp.status).toBe(400);
+    expect(resWhatsapp.body.error).toBe('BAD_REQUEST');
+
+    const resEmail = await request(app)
+      .post(`/api/tenants/${tenantId}/sms-reminder`)
+      .set(auth(adminToken))
+      .send({ kind: 'FINAL_NOTICE', channel: 'EMAIL' });
+    expect(resEmail.status).toBe(400);
+    expect(resEmail.body.error).toBe('BAD_REQUEST');
+
+    expect(await countRows('sms_notifications', tenantId)).toBe(before);
+  });
+
+  it('refuses a tenant with nothing owed — no arrears to demand', async () => {
+    const res = await request(app)
+      .post(`/api/tenants/${noContactTenantId}/sms-reminder`)
+      .set(auth(adminToken))
+      .send({ kind: 'FINAL_NOTICE', channel: 'SMS' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('BAD_REQUEST');
+    expect(res.body.message).toMatch(/no arrears for a Final Notice/i);
+  });
+});

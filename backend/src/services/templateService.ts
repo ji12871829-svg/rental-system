@@ -19,6 +19,7 @@ export type TemplateKind =
   | 'SMS_COMBINED_RECEIPT'
   | 'SMS_BALANCE_DUE'
   | 'SMS_OVERDUE'
+  | 'SMS_FINAL_NOTICE'
   | 'SMS_LANDLORD_ALERT'
   | 'SMS_RENT_DUE_SOON'
   | 'SMS_WATER_BILLING'
@@ -96,6 +97,18 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     defaultSubject: null,
     defaultBody:
       'Dear {{name}}, the rent for Unit {{unit}} is overdue by {{currency}} {{amount_due}} ({{period}}). Kindly settle by {{deadline}} to avoid a late payment fee. Your total balance is {{currency}} {{total_due}}. If already paid, ignore this message. Thank you.',
+  },
+  {
+    kind: 'SMS_FINAL_NOTICE',
+    label: 'Final Notice (Eviction Warning)',
+    channel: 'SMS' as const,
+    description:
+      'The firm escalation the operator sends from a tenant card after routine reminders have gone unanswered: it leads with FINAL NOTICE, names the unpaid arrears, demands payment by {{deadline}}, and warns that the tenancy will be terminated and eviction proceedings started under the lease. Sent only per tenant, and only when something is actually owed. Rent-only and water-only arrears automatically shorten when nothing is customized.',
+    fields: ['name', 'unit', 'period', 'rent_due', 'water_due', 'total_due', 'account', 'account_clause', 'contact', 'deadline', 'payment_method', 'currency', 'business'],
+    hasSubject: false,
+    defaultSubject: null,
+    defaultBody:
+      'Dear {{name}}, FINAL NOTICE: Unit {{unit}} arrears {{period}}: Rent {{currency}} {{rent_due}} + Water {{currency}} {{water_due}} = Total {{currency}} {{total_due}} is unpaid despite reminders. Pay by {{deadline}} via {{payment_method}}{{account_clause}}, or we will begin termination of your tenancy and eviction proceedings as per the lease. Already paid or unable to pay? Call {{contact}}. Thank you.',
   },
   {
     kind: 'SMS_LANDLORD_ALERT',

@@ -115,29 +115,33 @@ router.delete('/:id', adminOnly, validateParams(paramsSchema), asyncHandler(asyn
 // 202: accepted (queued or composed), not yet delivered.
 // Reminder + notice kinds the operator can send by hand. DUE_SOON is absent on
 // purpose: it is the scheduler's own month-end nudge, not something staff
-// trigger. The three notice kinds are event reports (water billed, a fee
-// applied, a tenancy starting) rather than amount-owed statements, and are
-// SMS-only — WhatsApp and email have no composition for them, so the channel
-// is refused here instead of silently sending a different message.
+// trigger. The three notice kinds and the Final Notice are SMS-only — WhatsApp
+// and email have no composition for them, so the channel is refused here
+// instead of silently sending a different message. (The notice kinds report
+// events rather than amount-owed statements; the Final Notice is the arrears
+// escalation the operator fires after reminders have gone unanswered.)
 const reminderSchema = z
   .object({
-    kind: z.enum(['BALANCE_DUE', 'OVERDUE', 'WATER_BILLING', 'LATE_FEE', 'WELCOME']),
+    kind: z.enum(['BALANCE_DUE', 'OVERDUE', 'FINAL_NOTICE', 'WATER_BILLING', 'LATE_FEE', 'WELCOME']),
     channel: z.enum(['SMS', 'WHATSAPP', 'EMAIL']).default('SMS'),
   })
-  .refine((value) => (NOTICE_KINDS.has(value.kind) ? value.channel === 'SMS' : true), {
+  .refine((value) => (NOTICE_KINDS.has(value.kind) || value.kind === 'FINAL_NOTICE' ? value.channel === 'SMS' : true), {
     message: 'This notice is only available as an SMS.',
     path: ['channel'],
   });
 
 router.post('/:id/sms-reminder', managerOrAdmin, validateParams(paramsSchema), validateBody(reminderSchema), asyncHandler(async (req, res) => {
   const { kind, channel } = req.body as { kind: ReminderKind; channel: ReminderChannel };
-  // Tagged MANUAL_REMINDER so the bulk reminder's already-reminded gate sees a
-  // hand send from the tenant card — one reminder per tenant per month across
-  // every path. (The card itself never blocks: sending to one tenant by hand
-  // is the operator's deliberate re-send.)
+  // Tagged MANUAL_REMINDER so the bulk reminder's per-month cap sees a hand
+  // send from the tenant card — a hand reminder is one of a tenant's three
+  // monthly chase texts. (The card itself never blocks: sending to one tenant
+  // by hand is the operator's deliberate re-send. The Final Notice splits off
+  // and tags itself FINAL_NOTICE instead — it is the escalation AFTER the
+  // chase allowance is spent, so it neither consumes nor respects it, and the
+  // SMS page shows it under its own name.)
   const result = await prepareReminder(Number(req.params.id), kind, channel, {
     userId: req.user!.userId,
-    templateKind: channel === 'SMS' ? 'MANUAL_REMINDER' : null,
+    templateKind: channel === 'SMS' ? (kind === 'FINAL_NOTICE' ? 'FINAL_NOTICE' : 'MANUAL_REMINDER') : null,
   });
   if (!result) {
     res.status(409).json({

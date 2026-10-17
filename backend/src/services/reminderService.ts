@@ -18,6 +18,7 @@ import {
   formatArrearsSpan,
   lateFeeNoticeMessage,
   monthlyBalanceDueMessage,
+  finalNoticeMessage,
   overdueNoticeMessage,
   paymentDeadlineLabel,
   rentDueSoonMessage,
@@ -65,6 +66,8 @@ interface ReminderFigures {
   paymentMethod: string;
   accountNumber: string;
   identityName: string | null;
+  /** Business contact phone for "already paid? call us" clauses — null when unset. */
+  contactPhone: string | null;
   // Latest meter reading for the unit (the row the current bill was computed
   // from) — feeds the proof clause on water notices. Null when the unit has
   // no readings (builders omit the clause rather than printing blanks).
@@ -228,11 +231,12 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
     paymentMethod,
     accountNumber,
     identityName: identity.name,
+    contactPhone: identity.phone ?? null,
     latestWaterReading,
   };
 }
 
-export type ReminderKind = 'BALANCE_DUE' | 'OVERDUE' | 'DUE_SOON' | 'WATER_BILLING' | 'LATE_FEE' | 'WELCOME';// The three notice kinds report an event rather than an amount owed, and are
+export type ReminderKind = 'BALANCE_DUE' | 'OVERDUE' | 'FINAL_NOTICE' | 'DUE_SOON' | 'WATER_BILLING' | 'LATE_FEE' | 'WELCOME';// The three notice kinds report an event rather than an amount owed, and are
 // SMS-only: WhatsApp and email have no composition for them, so the route
 // refuses the combination instead of silently falling back to a statement.
 export const NOTICE_KINDS: ReadonlySet<ReminderKind> = new Set<ReminderKind>(['WATER_BILLING', 'LATE_FEE', 'WELCOME']);
@@ -270,6 +274,15 @@ export async function prepareReminder(
   }
   if (kind === 'LATE_FEE' && f.rentBalance <= 0) {
     throw badRequest('This tenant has no overdue rent, so there is no late fee to report.');
+  }
+  // The Final Notice demands money, so like the notices it stays SMS-only —
+  // and it is refused outright for a tenant whose ledger shows nothing (or a
+  // net credit): there is no arrears to demand, let alone escalate about.
+  if (kind === 'FINAL_NOTICE' && channel !== 'SMS') {
+    throw badRequest('The Final Notice is only available as an SMS.');
+  }
+  if (kind === 'FINAL_NOTICE' && Math.max(f.combinedBalance, 0) <= 0.009) {
+    throw badRequest('This tenant owes nothing on the ledger — there is no arrears for a Final Notice to demand.');
   }
   // DUE_SOON is the scheduler's SMS-only nudge; the manual channels treat it
   // as the neutral BALANCE_DUE statement rather than mislabeling it.
@@ -460,6 +473,7 @@ const TEMPLATE_KIND_BY_REMINDER: Record<ReminderKind, TemplateKind> = {
   BALANCE_DUE: 'SMS_BALANCE_DUE',
   DUE_SOON: 'SMS_RENT_DUE_SOON',
   OVERDUE: 'SMS_OVERDUE',
+  FINAL_NOTICE: 'SMS_FINAL_NOTICE',
   WATER_BILLING: 'SMS_WATER_BILLING',
   LATE_FEE: 'SMS_LATE_FEE',
   WELCOME: 'SMS_WELCOME',
@@ -494,6 +508,18 @@ function mergeVarsFor(kind: ReminderKind, f: ReminderFigures, baseVars: MergeVar
     }
     case 'LATE_FEE':
       return { ...baseVars, amount_due: Math.max(f.rentBalance, 0) };
+    case 'FINAL_NOTICE':
+      return {
+        ...baseVars,
+        period: Math.max(f.rentBalance, 0) > 0 ? f.arrearsSpan : f.waterArrearsSpan,
+        account: unitLabel,
+        account_clause: accountClause,
+        rent_due: Math.max(f.rentBalance, 0),
+        water_due: Math.max(f.waterBalance, 0),
+        total_due: Math.max(f.combinedBalance, 0),
+        contact: f.contactPhone ?? '',
+        payment_method: f.paymentMethod,
+      };
     case 'WELCOME':
       return { ...baseVars, account: unitLabel, reference_clause: referenceClause, amount: Math.max(f.currentRent, 0), payment_method: f.paymentMethod };
     case 'OVERDUE':
@@ -532,6 +558,16 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
       return lateFeeNoticeMessage({
         tenantName: f.tenantName, unitNumber: f.unitNumber, amountDue: Math.max(f.rentBalance, 0),
         currency: f.currency, businessIdentity: identity,
+      });
+    case 'FINAL_NOTICE':
+      return finalNoticeMessage({
+        tenantName: f.tenantName, unitNumber: f.unitNumber,
+        period: Math.max(f.rentBalance, 0) > 0 ? f.arrearsSpan : f.waterArrearsSpan,
+        rentDue: Math.max(f.rentBalance, 0),
+        waterDue: Math.max(f.waterBalance, 0),
+        totalDue: Math.max(f.combinedBalance, 0), accountNumber: f.accountNumber,
+        paymentMethod: f.paymentMethod, currency: f.currency, deadline,
+        contactPhone: f.contactPhone, businessIdentity: identity,
       });
     case 'WELCOME':
       return welcomeMessage({

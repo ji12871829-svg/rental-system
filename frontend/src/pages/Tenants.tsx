@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { DataRequestLetterModal, type LetterData } from '../components/DataRequestLetter';
 import { api, qs } from '../lib/api';
+import { downloadCsv, toCsv } from '../lib/csv';
 import { downloadBlob } from '../lib/download';
 import { useAuth } from '../lib/auth';
 import { money, formatDate } from '../lib/format';
@@ -39,11 +40,12 @@ interface Tenant {
 // billed, a fee applied, a tenancy starting) rather than amount-owed
 // statements, and are SMS-only — the modal hides the channel picker for them.
 type ReminderChannel = 'SMS' | 'WHATSAPP' | 'EMAIL';
-type ManualMessageKind = 'BALANCE_DUE' | 'OVERDUE' | 'WATER_BILLING' | 'LATE_FEE' | 'WELCOME';
-const SMS_ONLY_KINDS: ReadonlySet<ManualMessageKind> = new Set<ManualMessageKind>(['WATER_BILLING', 'LATE_FEE', 'WELCOME']);
+type ManualMessageKind = 'BALANCE_DUE' | 'OVERDUE' | 'FINAL_NOTICE' | 'WATER_BILLING' | 'LATE_FEE' | 'WELCOME';
+const SMS_ONLY_KINDS: ReadonlySet<ManualMessageKind> = new Set<ManualMessageKind>(['FINAL_NOTICE', 'WATER_BILLING', 'LATE_FEE', 'WELCOME']);
 const KIND_LABELS: Record<ManualMessageKind, string> = {
   BALANCE_DUE: 'Statement / balance due',
   OVERDUE: 'Overdue notice',
+  FINAL_NOTICE: 'Final notice (eviction warning)',
   WATER_BILLING: 'Water billing notice',
   LATE_FEE: 'Late payment fee',
   WELCOME: 'New tenant welcome',
@@ -54,6 +56,7 @@ const KIND_LABELS: Record<ManualMessageKind, string> = {
 const ACTION_KIND: Record<string, ManualMessageKind> = {
   'sms-due': 'BALANCE_DUE',
   'sms-overdue': 'OVERDUE',
+  'sms-final': 'FINAL_NOTICE',
   'sms-water': 'WATER_BILLING',
   'sms-latefee': 'LATE_FEE',
   'sms-welcome': 'WELCOME',
@@ -163,6 +166,20 @@ export default function Tenants() {
           <TriangleAlert size={15} strokeWidth={1.75} aria-hidden />
           {gapCount !== null && gapCount > 0 ? `Contact gaps (${gapCount})` : 'Contact gaps'}
         </Button>
+        {(data?.data.length ?? 0) > 0 && (
+          <div className="ml-auto">
+            <Button
+              variant="ghost"
+              className="!px-2 !py-1 text-xs"
+              onClick={() => downloadCsv('tenants.csv', toCsv(
+                ['Tenant', 'Phone', 'Email', 'Unit', 'Move In', 'Month Status', 'Deposit', 'Status'],
+                data!.data.map((t) => [t.full_name, t.phone_number ?? '', t.email ?? '', t.unit_number ?? '', t.move_in_date ?? '', t.current_month_rent_status, t.security_deposit, t.status])
+              ))}
+            >
+              Export CSV
+            </Button>
+          </div>
+        )}
       </div>
 
       {showContactGaps && (
@@ -306,6 +323,7 @@ export default function Tenants() {
                           <option value="move-out">Move out</option>
                           <option value="sms-due">Reminder: statement / balance due…</option>
                           <option value="sms-overdue">Reminder: overdue notice…</option>
+                          <option value="sms-final">Notice: FINAL NOTICE / eviction warning…</option>
                           <option value="sms-water">Notice: water billing…</option>
                           <option value="sms-latefee">Notice: late payment fee…</option>
                           <option value="sms-welcome">Notice: new tenant welcome…</option>
@@ -838,6 +856,14 @@ function ReminderModal({ request, busy, onClose, onDone, onError, setBusy }: {
       <p className="text-sm text-gray-600">
         To <span className="font-semibold">{request.tenant.full_name}</span> — composed from the live ledger.
       </p>
+
+      {request.kind === 'FINAL_NOTICE' && (
+        <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs leading-relaxed text-red-800">
+          Firm escalation — send this only after routine reminders have gone unanswered. It warns the tenant in writing
+          that the tenancy will be terminated and eviction proceedings started under the lease if the arrears stay
+          unpaid, and gives the office number for a tenant who has already paid.
+        </p>
+      )}
 
       {/* Channel picker. Hidden for the SMS-only notice kinds, which have no
           WhatsApp or email composition — offering the tabs there would fail

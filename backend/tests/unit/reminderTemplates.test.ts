@@ -3,6 +3,7 @@
 // The receipt composers' GSM-7 budget rules apply here too (shared
 // withIdentity helper), so the identity-line behaviour is covered as well.
 import {
+  finalNoticeMessage,
   formatArrearsSpan,
   gsm7EffectiveLength,
   lateFeeNoticeMessage,
@@ -130,6 +131,128 @@ describe('overdueNoticeMessage', () => {
     const msg = overdueNoticeMessage({ ...base, period: 'Oct 2026', amountDue: 4500, totalBalance: 13500, currency: 'KSh', deadline: '10 Oct 2026' });
     // eslint-disable-next-line no-control-regex -- GSM-7 charset check, not a control-char check
     expect(/[^\u0000-\u007F]/.test(msg)).toBe(false);
+  });
+});
+
+// --- Final Notice (eviction warning) ------------------------------------------
+// The firm escalation: leads with FINAL NOTICE, states what is unpaid exactly
+// like the rest of the family, and warns of the consequence the operator can
+// lawfully pursue — termination of the tenancy and eviction proceedings under
+// the lease. Deliberately measured: it is a slightly longer message than the
+// routine reminders (3 segments in the worst case is acceptable for a letter
+// this heavy), but it stays plain GSM-7 ASCII.
+describe('finalNoticeMessage', () => {
+  it('leads with FINAL NOTICE and itemizes both sides when rent and water are owed', () => {
+    const msg = finalNoticeMessage({
+      ...base,
+      period: 'Aug, Sep, Oct 2026',
+      rentDue: 9000,
+      waterDue: 1200,
+      totalDue: 10200,
+      accountNumber: 'Unit B4',
+      paymentMethod: 'M-Pesa PayBill 247252',
+      currency: 'KSh',
+      deadline: '10 Nov 2026',
+      contactPhone: '0706719042',
+    });
+    expect(msg).toBe(
+      'Dear Jane Wanjiku, FINAL NOTICE: Unit B4 arrears Aug, Sep, Oct 2026: Rent KSh 9000 + Water KSh 1200 = Total KSh 10200 is unpaid despite reminders. Pay by 10 Nov 2026 via M-Pesa PayBill 247252 with account Unit B4, or we will begin termination of your tenancy and eviction proceedings as per the lease. Already paid or unable to pay? Call 0706719042. Thank you.',
+    );
+  });
+
+  it('uses the rent-only wording and still warns of termination when only rent is owed', () => {
+    const msg = finalNoticeMessage({
+      ...base,
+      period: 'Oct 2026',
+      rentDue: 4500,
+      waterDue: 0,
+      totalDue: 4500,
+      accountNumber: '',
+      paymentMethod: 'M-Pesa to 0743799002',
+      currency: 'KSh',
+      deadline: '10 Nov 2026',
+      contactPhone: '0706719042',
+    });
+    expect(msg).toBe(
+      'Dear Jane Wanjiku, FINAL NOTICE: the rent for Unit B4 is overdue by KSh 4500 (Oct 2026) and reminders have gone unanswered. Pay by 10 Nov 2026 via M-Pesa to 0743799002, or we will begin termination of your tenancy and eviction proceedings as per the lease. Already paid or unable to pay? Call 0706719042. Thank you.',
+    );
+  });
+
+  it('demands the water side when rent is clear, and drops the call clause without a contact phone', () => {
+    const msg = finalNoticeMessage({
+      ...base,
+      period: 'Sep, Oct 2026',
+      rentDue: 0,
+      waterDue: 1600,
+      totalDue: 1600,
+      accountNumber: '',
+      paymentMethod: 'M-Pesa to 0743799002',
+      currency: 'KSh',
+      deadline: '10 Nov 2026',
+      contactPhone: null,
+    });
+    expect(msg).toBe(
+      'Dear Jane Wanjiku, FINAL NOTICE: water for Unit B4 (Sep, Oct 2026) of KSh 1600 is unpaid despite reminders. Pay by 10 Nov 2026 with your rent via M-Pesa to 0743799002, or we will begin termination of your tenancy and eviction proceedings as per the lease. Thank you.',
+    );
+  });
+
+  it('escalates on the lawful track — never a lockout or denied-access threat', () => {
+    const msg = finalNoticeMessage({
+      ...base,
+      period: 'Oct 2026',
+      rentDue: 4500,
+      waterDue: 0,
+      totalDue: 4500,
+      accountNumber: 'Unit B4',
+      paymentMethod: 'M-Pesa to 0743799002',
+      currency: 'KSh',
+      deadline: '10 Nov 2026',
+      contactPhone: '0706719042',
+    });
+    expect(msg).toContain('eviction proceedings as per the lease');
+    expect(msg).not.toMatch(/lock|door|denied access|cut off|barred/i);
+  });
+
+  it('stays plain GSM-7 ASCII in the worst case', () => {
+    const msg = finalNoticeMessage({
+      tenantName: 'A Very Long Tenant Name That Operators Sometimes Type',
+      unitNumber: 'B12',
+      period: 'Aug, Sep, Oct 2026',
+      rentDue: 123456,
+      waterDue: 7800,
+      totalDue: 131256,
+      accountNumber: 'Unit B12',
+      paymentMethod: 'M-Pesa PayBill 247252',
+      currency: 'KSh',
+      deadline: '10 Nov 2026',
+      contactPhone: '0706719042',
+      businessIdentity: 'Olbano Plaza, Reg No BN-2026-XYZ',
+    });
+    // eslint-disable-next-line no-control-regex -- GSM-7 charset check, not a control-char check
+    expect(/[^\u0000-\u007F]/.test(msg)).toBe(false);
+    // The escalation letter is deliberately heavier than the routine
+    // reminders: in this worst case the body alone exceeds the two-segment
+    // budget, so the identity line is dropped and the body stands alone.
+    expect(msg).not.toContain('Olbano Plaza');
+  });
+
+  it('appends the identity line when the budget allows it', () => {
+    const msg = finalNoticeMessage({
+      ...base,
+      period: 'Oct 2026',
+      rentDue: 4500,
+      waterDue: 0,
+      totalDue: 4500,
+      accountNumber: '',
+      paymentMethod: 'M-Pesa',
+      currency: 'KSh',
+      deadline: '10 Nov 2026',
+      contactPhone: null,
+      businessIdentity: 'Olbano Plaza, Reg No BN-2026-XYZ',
+    });
+    // eslint-disable-next-line no-control-regex -- GSM-7 charset check, not a control-char check
+    expect(/[^\u0000-\u007F]/.test(msg)).toBe(false);
+    expect(msg.endsWith('Olbano Plaza, Reg No BN-2026-XYZ')).toBe(true);
   });
 });
 
