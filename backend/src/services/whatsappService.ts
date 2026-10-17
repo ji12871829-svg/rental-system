@@ -32,6 +32,7 @@ import { badRequest, notFound } from '../utils/httpError';
 import { paginate } from './paginate';
 import type { Pagination } from '../types';
 import {
+  getWhatsappTemplates,
   normalizeWhatsAppNumber,
   sendCloudWhatsapp,
   WhatsAppDeliveryError,
@@ -44,7 +45,10 @@ export interface WhatsappRow {
   message: string;
   status: 'PENDING' | 'SENT' | 'FAILED' | 'ERRONEOUS';
   provider_message_id: string | null;
+  /** For template rows: the registered WhatsApp template NAME. Null on free-form rows. */
   template_kind: string | null;
+  /** For template rows: body parameters in the canonical {{1}}..{{6}} order. */
+  template_params: string[] | null;
   attempt_count: number;
   next_retry_at: string | null;
   failure_reason: string | null;
@@ -62,7 +66,10 @@ interface QueueWhatsappInput {
   /** Stored as recorded; normalized to Meta (254…) digits before use. */
   phoneNumber: string;
   message: string;
+  /** Template rows: the registered template name (stored in template_kind). */
   templateKind?: string | null;
+  /** Template rows: body parameters, persisted so retries replay the approved figures. */
+  templateParams?: string[] | null;
   userId?: number | null;
 }
 
@@ -74,9 +81,15 @@ async function queueWhatsapp(input: QueueWhatsappInput): Promise<WhatsappRow> {
     throw badRequest("The tenant's phone number is not a valid WhatsApp number.");
   }
   const { rows } = await pool.query<WhatsappRow>(
-    `INSERT INTO whatsapp_notifications (tenant_id, phone_number, message, status, template_kind)
-     VALUES ($1, $2, $3, 'PENDING', $4) RETURNING *`,
-    [input.tenantId, intl, input.message, input.templateKind ?? null]
+    `INSERT INTO whatsapp_notifications (tenant_id, phone_number, message, status, template_kind, template_params)
+     VALUES ($1, $2, $3, 'PENDING', $4, $5::jsonb) RETURNING *`,
+    [
+      input.tenantId,
+      intl,
+      input.message,
+      input.templateKind ?? null,
+      input.templateParams ? JSON.stringify(input.templateParams) : null,
+    ]
   );
   const row = rows[0];
   await logAudit({
@@ -124,7 +137,15 @@ export async function sendWhatsappNotification(id: number, opts: { phone?: strin
   }
 
   try {
-    const result = await sendCloudWhatsapp(sendTo, row.message);
+    // A template row (template_kind holds the registered template name) is
+    // sent as the approved template — no 24-hour window, header/footer
+    // included — with the parameters persisted at queue time. The language
+    // is read at send time so the operator can change it without re-queueing.
+    const template =
+      row.template_kind && Array.isArray(row.template_params) && row.template_params.length > 0
+        ? { name: row.template_kind, language: getWhatsappTemplates().language, params: row.template_params }
+        : undefined;
+    const result = await sendCloudWhatsapp(sendTo, row.message, { template });
     await query(
       `UPDATE whatsapp_notifications
        SET status = 'SENT', provider_message_id = $2, sent_at = NOW(), failure_reason = NULL,

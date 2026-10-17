@@ -42,7 +42,7 @@ import { renderMergeFields, type MergeVars } from '../utils/mergeFields';
 import { rentMonths, tenantBalances } from './tenantLedger';
 import { queuePreparedEmail } from './emailService';
 import { dispatchAutoSend, queueSms } from './smsService';
-import { getWhatsappConfig } from './whatsappProvider';
+import { getWhatsappConfig, getWhatsappTemplates, buildWhatsappTemplateParams } from './whatsappProvider';
 import { queuePreparedWhatsapp, sendWhatsappNotification } from './whatsappService';
 
 // The shared figures every reminder channel composes from. previousRent
@@ -264,6 +264,12 @@ export interface ReminderResult {
   whatsappId?: number | null;
   whatsappStatus?: 'PENDING' | 'SENT' | 'FAILED' | 'ERRONEOUS' | null;
   whatsappFailure?: string | null;
+  /**
+   * Registered WhatsApp template the send will use (WHATSAPP_TEMPLATE_* env),
+   * or null for free-form sending. Surfaced in preview AND delivery results
+   * so the modal can tell the operator which template carries the message.
+   */
+  whatsappTemplate?: string | null;
 }
 
 // Queue/compose a tenant reminder on the chosen channel. Each channel has
@@ -342,6 +348,20 @@ function whatsappSupportLink(phone: string | null): string {
     : '';
 }
 
+// Template parameter {{3}}: a compact itemized dues line — what is owed, for
+// which months — not the full letter (the letter lives in the registered
+// template's static wording). Amounts render bare (KSh 55000) to match every
+// other builder's money formatting.
+function whatsappTemplateDuesText(f: ReminderFigures): string {
+  const rent = Math.max(f.rentBalance, 0);
+  const water = Math.max(f.waterBalance, 0);
+  const parts: string[] = [];
+  if (rent > 0) parts.push(`Rent for ${f.arrearsSpan}: ${f.currency} ${rent}`);
+  if (water > 0) parts.push(`Water for ${f.waterArrearsSpan}: ${f.currency} ${water}`);
+  const total = Math.max(f.combinedBalance, 0);
+  return parts.length ? `${parts.join(' + ')} — total ${f.currency} ${total}` : `${f.currency} ${total}`;
+}
+
 async function whatsappReminder(
   f: ReminderFigures,
   kind: ReminderKind,
@@ -350,6 +370,12 @@ async function whatsappReminder(
   deliver = false,
 ): Promise<ReminderResult | null> {
   const deadline = paymentDeadlineLabel(new Date());
+  // Template mode: the operator's registered approved template for this kind
+  // replaces free-form sending entirely (no 24-hour window). The Final Notice
+  // has its own template because its wording is legally distinct; every other
+  // kind shares the reminder template.
+  const templates = getWhatsappTemplates();
+  const templateName = kind === 'FINAL_NOTICE' ? templates.finalNotice : templates.reminder;
   let text: string;
   if (kind === 'BALANCE_DUE' || kind === 'OVERDUE') {
     // A customized Message Templates row (WHATSAPP_BALANCE_DUE /
@@ -429,6 +455,7 @@ async function whatsappReminder(
       emailId: null,
       whatsappUrl,
       whatsappLive: getWhatsappConfig().live,
+      whatsappTemplate: templateName,
     };
   }
 
@@ -443,7 +470,19 @@ async function whatsappReminder(
     tenantId,
     phoneNumber: f.phoneNumber,
     message: text,
-    templateKind: null,
+    templateKind: templateName,
+    // Parameters persist on the row so a retry sweep (or a manual re-send)
+    // replays exactly the figures the operator saw when they pressed Send.
+    templateParams: templateName
+      ? buildWhatsappTemplateParams({
+          tenantName: f.tenantName,
+          unitLabel: `Unit ${f.unitNumber}`,
+          duesText: whatsappTemplateDuesText(f),
+          deadline,
+          payMethod: f.paymentMethod,
+          contactPhone: f.contactPhone,
+        })
+      : null,
     userId,
   });
   const sent = await sendWhatsappNotification(queued.id);
@@ -456,6 +495,7 @@ async function whatsappReminder(
     whatsappId: sent.id,
     whatsappStatus: sent.status,
     whatsappFailure: sent.failure_reason,
+    whatsappTemplate: templateName,
   };
 }
 

@@ -172,6 +172,7 @@ router.post('/:id/sms-reminder', managerOrAdmin, validateParams(paramsSchema), v
       whatsappId: result.whatsappId ?? null,
       whatsappStatus: result.whatsappStatus ?? null,
       whatsappFailure: result.whatsappFailure ?? null,
+      whatsappTemplate: result.whatsappTemplate ?? null,
       message: result.message,
       autoSend: autoSendEnabled(),
     },

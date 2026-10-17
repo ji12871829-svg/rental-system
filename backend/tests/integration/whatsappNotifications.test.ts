@@ -13,6 +13,11 @@
 //     not on WhatsApp, no deadline)
 //   * manual re-send                — POST /api/whatsapp/:id/send replays a
 //     FAILED row to SENT
+//   * template mode                 — with WHATSAPP_TEMPLATE_* set, sends are
+//     Meta template messages (no 24-hour window): the payload's parameter
+//     order matches the registration, the parameters persist on the row and
+//     replays re-send them verbatim, and a template refusal (132xxx) is
+//     ERRONEOUS
 //   * no-phone tenant               — 409 TENANT_NO_CONTACT, nothing written
 //
 // Hermetic: fixtures mirror reminderChannels.test.ts, Meta calls are faked
@@ -89,6 +94,9 @@ async function cleanup(): Promise<void> {
   if (unitId) await pool.query(`DELETE FROM units WHERE id = $1`, [unitId]);
   delete process.env.WHATSAPP_TOKEN;
   delete process.env.WHATSAPP_PHONE_NUMBER_ID;
+  delete process.env.WHATSAPP_TEMPLATE_REMINDER;
+  delete process.env.WHATSAPP_TEMPLATE_FINAL_NOTICE;
+  delete process.env.WHATSAPP_TEMPLATE_LANG;
 }
 
 /** Removes fixture rows a crashed earlier run may have left behind. */
@@ -331,5 +339,197 @@ describe('WHATSAPP deliver — Meta Cloud API behind the button press', () => {
     expect(config.status).toBe(200);
     expect(config.body.data.provider).toBe('cloud');
     expect(config.body.data.live).toBe(true);
+  });
+});
+
+// Template mode — when the operator registers an approved template
+// (WHATSAPP_TEMPLATE_*), sends of that kind go out as Meta template messages:
+// no 24-hour window, and the parameters persist on the row so a retry sweep
+// replays exactly the figures the operator approved.
+describe('WHATSAPP template mode — approved Meta templates', () => {
+  const REMINDER_TEMPLATE = 'rent_reminder_fixture';
+  const NOTICE_TEMPLATE = 'final_notice_fixture';
+
+  beforeAll(() => {
+    process.env.WHATSAPP_TOKEN = 'test-token';
+    process.env.WHATSAPP_PHONE_NUMBER_ID = '123456789012345';
+    process.env.WHATSAPP_TEMPLATE_REMINDER = REMINDER_TEMPLATE;
+    process.env.WHATSAPP_TEMPLATE_FINAL_NOTICE = NOTICE_TEMPLATE;
+    process.env.WHATSAPP_TEMPLATE_LANG = 'en';
+  });
+
+  it('reports the template in the config endpoint', async () => {
+    const config = await request(app).get('/api/whatsapp/config').set(auth(adminToken));
+    expect(config.status).toBe(200);
+    expect(config.body.data.templates.reminder).toBe(REMINDER_TEMPLATE);
+    expect(config.body.data.templates.finalNotice).toBe(NOTICE_TEMPLATE);
+    expect(config.body.data.templates.language).toBe('en');
+  });
+
+  it('composes with the template name attached and queues nothing', async () => {
+    // Rows from the direct-delivery describe are still (legitimately) in the
+    // table — the proof a compose queues nothing is that the row count does
+    // not move.
+    const before = await whatsappRowsFor(tenantId);
+    const res = await request(app)
+      .post(`/api/tenants/${tenantId}/sms-reminder`)
+      .set(auth(adminToken))
+      .send({ kind: 'OVERDUE', channel: 'WHATSAPP' });
+    expect(res.status).toBe(202);
+    expect(res.body.data.whatsappTemplate).toBe(REMINDER_TEMPLATE);
+    expect(res.body.data.whatsappId).toBeNull();
+    expect(await whatsappRowsFor(tenantId)).toHaveLength(before.length);
+  });
+
+  function expectTemplatePayload(raw: string, templateName: string): {
+    to: string;
+    template: { name: string; language: { code: string }; components: Array<{ type: string; parameters: Array<{ type: string; text: string }> }> };
+  } {
+    const payload = JSON.parse(raw) as {
+      type: string;
+      to: string;
+      text?: { body: string };
+      template: { name: string; language: { code: string }; components: Array<{ type: string; parameters: Array<{ type: string; text: string }> }> };
+    };
+    expect(payload.type).toBe('template');
+    expect(payload.to).toBe('254700000001');
+    expect(payload.text).toBeUndefined(); // template sends carry no free-form body
+    expect(payload.template.name).toBe(templateName);
+    expect(payload.template.language.code).toBe('en');
+    const [bodyComp] = payload.template.components;
+    expect(bodyComp.type).toBe('body');
+    expect(bodyComp.parameters).toHaveLength(6);
+    // Canonical registration order {{1}}..{{6}}: name, unit, dues, deadline,
+    // payment method, contact.
+    const [p1, p2, p3, p4, p5, p6] = bodyComp.parameters.map((p) => p.text);
+    expect(p1).toBe('WhatsApp Fixture Tenant');
+    expect(p2).toBe('Unit ZWHA1');
+    expect(p3).toMatch(/^Rent for .+: KSh \d+( \+ Water for .+: KSh \d+)? — total KSh \d+$/);
+    expect(p4).toMatch(/^\d{1,2} [A-Z][a-z]+ \d{4}$/);
+    expect(p5.length).toBeGreaterThan(0);
+    expect(p6.length).toBeGreaterThan(0);
+    return payload;
+  }
+
+  it('sends the template payload directly and persists the parameters on the row', async () => {
+    const seen: Array<{ url: string; init?: RequestInit }> = [];
+    (globalThis as { fetch: typeof fetch }).fetch = (async (url: unknown, init?: RequestInit) => {
+      seen.push({ url: String(url), init });
+      return jsonResponse(200, { messages: [{ id: 'wamid.HBgLTemplate' }] });
+    }) as unknown as typeof fetch;
+    try {
+      const res = await request(app)
+        .post(`/api/tenants/${tenantId}/sms-reminder`)
+        .set(auth(adminToken))
+        .send({ kind: 'OVERDUE', channel: 'WHATSAPP', deliver: true });
+      expect(res.status).toBe(202);
+      expect(res.body.data.whatsappStatus).toBe('SENT');
+      expect(res.body.data.whatsappTemplate).toBe(REMINDER_TEMPLATE);
+      expect(seen).toHaveLength(1);
+      expectTemplatePayload(String(seen[0].init?.body), REMINDER_TEMPLATE);
+
+      const rows = await whatsappRowsFor(tenantId);
+      const row = rows[rows.length - 1];
+      expect(row.status).toBe('SENT');
+      expect(row.template_kind).toBe(REMINDER_TEMPLATE);
+      expect(row.template_params).toHaveLength(6);
+      // The row keeps the full free-form letter as the correspondence record;
+      // the template name + parameters are what Meta actually received.
+      expect(row.message).toContain('WhatsApp Fixture Tenant');
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  it('replays the SAME template parameters when a failed row is re-sent', async () => {
+    // Queue + fail a template row (closed window), then re-send it through
+    // the history endpoint — the retry must use the queued parameters, not
+    // recompute from a ledger that may have moved on.
+    stubMeta(() => jsonResponse(400, {
+      error: { message: 'Re-engagement message', code: 131047, error_data: { details: 'window closed' } },
+    }));
+    let failedId: number;
+    try {
+      const res = await request(app)
+        .post(`/api/tenants/${tenantId}/sms-reminder`)
+        .set(auth(adminToken))
+        .send({ kind: 'OVERDUE', channel: 'WHATSAPP', deliver: true });
+      expect(res.body.data.whatsappStatus).toBe('FAILED');
+      const rows = await whatsappRowsFor(tenantId);
+      const failed = rows[rows.length - 1];
+      failedId = failed.id as number;
+      expect(failed.template_kind).toBe(REMINDER_TEMPLATE);
+      expect(failed.template_params).toHaveLength(6);
+    } finally {
+      restoreFetch();
+    }
+
+    const seen: Array<{ url: string; init?: RequestInit }> = [];
+    (globalThis as { fetch: typeof fetch }).fetch = (async (url: unknown, init?: RequestInit) => {
+      seen.push({ url: String(url), init });
+      return jsonResponse(200, { messages: [{ id: 'wamid.HBgLTemplateRetry' }] });
+    }) as unknown as typeof fetch;
+    try {
+      const res = await request(app)
+        .post(`/api/whatsapp/${failedId}/send`)
+        .set(auth(adminToken))
+        .send({});
+      expect(res.status).toBe(200);
+      expect(res.body.data.status).toBe('SENT');
+      expect(res.body.data.template_kind).toBe(REMINDER_TEMPLATE);
+      expect(seen).toHaveLength(1);
+      const payload = expectTemplatePayload(String(seen[0].init?.body), REMINDER_TEMPLATE);
+      // Parameter values replay exactly — a sweep hours later must not send
+      // different amounts than the operator approved.
+      const queued = await pool.query(`SELECT template_params FROM whatsapp_notifications WHERE id = $1`, [failedId]);
+      expect(payload.template.components[0].parameters.map((p) => p.text)).toEqual(queued.rows[0].template_params);
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  it('sends the Final Notice through its own registered template', async () => {
+    const seen: Array<{ url: string; init?: RequestInit }> = [];
+    (globalThis as { fetch: typeof fetch }).fetch = (async (url: unknown, init?: RequestInit) => {
+      seen.push({ url: String(url), init });
+      return jsonResponse(200, { messages: [{ id: 'wamid.HBgLFinalNotice' }] });
+    }) as unknown as typeof fetch;
+    try {
+      const res = await request(app)
+        .post(`/api/tenants/${tenantId}/sms-reminder`)
+        .set(auth(adminToken))
+        .send({ kind: 'FINAL_NOTICE', channel: 'WHATSAPP', deliver: true });
+      expect(res.status).toBe(202);
+      expect(res.body.data.whatsappStatus).toBe('SENT');
+      expect(res.body.data.whatsappTemplate).toBe(NOTICE_TEMPLATE);
+      expect(seen).toHaveLength(1);
+      expectTemplatePayload(String(seen[0].init?.body), NOTICE_TEMPLATE);
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  it('lands a template refusal (132000) as ERRONEOUS with registration copy', async () => {
+    stubMeta(() => jsonResponse(400, {
+      error: { message: 'Invalid parameter', code: 132000, error_data: { details: 'parameters size differ from template body' } },
+    }));
+    try {
+      const res = await request(app)
+        .post(`/api/tenants/${tenantId}/sms-reminder`)
+        .set(auth(adminToken))
+        .send({ kind: 'OVERDUE', channel: 'WHATSAPP', deliver: true });
+      expect(res.body.data.whatsappStatus).toBe('ERRONEOUS');
+      expect(res.body.data.whatsappFailure).toContain('template');
+      expect(res.body.data.whatsappFailure).toContain('{{1}}..{{6}}');
+
+      const rows = await whatsappRowsFor(tenantId);
+      const terminal = rows[rows.length - 1];
+      expect(terminal.status).toBe('ERRONEOUS');
+      expect(terminal.next_retry_at).toBeNull();
+      // Even the refused attempt keeps its template identity for the operator.
+      expect(terminal.template_kind).toBe(REMINDER_TEMPLATE);
+    } finally {
+      restoreFetch();
+    }
   });
 });

@@ -39,6 +39,69 @@ export function getWhatsappConfig(): WhatsappConfig {
   return { provider: live ? 'cloud' : 'none', live, apiVersion: env.whatsappApiVersion };
 }
 
+// --- Approved template messaging -------------------------------------------------
+//
+// Free-form Cloud API sends are only deliverable inside Meta's 24-hour
+// customer-service window. Approved TEMPLATE messages have no window — that
+// is what Meta designed automated business sends around — and they render
+// with whatever header/footer the operator baked into the template, which is
+// also what makes them look official.
+//
+// The operator registers each template once in Meta Business Manager
+// (category UTILITY, English) using the body text the app's docs give them,
+// with EXACTLY these numbered placeholders in this order — the payload we
+// send must match the registration:
+//   {{1}} tenant name        "Moses Barasa"
+//   {{2}} unit label         "Unit 24"
+//   {{3}} dues breakdown     "Rent for Jun, Jul, Aug 2026: KSh 55000 — total KSh 55000"
+//   {{4}} pay-by deadline    "10 Nov 2026"
+//   {{5}} payment method     "M-Pesa to 0743799002" (Send Money line)
+//   {{6}} office contact     "0706719042"
+// One template per purpose: WHATSAPP_TEMPLATE_REMINDER (statement/overdue
+// chase) and WHATSAPP_TEMPLATE_FINAL_NOTICE (the escalation letter). Either
+// may be set alone — the other purpose then keeps free-form sending. When a
+// template IS set for a kind it replaces free-form entirely.
+export function buildWhatsappTemplateParams(input: {
+  tenantName: string;
+  unitLabel: string;
+  duesText: string;
+  deadline: string;
+  payMethod: string;
+  contactPhone: string | null;
+}): string[] {
+  // No configured office contact → fall back to the phone digits inside the
+  // payment method (the Send Money line is also the office's line), else a
+  // blank the operator's template wording should tolerate.
+  const contact =
+    input.contactPhone?.trim() || input.payMethod.match(/\d{9,}/)?.[0] || '';
+  return [
+    input.tenantName,
+    input.unitLabel,
+    input.duesText,
+    input.deadline,
+    input.payMethod,
+    contact,
+  ];
+}
+
+export interface WhatsappTemplates {
+  /** Template for the statement/overdue chase (kinds BALANCE_DUE / OVERDUE). */
+  reminder: string | null;
+  /** Template for the Final Notice escalation letter. */
+  finalNotice: string | null;
+  /** Meta language code sent with the template (default 'en'). */
+  language: string;
+}
+
+export function getWhatsappTemplates(): WhatsappTemplates {
+  // Read at call time, like the credentials — operators add template names
+  // (and the tests inject them per-suite) without touching cached state.
+  const reminder = (process.env.WHATSAPP_TEMPLATE_REMINDER || '').trim() || null;
+  const finalNotice = (process.env.WHATSAPP_TEMPLATE_FINAL_NOTICE || '').trim() || null;
+  const language = (process.env.WHATSAPP_TEMPLATE_LANG || 'en').trim() || 'en';
+  return { reminder, finalNotice, language };
+}
+
 // Meta's recipient is a WhatsApp ID: digits with country code (no +, no
 // leading zero). Kenya numbers stored as 07… or 2547… both normalize here —
 // the same rule wa.me click-to-chat used before direct delivery existed.
@@ -49,10 +112,20 @@ export function normalizeWhatsAppNumber(raw: string | null | undefined): string 
 }
 
 // Terminal Meta error codes: no amount of retrying will make the same
-// recipient accept the message.
+// recipient accept the same message unchanged.
 //   131026  message undeliverable — the number is not registered on WhatsApp
 //   131051  unsupported message type
-const TERMINAL_WHATSAPP_CODES = new Set<number>([131026, 131051]);
+//   131030  recipient not in the sandbox allowlist (test numbers may only
+//           message up to five allowlisted recipients until verification)
+//   132xxx  template payload refused — name/language/parameter count does not
+//           match the registration; only fixing the registration or the
+//           template env vars helps, so these are treated as terminal too.
+const TERMINAL_WHATSAPP_CODES = new Set<number>([131026, 131051, 131030]);
+
+function isTerminalWhatsappCode(code: number | null): boolean {
+  if (code === null) return false;
+  return TERMINAL_WHATSAPP_CODES.has(code) || (code >= 132000 && code <= 132999);
+}
 
 export class WhatsAppDeliveryError extends Error {
   /** Meta error code from the response envelope, when one was returned. */
@@ -87,12 +160,24 @@ interface GraphErrorPayload {
   };
 }
 
+export interface WhatsappTemplateSend {
+  /** Registered template name (WHAT'SAPP_TEMPLATE_* env value). */
+  name: string;
+  /** Meta language code, e.g. 'en'. */
+  language: string;
+  /** Body parameters in the canonical registration order ({{1}}..{{6}}). */
+  params: string[];
+}
+
 // One send attempt. Injected fetch keeps the tests on a local mock instead of
-// the network; production uses the global fetch.
+// the network; production uses the global fetch. When `template` is given the
+// payload becomes a template send (no 24-hour window) and `body` is ignored —
+// it stays in the call signature because every caller already holds the
+// free-form text and it documents what the tenant's figures actually are.
 export async function sendCloudWhatsapp(
   to: string,
   body: string,
-  fetchImpl: typeof fetch = fetch,
+  opts: { fetchImpl?: typeof fetch; template?: WhatsappTemplateSend } = {},
 ): Promise<WhatsappSendResult> {
   const config = getWhatsappConfig();
   if (!config.live) {
@@ -104,17 +189,37 @@ export async function sendCloudWhatsapp(
   const token = process.env.WHATSAPP_TOKEN as string;
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID as string;
   const url = `https://graph.facebook.com/${config.apiVersion}/${phoneNumberId}/messages`;
-  const payload = {
-    messaging_product: 'whatsapp',
-    recipient_type: 'individual',
-    to,
-    type: 'text',
-    text: { preview_url: false, body },
-  };
+  const payload: Record<string, unknown> = opts.template
+    ? {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to,
+        type: 'template',
+        template: {
+          name: opts.template.name,
+          language: { code: opts.template.language },
+          components: [
+            {
+              type: 'body',
+              // Meta only accepts non-empty text parameters; an empty string
+              // in the middle would shift nothing but still reads as a gap,
+              // so keep them as strings exactly as composed.
+              parameters: opts.template.params.map((value) => ({ type: 'text', text: value })),
+            },
+          ],
+        },
+      }
+    : {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to,
+        type: 'text',
+        text: { preview_url: false, body },
+      };
 
   let res: Response;
   try {
-    res = await fetchImpl(url, {
+    res = await (opts.fetchImpl ?? fetch)(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -143,7 +248,7 @@ export async function sendCloudWhatsapp(
     const details = parsed.error?.error_data?.details;
     throw new WhatsAppDeliveryError(describeWhatsAppFailure(code, base, details, res.status), {
       code,
-      terminal: code !== null && TERMINAL_WHATSAPP_CODES.has(code),
+      terminal: isTerminalWhatsappCode(code),
       httpStatus: res.status,
     });
   }
@@ -173,6 +278,20 @@ function describeWhatsAppFailure(code: number | null, base: string, details: str
   }
   if (code === 131051) {
     return `Meta rejected the message type (code 131051). Original error: ${base}`;
+  }
+  if (code === 131030) {
+    return (
+      `Meta refused the recipient (code 131030): this number is not in your WhatsApp test allowlist. ` +
+      `Add it under Meta Business Manager → WhatsApp → API Setup → “To” (up to five numbers until the ` +
+      `business is verified), then send again.`
+    );
+  }
+  if (code !== null && code >= 132000 && code <= 132999) {
+    return (
+      `Meta refused the template (code ${code}): the template name, language or body parameters do not ` +
+      `match what was registered in Meta Business Manager. Check the registration uses exactly the six ` +
+      `placeholders ({{1}}..{{6}}) in the documented order, then send again. Original error: ${base}`
+    );
   }
   if (code === 190 || httpStatus === 401) {
     return `WhatsApp access token was rejected (code ${code ?? 190}) — check WHATSAPP_TOKEN in backend/.env. ${base}`;

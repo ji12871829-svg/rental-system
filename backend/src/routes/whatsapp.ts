@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { requireAuth } from '../middleware/auth';
 import { validateBody, validateParams, listQuerySchema as baseListQuerySchema } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
-import { getWhatsappConfig } from '../services/whatsappProvider';
+import { getWhatsappConfig, getWhatsappTemplates } from '../services/whatsappProvider';
 import { listWhatsapp, sendWhatsappNotification } from '../services/whatsappService';
 
 const router = Router();
@@ -20,9 +20,10 @@ const listQuerySchema = baseListQuerySchema.extend({
 
 // Current delivery mode so the UI can label sends honestly: 'cloud' means
 // direct Graph API sending, 'none' means click-to-chat fallback only. No
-// secrets returned (token/number id stay in .env).
+// secrets returned (token/number id stay in .env). Template mode rides along:
+// which registered template each kind uses, or null for free-form.
 router.get('/config', asyncHandler(async (_req, res) => {
-  res.json({ data: getWhatsappConfig() });
+  res.json({ data: { ...getWhatsappConfig(), templates: getWhatsappTemplates() } });
 }));
 
 // Delivery history.

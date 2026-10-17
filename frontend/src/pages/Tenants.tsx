@@ -824,6 +824,9 @@ function ReminderModal({ request, busy, onClose, onDone, onError, setBusy }: {
   const [channel, setChannel] = useState<ReminderChannel>('SMS');
   const [preview, setPreview] = useState<{ message: string; whatsappUrl: string | null } | null>(null);
   const [whatsappLive, setWhatsappLive] = useState<boolean>(false);
+  // The registered WhatsApp template the backend reports for this compose
+  // (null = free-form send). Only used to word the dispatch line honestly.
+  const [whatsappTemplate, setWhatsappTemplate] = useState<string | null>(null);
   // The outcome of a direct Cloud API send (button press): shows inline so a
   // refusal (24-hour window, a number not on WhatsApp) is explained where it
   // happened, with the manual fallback one click away. Cleared on re-compose.
@@ -845,17 +848,19 @@ function ReminderModal({ request, busy, onClose, onDone, onError, setBusy }: {
   useEffect(() => {
     setPreview(null);
     setWaTalk(null);
+    setWhatsappTemplate(null);
     if (!request) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await api.post<{ data: { smsId: number | null; emailId: number | null; whatsappUrl: string | null; whatsappLive?: boolean; whatsappId?: number | null; whatsappStatus?: 'SENT' | 'PENDING' | 'FAILED' | 'ERRONEOUS' | null; whatsappFailure?: string | null; message: string; autoSend: boolean } }>(
+        const res = await api.post<{ data: { smsId: number | null; emailId: number | null; whatsappUrl: string | null; whatsappLive?: boolean; whatsappId?: number | null; whatsappStatus?: 'SENT' | 'PENDING' | 'FAILED' | 'ERRONEOUS' | null; whatsappFailure?: string | null; whatsappTemplate?: string | null; message: string; autoSend: boolean } }>(
           `/api/tenants/${request.tenant.id}/sms-reminder`,
           { kind: request.kind, channel: activeChannel },
         );
         if (cancelled) return;
         setPreview({ message: res.data.message, whatsappUrl: res.data.whatsappUrl });
         setWhatsappLive(res.data.whatsappLive === true);
+        if (activeChannel === 'WHATSAPP') setWhatsappTemplate(res.data.whatsappTemplate ?? null);
       } catch (err) {
         if (!cancelled) onError((err as Error).message);
         if (!cancelled) onClose();
@@ -949,9 +954,13 @@ function ReminderModal({ request, busy, onClose, onDone, onError, setBusy }: {
 
       <p className="mt-3 text-xs text-gray-500">
         {activeChannel === 'SMS' && 'Queued as PENDING — send it from SMS Notifications (auto-sends when that setting is on).'}
-        {activeChannel === 'WHATSAPP' && (whatsappLive
-          ? 'Connected to Meta\u2019s WhatsApp Cloud API — the button sends directly from here.'
-          : 'Nothing is sent yet — the button opens WhatsApp with this text pre-filled for you to review and send.')}
+        {activeChannel === 'WHATSAPP' && (
+          whatsappLive
+            ? whatsappTemplate
+              ? `Sends as approved WhatsApp template \u2018${whatsappTemplate}\u2019 — templates deliver at any time, with no 24-hour window restriction.`
+              : 'Connected to Meta\u2019s WhatsApp Cloud API — the button sends directly from here.'
+            : 'Nothing is sent yet — the button opens WhatsApp with this text pre-filled for you to review and send.'
+        )}
         {activeChannel === 'EMAIL' && 'The formal statement is queued as PENDING — send it from Tenant Email (or it sends when the email pipeline is live).'}
       </p>
 
