@@ -36,9 +36,11 @@ beforeEach(() => {
       skippedPaid: 1,
       skippedNoPhone: 1,
       skippedOtherBill: 0,
+      skippedAlreadyReminded: 1,
       skipped: [
         { tenantId: 21, tenantName: 'Cleared Carol', unitNumber: '3', reason: 'PAID', bill: null },
         { tenantId: 22, tenantName: 'No-Phone Noah', unitNumber: '4', reason: 'NO_PHONE', bill: null },
+        { tenantId: 23, tenantName: 'Reminded Rita', unitNumber: '5', reason: 'ALREADY_REMINDed', bill: null },
       ],
       autoSend: false,
     },
@@ -108,6 +110,8 @@ describe('BulkReminderButton', () => {
     expect(screen.getByText('Already cleared')).toBeInTheDocument();
     expect(screen.getByText(/No-Phone Noah/)).toBeInTheDocument();
     expect(screen.getByText('No phone number')).toBeInTheDocument();
+    expect(screen.getByText(/Reminded Rita/)).toBeInTheDocument();
+    expect(screen.getByText('Already reminded this month')).toBeInTheDocument();
   });
 });
 

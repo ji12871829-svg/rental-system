@@ -12,7 +12,7 @@ import { api } from '../lib/api';
 
 type BulkAudience = 'ALL' | 'RENT' | 'WATER';
 
-type BulkSkipReason = 'NO_PHONE' | 'PAID' | 'OTHER_BILL';
+type BulkSkipReason = 'NO_PHONE' | 'PAID' | 'OTHER_BILL' | 'ALREADY_REMINDed';
 
 interface BulkSkippedTenant {
   tenantId: number;
@@ -30,6 +30,7 @@ export interface BulkArrearsResponse {
   skippedPaid: number;
   skippedNoPhone: number;
   skippedOtherBill: number;
+  skippedAlreadyReminded: number;
   skipped: BulkSkippedTenant[];
   autoSend: boolean;
 }
@@ -55,6 +56,7 @@ interface BulkReminderButtonProps {
 function skipReasonText(s: BulkSkippedTenant): string {
   if (s.reason === 'NO_PHONE') return 'No phone number';
   if (s.reason === 'PAID') return 'Already cleared';
+  if (s.reason === 'ALREADY_REMINDed') return 'Already reminded this month';
   return s.bill === 'WATER' ? 'Owes only water' : 'Owes only rent';
 }
 
@@ -91,8 +93,8 @@ export function BulkReminderButton({
         `Send a payment-reminder SMS to ${owingCount} tenant${owingCount === 1 ? '' : 's'} ${meta.group}? ` +
           `Each message quotes the tenant's own live ${meta.bill} balance.` +
           (audience === 'ALL'
-            ? ''
-            : ` Tenants who ${meta.otherBill} are skipped.`)
+            ? ' Tenants already reminded this month are skipped.'
+            : ` Tenants who ${meta.otherBill} are skipped, and tenants already reminded this month are skipped.`)
       );
       if (!ok) return;
     }
@@ -101,10 +103,13 @@ export function BulkReminderButton({
       const res = await api.post<{ data: BulkArrearsResponse }>('/api/sms/reminders/bulk-arrears', { audience });
       const r = res.data;
       const skippedCount = r.skipped?.length ?? 0;
+      const already = r.skippedAlreadyReminded ?? 0;
       toast(
         'success',
         r.queued === 0
-          ? `Nothing to remind — no tenant owes ${meta.bill}.`
+          ? already > 0
+            ? `Nothing new sent — everyone owing was already reminded this month (${already} skipped).`
+            : `Nothing to remind — no tenant owes ${meta.bill}.`
           : `${r.queued} reminder${r.queued === 1 ? '' : 's'} queued${skippedCount > 0 ? `, ${skippedCount} skipped — details below` : ''}. ${r.autoSend ? 'Sending now.' : 'Auto-send is off — they wait as Pending on the SMS page.'}`
       );
       setReport(r);

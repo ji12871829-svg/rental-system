@@ -8,14 +8,17 @@ jest.mock('../../src/config/db', () => ({
   poolExec: jest.fn(),
 }));
 jest.mock('../../src/services/smsService', () => ({ dispatchAutoSend: jest.fn() }));
-jest.mock('../../src/services/reminderService', () => ({ prepareReminder: jest.fn() }));
+jest.mock('../../src/services/reminderService', () => ({
+  prepareReminder: jest.fn(),
+  tenantsRemindedSince: jest.fn(),
+}));
 jest.mock('../../src/services/settingsService', () => ({ getSettings: jest.fn() }));
 jest.mock('../../src/services/tenantLedger', () => ({ tenantBalances: jest.fn() }));
 
 import { eatWallClock, reminderPlan, runScheduledReminders } from '../../src/services/autoReminderJob';
 import { query, queryOne } from '../../src/config/db';
 import { dispatchAutoSend } from '../../src/services/smsService';
-import { prepareReminder } from '../../src/services/reminderService';
+import { prepareReminder, tenantsRemindedSince } from '../../src/services/reminderService';
 import { getSettings } from '../../src/services/settingsService';
 import { tenantBalances } from '../../src/services/tenantLedger';
 
@@ -25,6 +28,7 @@ const prepareReminderMock = prepareReminder as jest.Mock;
 const dispatchMock = dispatchAutoSend as jest.Mock;
 const settingsMock = getSettings as jest.Mock;
 const ledgerMock = tenantBalances as jest.Mock;
+const remindedMock = tenantsRemindedSince as jest.Mock;
 
 describe('eatWallClock', () => {
   it('shifts UTC to Africa/Nairobi (UTC+3)', () => {
@@ -67,6 +71,7 @@ describe('runScheduledReminders', () => {
     queryMock.mockResolvedValue([{ id: 1 }, { id: 2 }]);
     queryOneMock.mockResolvedValue({ count: '0' });
     prepareReminderMock.mockResolvedValue({ smsId: 41, message: 'x', emailId: null, whatsappUrl: null });
+    remindedMock.mockResolvedValue(new Set());
     ledgerMock.mockResolvedValue({ combinedBalance: 0 });
   });
 
@@ -108,6 +113,21 @@ describe('runScheduledReminders', () => {
     expect(r.overdueQueued).toBe(1);
     expect(prepareReminderMock).toHaveBeenCalledTimes(1);
     expect(prepareReminderMock).toHaveBeenCalledWith(2, 'OVERDUE', 'SMS', {
+      templateKind: 'AUTO_OVERDUE',
+      userId: null,
+    });
+  });
+
+  it('overdue chase skips a tenant already reminded this month, by any path', async () => {
+    // Both tenants owe; tenant 2 was already reached this month (a hand send
+    // or a blast queued their reminder), so only tenant 1 is chased on the 5th.
+    ledgerMock.mockResolvedValue({ combinedBalance: 4500 });
+    remindedMock.mockResolvedValue(new Set([2]));
+    const r = await runScheduledReminders(new Date('2026-10-05T06:30:00Z'));
+    expect(r.overdueQueued).toBe(1);
+    expect(remindedMock).toHaveBeenCalledWith([1, 2], new Date(Date.UTC(2026, 9, 1)));
+    expect(prepareReminderMock).toHaveBeenCalledTimes(1);
+    expect(prepareReminderMock).toHaveBeenCalledWith(1, 'OVERDUE', 'SMS', {
       templateKind: 'AUTO_OVERDUE',
       userId: null,
     });

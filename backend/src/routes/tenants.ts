@@ -131,8 +131,13 @@ const reminderSchema = z
 
 router.post('/:id/sms-reminder', managerOrAdmin, validateParams(paramsSchema), validateBody(reminderSchema), asyncHandler(async (req, res) => {
   const { kind, channel } = req.body as { kind: ReminderKind; channel: ReminderChannel };
+  // Tagged MANUAL_REMINDER so the bulk reminder's already-reminded gate sees a
+  // hand send from the tenant card — one reminder per tenant per month across
+  // every path. (The card itself never blocks: sending to one tenant by hand
+  // is the operator's deliberate re-send.)
   const result = await prepareReminder(Number(req.params.id), kind, channel, {
     userId: req.user!.userId,
+    templateKind: channel === 'SMS' ? 'MANUAL_REMINDER' : null,
   });
   if (!result) {
     res.status(409).json({

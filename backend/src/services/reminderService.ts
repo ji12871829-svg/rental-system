@@ -550,12 +550,38 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
 // Custom Message Templates apply exactly as they do for a hand-queued
 // reminder. Queue-only: rows auto-dispatch when the SMS pipeline is on,
 // otherwise they wait as PENDING for manual send from the SMS page.
-// Idempotency is deliberately NOT enforced here: the operator explicitly
-// pressed the button, so a second press is a conscious re-send, not a
-// scheduler accident.
+// Idempotency: a tenant who already received a reminder SMS this reporting
+// month is skipped with ALREADY_REMINDed — the bulk buttons are a monthly
+// chase, so pressing rent then water in one round, an accidental re-click,
+// and the scheduler's earlier batch all stop at one text per tenant. The
+// tagged reminder family counts (bulk rows, scheduler batches, hand sends
+// from the Tenants page); receipts and landlord alerts are separate rows and
+// a per-tenant hand send stays available as the deliberate re-send path.
 export type BulkAudience = 'ALL' | 'RENT' | 'WATER';
 
-type BulkSkipReason = 'NO_PHONE' | 'PAID' | 'OTHER_BILL';
+type BulkSkipReason = 'NO_PHONE' | 'PAID' | 'OTHER_BILL' | 'ALREADY_REMINDed';
+
+// The template_kind tags that mark a row as "we already chased this tenant
+// this month" — the bulk buttons, the scheduled batches, and hand sends from
+// the Tenants page (routes/tenants.ts). Receipt rows carry receipt_id and
+// landlord alerts carry tenant_id NULL, so neither can match a tenant here.
+const REMINDER_TAGS = ['MANUAL_BULK_ARREARS', 'MANUAL_REMINDER', 'AUTO_DUE_SOON', 'AUTO_OVERDUE'];
+
+/** Which of these tenants already received a reminder-family SMS since
+ *  `since` (the month start). A FAILED row never reached the phone — a
+ *  re-click after a failure is a retry, not a duplicate; a PENDING row
+ *  counts, because queuing twice would double-send once the pipeline
+ *  flushes. Shared by the bulk buttons and the scheduled overdue chase. */
+export async function tenantsRemindedSince(tenantIds: number[], since: Date): Promise<Set<number>> {
+  if (tenantIds.length === 0) return new Set();
+  const rows = await query<{ tenant_id: number }>(
+    `SELECT DISTINCT tenant_id FROM sms_notifications
+     WHERE tenant_id = ANY($1::int[]) AND template_kind = ANY($2::text[])
+       AND status <> 'FAILED' AND created_at >= $3`,
+    [tenantIds, REMINDER_TAGS, since],
+  );
+  return new Set(rows.map((r) => r.tenant_id));
+}
 
 interface BulkSkippedTenant {
   tenantId: number;
@@ -575,6 +601,8 @@ export interface BulkArrearsResult {
   skippedNoPhone: number;
   /** Owes money, but only on the bill outside the chosen audience. */
   skippedOtherBill: number;
+  /** In the audience, but already got a reminder SMS this month. */
+  skippedAlreadyReminded: number;
   /** Every skipped tenant by name, so the operator can see exactly who and why. */
   skipped: BulkSkippedTenant[];
 }
@@ -599,7 +627,17 @@ export async function sendBulkArrearsReminders(opts: {
   let skippedPaid = 0;
   let skippedNoPhone = 0;
   let skippedOtherBill = 0;
+  let skippedAlreadyReminded = 0;
   const skipped: BulkSkippedTenant[] = [];
+
+  // Who was already chased this month — one indexed lookup for the whole
+  // blast, not one query per tenant. The window is this reporting month,
+  // the same (year, month) the ledger figures above are read against.
+  const monthStart = new Date(Date.UTC(year, month - 1, 1));
+  const alreadyReminded = await tenantsRemindedSince(
+    tenants.map((t) => t.id),
+    monthStart,
+  );
 
   for (const tenant of tenants) {
     const ledger = await tenantBalances(tenant.id, year, month);
@@ -624,6 +662,11 @@ export async function sendBulkArrearsReminders(opts: {
       continue;
     }
     owing += 1;
+    if (alreadyReminded.has(tenant.id)) {
+      skippedAlreadyReminded += 1;
+      skipped.push({ tenantId: tenant.id, tenantName: tenant.full_name, unitNumber: tenant.unit_number, reason: 'ALREADY_REMINDed', bill: null });
+      continue;
+    }
     const kind: ReminderKind =
       rentOwing && ledger.combinedBalance > 0.009
         ? 'BALANCE_DUE'
@@ -647,8 +690,8 @@ export async function sendBulkArrearsReminders(opts: {
     userId: opts.userId ?? null,
     action: 'BULK_ARREARS_REMINDERS',
     entity: 'tenants',
-    newValue: { audience, total: tenants.length, owing, queued, skippedPaid, skippedNoPhone, skippedOtherBill },
+    newValue: { audience, total: tenants.length, owing, queued, skippedPaid, skippedNoPhone, skippedOtherBill, skippedAlreadyReminded },
   });
 
-  return { total: tenants.length, audience, owing, queued, skippedPaid, skippedNoPhone, skippedOtherBill, skipped };
+  return { total: tenants.length, audience, owing, queued, skippedPaid, skippedNoPhone, skippedOtherBill, skippedAlreadyReminded, skipped };
 }
