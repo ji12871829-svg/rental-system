@@ -109,29 +109,38 @@ router.delete('/:id', adminOnly, validateParams(paramsSchema), asyncHandler(asyn
 // Queue/compose one of the reminder templates for this tenant on a chosen
 // channel, composed from the live ledger:
 //   SMS — PENDING sms_notifications row (manual send or auto-send pipeline)
-//   WHATSAPP — no queue, no send: a wa.me click-to-chat URL the operator
-//     reviews and sends from WhatsApp itself (no provider, no cost)
+//   WHATSAPP — a wa.me click-to-chat URL by default (operator reviews and
+//     sends from WhatsApp itself, no provider cost), or — when the Meta
+//     Cloud API is connected and deliver is true — a direct Graph API send
+//     whose outcome (SENT / FAILED / ERRONEOUS + reason) comes back in the
+//     same response.
 //   EMAIL — PENDING email_notifications row with the formal statement breakdown
 // 202: accepted (queued or composed), not yet delivered.
 // Reminder + notice kinds the operator can send by hand. DUE_SOON is absent on
 // purpose: it is the scheduler's own month-end nudge, not something staff
-// trigger. The three notice kinds and the Final Notice are SMS-only — WhatsApp
-// and email have no composition for them, so the channel is refused here
-// instead of silently sending a different message. (The notice kinds report
-// events rather than amount-owed statements; the Final Notice is the arrears
-// escalation the operator fires after reminders have gone unanswered.)
+// trigger. The three notice kinds are SMS-only (they report events, not
+// amount-owed statements). The Final Notice travels by SMS or direct WhatsApp
+// — same escalation letter on either channel — but never email.
 const reminderSchema = z
   .object({
     kind: z.enum(['BALANCE_DUE', 'OVERDUE', 'FINAL_NOTICE', 'WATER_BILLING', 'LATE_FEE', 'WELCOME']),
     channel: z.enum(['SMS', 'WHATSAPP', 'EMAIL']).default('SMS'),
+    // WHATSAPP + true = direct Cloud API delivery (press-send-is-send).
+    // WHATSAPP + false/absent = click-to-chat preview only. Ignored for SMS.
+    deliver: z.boolean().optional(),
   })
-  .refine((value) => (NOTICE_KINDS.has(value.kind) || value.kind === 'FINAL_NOTICE' ? value.channel === 'SMS' : true), {
+  .refine((value) => (NOTICE_KINDS.has(value.kind) ? value.channel === 'SMS' : true), {
     message: 'This notice is only available as an SMS.',
+    path: ['channel'],
+  })
+  .refine((value) => (value.kind === 'FINAL_NOTICE' ? value.channel !== 'EMAIL' : true), {
+    message: 'The Final Notice is not available by email.',
     path: ['channel'],
   });
 
 router.post('/:id/sms-reminder', managerOrAdmin, validateParams(paramsSchema), validateBody(reminderSchema), asyncHandler(async (req, res) => {
   const { kind, channel } = req.body as { kind: ReminderKind; channel: ReminderChannel };
+  const deliver = (req.body as { deliver?: boolean }).deliver === true;
   // Tagged MANUAL_REMINDER so the bulk reminder's per-month cap sees a hand
   // send from the tenant card — a hand reminder is one of a tenant's three
   // monthly chase texts. (The card itself never blocks: sending to one tenant
@@ -142,6 +151,7 @@ router.post('/:id/sms-reminder', managerOrAdmin, validateParams(paramsSchema), v
   const result = await prepareReminder(Number(req.params.id), kind, channel, {
     userId: req.user!.userId,
     templateKind: channel === 'SMS' ? (kind === 'FINAL_NOTICE' ? 'FINAL_NOTICE' : 'MANUAL_REMINDER') : null,
+    deliver,
   });
   if (!result) {
     res.status(409).json({
@@ -158,6 +168,10 @@ router.post('/:id/sms-reminder', managerOrAdmin, validateParams(paramsSchema), v
       smsId: result.smsId,
       emailId: result.emailId,
       whatsappUrl: result.whatsappUrl,
+      whatsappLive: result.whatsappLive ?? false,
+      whatsappId: result.whatsappId ?? null,
+      whatsappStatus: result.whatsappStatus ?? null,
+      whatsappFailure: result.whatsappFailure ?? null,
       message: result.message,
       autoSend: autoSendEnabled(),
     },

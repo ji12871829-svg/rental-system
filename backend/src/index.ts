@@ -7,6 +7,8 @@ import { applyMigrations } from './db/migrations';
 import { getSmsConfig } from './services/smsProvider';
 import { startSmsRetryJob, stopSmsRetryJob } from './services/smsRetryJob';
 import { startEmailRetryJob, stopEmailRetryJob } from './services/emailRetryJob';
+import { startWhatsappRetryJob, stopWhatsappRetryJob } from './services/whatsappRetryJob';
+import { getWhatsappConfig } from './services/whatsappProvider';
 import { startTenantRetentionJob, stopTenantRetentionJob } from './services/tenantRetentionJob';
 import { startStaleUnmatchedAlertJob, stopStaleUnmatchedAlertJob } from './services/staleUnmatchedAlertJob';
 import { startRecurringExpenseJob, stopRecurringExpenseJob } from './services/recurringExpenseJob';
@@ -44,6 +46,7 @@ async function main() {
       console.log(`RPMS API listening on http://localhost:${env.port} (${env.nodeEnv})`);
       startSmsRetryJob();
       startEmailRetryJob();
+      startWhatsappRetryJob();
       startTenantRetentionJob();
       startStaleUnmatchedAlertJob();
       startRecurringExpenseJob();
@@ -67,6 +70,14 @@ async function main() {
           console.log(`SMS: live via ${label}${sms.senderId ? ` (sender: ${sms.senderId})` : ''}.`);
         }
       });
+      // WhatsApp boot hint — synchronous (env-only config), so inline.
+      const wa = getWhatsappConfig();
+      // eslint-disable-next-line no-console
+      console.log(
+        wa.live
+          ? `WhatsApp: live via Meta Cloud API (Graph ${wa.apiVersion}) — reminders and Final Notices send directly.`
+          : 'WhatsApp: click-to-chat mode — set WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID in backend/.env to send directly.'
+      );
     });
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -80,6 +91,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     stopSmsRetryJob();
     stopEmailRetryJob();
+    stopWhatsappRetryJob();
     stopTenantRetentionJob();
     stopStaleUnmatchedAlertJob();
     stopRecurringExpenseJob();

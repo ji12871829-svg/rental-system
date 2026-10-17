@@ -36,6 +36,7 @@ const Assistant = lazy(routeChunks.assistant);
 const Receipts = lazy(routeChunks.receipts);
 const SmsNotifications = lazy(routeChunks.sms);
 const EmailHistory = lazy(routeChunks.emailHistory);
+const WhatsAppHistory = lazy(routeChunks.whatsappHistory);
 const EmailCampaign = lazy(routeChunks.emailCampaign);
 const MessageTemplates = lazy(routeChunks.messageTemplates);
 const Users = lazy(routeChunks.users);
@@ -49,9 +50,14 @@ const ExpenseApprovals = lazy(routeChunks.expenseApprovals);
 const RecurringExpenses = lazy(routeChunks.recurringExpenses);
 const Penalties = lazy(routeChunks.penalties);
 const Documents = lazy(routeChunks.documents);
+const TenancyAgreement = lazy(routeChunks.tenancyAgreement);
 const Vacancies = lazy(routeChunks.vacancies);
 // Public vacancy board — outside the staff auth tree, like the legal pages.
 const PublicVacancies = lazy(routeChunks.publicVacancies);
+// Free public tools — no session required, like the vacancy board.
+const CostEstimator = lazy(routeChunks.estimator);
+const DocumentTemplates = lazy(routeChunks.docTemplates);
+const ReferLandlord = lazy(routeChunks.referLandlord);
 
 // Tenant portal — a separate, public-facing app shell with its own auth
 // context; entirely outside the staff RequireAuth tree.
@@ -114,12 +120,18 @@ const TITLES: Record<string, string> = {
   '/receipts': 'Receipts',
   '/sms': 'SMS Notifications',
   '/emails': 'Email History',
+  '/whatsapp': 'WhatsApp History',
   '/email-campaign': 'Tenant Email',
   '/message-templates': 'Message Templates',
   '/users': 'Users',
   '/audit': 'Audit Logs',
   '/privacy-register': 'Privacy Register',
   '/mpesa-review': 'M-Pesa Review',
+  '/documents': 'Document Vault',
+  '/tenancy-agreement': 'Tenancy Agreement',
+  '/estimator': 'Building Cost Estimator',
+  '/templates': 'Letter Templates',
+  '/refer': 'Refer a Landlord',
   '/login': 'Sign in',
   '/landing': 'Welcome',
   '/register': 'Create account',
@@ -190,6 +202,9 @@ export default function App() {
           <Route path="/privacy" element={<Privacy />} />
           {/* Public vacancy board — marketing surface, no session required. */}
           <Route path="/public-vacancies" element={<PublicVacancies />} />
+          <Route path="/estimator" element={<CostEstimator />} />
+          <Route path="/templates" element={<DocumentTemplates />} />
+          <Route path="/refer" element={<ReferLandlord />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/cookies" element={<Cookies />} />
           <Route path="/refunds" element={<Refund />} />
@@ -222,6 +237,7 @@ export default function App() {
             <Route path="/receipts" element={<Receipts />} />
             <Route path="/sms" element={<SmsNotifications />} />
             <Route path="/emails" element={<EmailHistory />} />
+            <Route path="/whatsapp" element={<WhatsAppHistory />} />
             <Route path="/email-campaign" element={<EmailCampaign />} />
           <Route path="/message-templates" element={<MessageTemplates />} />
             <Route path="/mpesa-review" element={<MpesaReview />} />
@@ -231,6 +247,7 @@ export default function App() {
             <Route path="/recurring-expenses" element={<RecurringExpenses />} />
             <Route path="/penalties" element={<Penalties />} />
             <Route path="/documents" element={<Documents />} />
+            <Route path="/tenancy-agreement" element={<TenancyAgreement />} />
             <Route path="/vacancies" element={<Vacancies />} />
             <Route
               path="/users"

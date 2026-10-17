@@ -3,7 +3,7 @@ import { BrandLogo } from './BrandLogo';
 import { Suspense } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, BookUser, Building2, CalendarDays, ChevronDown, Droplets, FileText, LayoutDashboard, Loader2, LogOut, Mail, Menu, MessageSquareText, ReceiptText, Settings,
+  AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, BookUser, Building2, CalendarDays, ChevronDown, Droplets, FileText, LayoutDashboard, Loader2, LogOut, Mail, Menu, MessageCircle, MessageSquareText, ReceiptText, Settings,
   Smartphone, Ticket, UserCog, Users as UsersIcon, Wallet, X, ClipboardCheck, Zap, Wrench, Truck, BadgeCheck, Repeat,
   Percent, FolderLock, Megaphone, Sparkles,
 } from 'lucide-react';
@@ -45,6 +45,7 @@ const PREFETCH_BY_PATH: Record<string, keyof typeof routeChunks> = {
   '/assistant': 'assistant',
   '/sms': 'sms',
   '/emails': 'emailHistory',
+  '/whatsapp': 'whatsappHistory',
   '/email-campaign': 'emailCampaign',
   '/message-templates': 'messageTemplates',
   '/mpesa-review': 'mpesaReview',
@@ -125,6 +126,7 @@ const NAV_SECTIONS: NavSection[] = [
     icon: Smartphone,
     items: [
       { to: '/sms', label: 'SMS Notifications', icon: Smartphone },
+      { to: '/whatsapp', label: 'WhatsApp History', icon: MessageCircle },
       { to: '/emails', label: 'Email History', icon: Mail },
       { to: '/email-campaign', label: 'Tenant Email', icon: Mail, managerOnly: true },
       { to: '/message-templates', label: 'Message Templates', icon: MessageSquareText, managerOnly: true },

@@ -4,8 +4,12 @@
 // composes the chosen channel:
 //   SMS      — PENDING sms_notifications row via smsService.queueSms
 //   EMAIL    — PENDING email_notifications row via emailService.queuePreparedEmail
-//   WHATSAPP — no queue, no send: a wa.me click-to-chat URL the operator
-//              reviews and sends from WhatsApp itself (no provider, no cost)
+//   WHATSAPP — either the click-to-chat URL (a wa.me link the operator
+//              reviews and sends from WhatsApp itself) or, when the Meta
+//              Cloud API is connected AND the request asked for delivery,
+//              a whatsapp_notifications row sent directly through the Graph
+//              API (the button press is the send). The URL rides along as
+//              the manual fallback either way.
 // Each channel's wording can be overridden by a Message Templates row; merge
 // fields resolve against the same figures. Before this module existed the
 // flow lived in smsService and reached into emailService for the email twin —
@@ -38,6 +42,8 @@ import { renderMergeFields, type MergeVars } from '../utils/mergeFields';
 import { rentMonths, tenantBalances } from './tenantLedger';
 import { queuePreparedEmail } from './emailService';
 import { dispatchAutoSend, queueSms } from './smsService';
+import { getWhatsappConfig } from './whatsappProvider';
+import { queuePreparedWhatsapp, sendWhatsappNotification } from './whatsappService';
 
 // The shared figures every reminder channel composes from. previousRent
 // (YTD expected minus THIS month's expected) drives the statement's
@@ -245,19 +251,30 @@ export interface ReminderResult {
   message: string;
   smsId: number | null;
   emailId: number | null;
-  /** WhatsApp click-to-chat URL (wa.me) the operator opens — not queued. */
+  /** WhatsApp click-to-chat URL (wa.me) — the manual fallback on every WhatsApp result. */
   whatsappUrl: string | null;
+  /**
+   * WhatsApp Cloud API delivery state. `whatsappLive` flags whether the
+   * provider is connected (so the UI knows which button to show). The three
+   * row fields are populated ONLY when a direct send was requested
+   * (prepareReminder's `deliver` flag): the row that was queued, its final
+   * status, and the failure reason when Meta (or the network) refused.
+   */
+  whatsappLive?: boolean;
+  whatsappId?: number | null;
+  whatsappStatus?: 'PENDING' | 'SENT' | 'FAILED' | 'ERRONEOUS' | null;
+  whatsappFailure?: string | null;
 }
 
 // Queue/compose a tenant reminder on the chosen channel. Each channel has
 // its own helper below; this dispatcher resolves the shared figures once and
-// delegates. Returns null (SMS/EMAIL) when the tenant lacks the channel's
-// contact point.
+// delegates. Returns null (SMS/EMAIL/preview-WhatsApp) when the tenant lacks
+// the channel's contact point.
 export async function prepareReminder(
   tenantId: number,
   kind: ReminderKind,
   channel: ReminderChannel,
-  opts: { userId?: number | null; templateKind?: string | null } = {},
+  opts: { userId?: number | null; templateKind?: string | null; deliver?: boolean } = {},
 ): Promise<ReminderResult | null> {
   const f = await gatherReminderFigures(tenantId);
   // The notice kinds are SMS-only — refuse the other channels rather than
@@ -275,11 +292,13 @@ export async function prepareReminder(
   if (kind === 'LATE_FEE' && f.rentBalance <= 0) {
     throw badRequest('This tenant has no overdue rent, so there is no late fee to report.');
   }
-  // The Final Notice demands money, so like the notices it stays SMS-only —
-  // and it is refused outright for a tenant whose ledger shows nothing (or a
-  // net credit): there is no arrears to demand, let alone escalate about.
-  if (kind === 'FINAL_NOTICE' && channel !== 'SMS') {
-    throw badRequest('The Final Notice is only available as an SMS.');
+  // The Final Notice demands money by SMS or direct WhatsApp (the same
+  // escalation letter on either channel); email is refused — a formal legal
+  // warning must land, not sit in a spam folder. It is refused outright for
+  // a tenant whose ledger shows nothing (or a net credit): there is no
+  // arrears to demand, let alone escalate about.
+  if (kind === 'FINAL_NOTICE' && channel === 'EMAIL') {
+    throw badRequest('The Final Notice is not available by email.');
   }
   if (kind === 'FINAL_NOTICE' && Math.max(f.combinedBalance, 0) <= 0.009) {
     throw badRequest('This tenant owes nothing on the ledger — there is no arrears for a Final Notice to demand.');
@@ -287,14 +306,33 @@ export async function prepareReminder(
   // DUE_SOON is the scheduler's SMS-only nudge; the manual channels treat it
   // as the neutral BALANCE_DUE statement rather than mislabeling it.
   const channelKind: ReminderKind = kind === 'DUE_SOON' ? 'BALANCE_DUE' : kind;
-  if (channel === 'WHATSAPP') return whatsappReminder(f, channelKind, tenantId, opts.userId ?? null);
+  if (channel === 'WHATSAPP') {
+    return whatsappReminder(f, channelKind, tenantId, opts.userId ?? null, opts.deliver === true);
+  }
   if (channel === 'EMAIL') return emailReminder(f, channelKind, tenantId, opts.userId ?? null);
   // SMS (default) — keeps the real kind so SMS_RENT_DUE_SOON can override,
   // and tags the row (templateKind) so the scheduler can dedupe its batches.
   return smsReminder(f, kind, tenantId, opts.userId ?? null, opts.templateKind ?? null);
 }
 
-// WHATSAPP — nothing is queued or sent: returns a wa.me click-to-chat URL
+// WHATSAPP — two delivery modes on one composition:
+//   preview / click-to-chat (deliver=false)  nothing is queued or sent:
+//     the result carries a wa.me URL the operator opens and presses send on.
+//     No provider cost, no unreviewed outbound. This is also the automatic
+//     fallback whenever the Cloud API is not connected.
+//   direct Cloud API (deliver=true)          the button press IS the send:
+//     a whatsapp_notifications row is queued and delivered through Meta's
+//     Graph API immediately; the returned status is the real outcome
+//     (SENT / FAILED / ERRONEOUS + reason) so the operator sees it in the
+//     same click. The wa.me URL rides along in the result as the manual
+//     fallback when the automated path fails.
+//
+// Wording: the two balance kinds (BALANCE_DUE / OVERDUE) have their own
+// WhatsApp builders + customizable WHATSAPP_* templates. Every other kind
+// (Final Notice included) shares the SMS composition exactly — same custom
+// template override, same fallback builder — so both channels say the same
+// thing about the same arrears.
+//
 // The exact "chat with support" sentence whatsappOverdueMessage appends,
 // factored out so the customized WHATSAPP_OVERDUE template's {{support_link}}
 // merge field expands to identical text.
@@ -304,83 +342,121 @@ function whatsappSupportLink(phone: string | null): string {
     : '';
 }
 
-// with the text pre-filled. The operator reviews it in WhatsApp before
-// pressing send; there is no provider cost and no unreviewed outbound.
 async function whatsappReminder(
   f: ReminderFigures,
   kind: ReminderKind,
   tenantId: number,
   userId: number | null,
+  deliver = false,
 ): Promise<ReminderResult | null> {
-  // A customized Message Templates row (WHATSAPP_BALANCE_DUE /
-  // WHATSAPP_OVERDUE) overrides the pre-filled wording. {{support_link}}
-  // expands to the same "chat with support" sentence whatsappOverdueMessage
-  // appends, or to nothing when no support phone is configured.
-  const custom = await getCustomTemplate(kind === 'BALANCE_DUE' ? 'WHATSAPP_BALANCE_DUE' : 'WHATSAPP_OVERDUE');
-  // Same pay-by date the SMS chase quotes: the 10th, or next month's 10th
-  // once the month's deadline has passed.
   const deadline = paymentDeadlineLabel(new Date());
-  const text = custom
-    ? renderMergeFields(
-        custom.body,
-        kind === 'BALANCE_DUE'
-          ? {
-              name: f.tenantName,
-              unit: f.unitNumber,
-              month: f.monthName,
-              year: f.year,
-              current_rent: f.currentRent,
-              previous_balance: f.previousRentBalance,
-              total_due: Math.max(f.combinedBalance, 0),
-              account: `Unit ${f.unitNumber}`,
-              pay_line: whatsappPayLine(f.accountNumber, f.paymentMethod),
-              payment_method: f.paymentMethod,
-              currency: f.currency,
-              deadline,
-            }
-          : {
-              name: f.tenantName,
-              unit: f.unitNumber,
-              amount_due: Math.max(f.rentBalance, 0),
-              support_link: whatsappSupportLink((await getBusinessIdentity()).phone),
-              currency: f.currency,
-              deadline,
-            },
-      )
-    : kind === 'BALANCE_DUE'
-    ? whatsappBalanceDueMessage({
-        tenantName: f.tenantName,
-        unitNumber: f.unitNumber,
-        monthName: f.monthName,
-        year: f.year,
-        currentRent: f.currentRent,
-        previousBalance: f.previousRentBalance,
-        totalDue: Math.max(f.combinedBalance, 0),
-        accountNumber: f.accountNumber,
-        paymentMethod: f.paymentMethod,
-        currency: f.currency,
-        deadline,
-      })
-    : whatsappOverdueMessage({
-        tenantName: f.tenantName,
-        unitNumber: f.unitNumber,
-        amountDue: Math.max(f.rentBalance, 0),
-        supportPhone: (await getBusinessIdentity()).phone,
-        currency: f.currency,
-        deadline,
-      });
+  let text: string;
+  if (kind === 'BALANCE_DUE' || kind === 'OVERDUE') {
+    // A customized Message Templates row (WHATSAPP_BALANCE_DUE /
+    // WHATSAPP_OVERDUE) overrides the pre-filled wording.
+    const custom = await getCustomTemplate(kind === 'BALANCE_DUE' ? 'WHATSAPP_BALANCE_DUE' : 'WHATSAPP_OVERDUE');
+    text = custom
+      ? renderMergeFields(
+          custom.body,
+          kind === 'BALANCE_DUE'
+            ? {
+                name: f.tenantName,
+                unit: f.unitNumber,
+                month: f.monthName,
+                year: f.year,
+                current_rent: f.currentRent,
+                previous_balance: f.previousRentBalance,
+                total_due: Math.max(f.combinedBalance, 0),
+                account: `Unit ${f.unitNumber}`,
+                pay_line: whatsappPayLine(f.accountNumber, f.paymentMethod),
+                payment_method: f.paymentMethod,
+                currency: f.currency,
+                deadline,
+              }
+            : {
+                name: f.tenantName,
+                unit: f.unitNumber,
+                amount_due: Math.max(f.rentBalance, 0),
+                support_link: whatsappSupportLink((await getBusinessIdentity()).phone),
+                currency: f.currency,
+                deadline,
+              },
+        )
+      : kind === 'BALANCE_DUE'
+      ? whatsappBalanceDueMessage({
+          tenantName: f.tenantName,
+          unitNumber: f.unitNumber,
+          monthName: f.monthName,
+          year: f.year,
+          currentRent: f.currentRent,
+          previousBalance: f.previousRentBalance,
+          totalDue: Math.max(f.combinedBalance, 0),
+          accountNumber: f.accountNumber,
+          paymentMethod: f.paymentMethod,
+          currency: f.currency,
+          deadline,
+        })
+      : whatsappOverdueMessage({
+          tenantName: f.tenantName,
+          unitNumber: f.unitNumber,
+          amountDue: Math.max(f.rentBalance, 0),
+          supportPhone: (await getBusinessIdentity()).phone,
+          currency: f.currency,
+          deadline,
+        });
+  } else {
+    // Shared composition — Final Notice (and any future amount kind) reads
+    // exactly like its SMS twin, customized template included.
+    text = await composeReminderSmsText(f, kind);
+  }
   if (!f.phoneNumber) return null;
   const digits = f.phoneNumber.replace(/\D/g, '');
-  // Kenya numbers stored as 07… normalize to 2547… for wa.me.
+  // Kenya numbers stored as 07… normalize to 2547… for wa.me / Meta wa_id.
   const intl = digits.startsWith('0') ? `254${digits.slice(1)}` : digits;
-  await logAudit({
+  const whatsappUrl = `https://wa.me/${intl}?text=${encodeURIComponent(text)}`;
+
+  if (!deliver) {
+    await logAudit({
+      userId,
+      action: 'REMINDER_WHATSAPP_COMPOSED',
+      entity: 'tenant',
+      entityId: tenantId,
+      newValue: { kind },
+    });
+    return {
+      message: text,
+      smsId: null,
+      emailId: null,
+      whatsappUrl,
+      whatsappLive: getWhatsappConfig().live,
+    };
+  }
+
+  // Direct delivery — refuse before queueing when the channel is not
+  // connected, so the row never exists in a state nothing will send.
+  if (!getWhatsappConfig().live) {
+    throw badRequest(
+      'Direct WhatsApp delivery is not configured — set WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID in backend/.env, or open the WhatsApp link and send it manually.'
+    );
+  }
+  const queued = await queuePreparedWhatsapp({
+    tenantId,
+    phoneNumber: f.phoneNumber,
+    message: text,
+    templateKind: null,
     userId,
-    action: 'REMINDER_WHATSAPP_COMPOSED',
-    entity: 'tenant',
-    entityId: tenantId,
-    newValue: { kind },
   });
-  return { message: text, smsId: null, emailId: null, whatsappUrl: `https://wa.me/${intl}?text=${encodeURIComponent(text)}` };
+  const sent = await sendWhatsappNotification(queued.id);
+  return {
+    message: text,
+    smsId: null,
+    emailId: null,
+    whatsappUrl,
+    whatsappLive: true,
+    whatsappId: sent.id,
+    whatsappStatus: sent.status,
+    whatsappFailure: sent.failure_reason,
+  };
 }
 
 // EMAIL — PENDING email_notifications row (formal statement breakdown).
@@ -432,8 +508,24 @@ async function smsReminder(
   templateKind: string | null = null,
 ): Promise<ReminderResult | null> {
   if (!f.phoneNumber) return null;
-  // A customized Message Templates row overrides the hardcoded wording for
-  // every kind; merge fields resolve per tenant from the same figures.
+  const message = await composeReminderSmsText(f, kind);
+  const smsId = await queueSms({ tenantId, phoneNumber: f.phoneNumber, message, templateKind });
+  await logAudit({
+    userId,
+    action: 'SMS_REMINDER_QUEUED',
+    entity: 'tenant',
+    entityId: tenantId,
+    newValue: { kind, smsId },
+  });
+  return { message, smsId, emailId: null, whatsappUrl: null };
+}
+
+// The SMS text for a reminder kind — a customized Message Templates row
+// overrides the hardcoded wording for every kind; merge fields resolve per
+// tenant from the same figures. Shared by the SMS row and the WHATSAPP
+// channel's non-balance kinds (Final Notice included), so both channels say
+// the same thing about the same arrears.
+async function composeReminderSmsText(f: ReminderFigures, kind: ReminderKind): Promise<string> {
   const templateKindName: TemplateKind = TEMPLATE_KIND_BY_REMINDER[kind];
   const custom = await getCustomTemplate(templateKindName);
   // DUE_SOON speaks about NEXT month (it is sent on the last day of this one).
@@ -451,18 +543,9 @@ async function smsReminder(
     deadline,
     business: f.identityName ?? '',
   };
-  const message = custom
+  return custom
     ? renderMergeFields(custom.body, mergeVarsFor(kind, f, baseVars, nextMonth))
     : fallbackSmsMessage(kind, f, nextMonth, nextYear, deadline);
-  const smsId = await queueSms({ tenantId, phoneNumber: f.phoneNumber, message, templateKind });
-  await logAudit({
-    userId,
-    action: 'SMS_REMINDER_QUEUED',
-    entity: 'tenant',
-    entityId: tenantId,
-    newValue: { kind, smsId },
-  });
-  return { message, smsId, emailId: null, whatsappUrl: null };
 }
 
 // Reminder kind -> the Message Templates kind whose customization overrides

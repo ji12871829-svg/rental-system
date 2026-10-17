@@ -330,21 +330,22 @@ describe('Tenant reminders — Final Notice (SMS escalation)', () => {
     expect(Number(audit.new_value.smsId)).toBe(Number(res.body.data.smsId));
   });
 
-  it('refuses WhatsApp and email — the escalation is SMS-only', async () => {
+  it('refuses email only — the escalation travels by SMS or WhatsApp', async () => {
     const before = await countRows('sms_notifications', tenantId);
+    // WhatsApp composes (no deliver flag → click-to-chat only here): allowed.
     const resWhatsapp = await request(app)
       .post(`/api/tenants/${tenantId}/sms-reminder`)
       .set(auth(adminToken))
       .send({ kind: 'FINAL_NOTICE', channel: 'WHATSAPP' });
-    expect(resWhatsapp.status).toBe(400);
-    expect(resWhatsapp.body.error).toBe('BAD_REQUEST');
+    expect(resWhatsapp.status).toBe(202);
+    expect(resWhatsapp.body.data.whatsappUrl).toContain('https://wa.me/');
+    expect(resWhatsapp.body.data.whatsappId).toBeNull();
 
     const resEmail = await request(app)
       .post(`/api/tenants/${tenantId}/sms-reminder`)
       .set(auth(adminToken))
       .send({ kind: 'FINAL_NOTICE', channel: 'EMAIL' });
     expect(resEmail.status).toBe(400);
-    expect(resEmail.body.error).toBe('BAD_REQUEST');
 
     expect(await countRows('sms_notifications', tenantId)).toBe(before);
   });
