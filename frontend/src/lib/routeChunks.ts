@@ -30,6 +30,7 @@ export const routeChunks = {
   receipts: () => import('../pages/Receipts'),
   sms: () => import('../pages/SmsNotifications'),
   emailHistory: () => import('../pages/EmailHistory'),
+  whatsappHistory: () => import('../pages/WhatsAppHistory'),
   emailCampaign: () => import('../pages/EmailCampaign'),
   messageTemplates: () => import('../pages/MessageTemplates'),
   users: () => import('../pages/Users'),
@@ -43,8 +44,12 @@ export const routeChunks = {
   recurringExpenses: () => import('../pages/RecurringExpenses'),
   penalties: () => import('../pages/Penalties'),
   documents: () => import('../pages/Documents'),
+  tenancyAgreement: () => import('../pages/TenancyAgreement'),
   vacancies: () => import('../pages/Vacancies'),
   publicVacancies: () => import('../pages/PublicVacancies'),
+  estimator: () => import('../pages/CostEstimator'),
+  docTemplates: () => import('../pages/DocumentTemplates'),
+  referLandlord: () => import('../pages/ReferLandlord'),
   legal: () => import('../pages/Legal'),
 } as const;
 

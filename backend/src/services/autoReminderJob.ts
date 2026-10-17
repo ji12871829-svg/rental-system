@@ -16,7 +16,7 @@
 // NODE_ENV=test like every job in index.ts.
 import { query, queryOne } from '../config/db';
 import { dispatchAutoSend } from './smsService';
-import { prepareReminder } from './reminderService';
+import { prepareReminder, tenantsRemindedSince } from './reminderService';
 import { getSettings } from './settingsService';
 import { tenantBalances } from './tenantLedger';
 
@@ -110,11 +110,21 @@ export async function runScheduledReminders(now: Date = new Date()): Promise<Sch
   if (plan.overdue && !(await batchAlreadyRan('AUTO_OVERDUE', overdueWindowStartUtc(now)))) {
     const year = settings.reporting_year;
     const month = eatWallClock(now).getUTCMonth() + 1;
+    // One reminder per tenant per month across every path: a tenant the
+    // operator already chased by hand (tenant card) or via a bulk blast this
+    // month is skipped here too — the 5th-of-month batch must never re-text
+    // someone who has already been reached. DUE_SOON above stays ungated: it
+    // speaks about NEXT month, a different message.
+    const reminded = await tenantsRemindedSince(
+      tenants.map((t) => t.id),
+      new Date(Date.UTC(year, month - 1, 1)),
+    );
     for (const tenant of tenants) {
       // Arrears gate from the ledger module — the same figures the manual
       // reminder quotes, so the chase can never contradict the tenant card.
       const ledger = await tenantBalances(tenant.id, year, month);
       if (ledger.combinedBalance <= 0.009) continue;
+      if (reminded.has(tenant.id)) continue;
       const sent = await prepareReminder(tenant.id, 'OVERDUE', 'SMS', {
         templateKind: 'AUTO_OVERDUE',
         userId: null,

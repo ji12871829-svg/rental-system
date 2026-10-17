@@ -20,6 +20,7 @@ import auditRoutes from './routes/audit';
 import authRoutes from './routes/auth';
 import brandingRoutes from './routes/branding';
 import emailRoutes from './routes/emails';
+import whatsappRoutes from './routes/whatsapp';
 import templateRoutes from './routes/templates';
 import privacyRequestRoutes from './routes/privacyRequests';
 import publicRoutes from './routes/public';
@@ -248,6 +249,7 @@ export function createApp() {
   mountApi('/api/receipts', receiptRoutes, 'receipts');
   mountApi('/api/sms', smsRoutes, 'sms');
   mountApi('/api/emails', emailRoutes, 'emails');
+  mountApi('/api/whatsapp', whatsappRoutes, 'whatsapp');
   mountApi('/api/assistant', assistantRoutes, 'assistant');
   mountApi('/api/templates', templateRoutes, 'templates');
   mountApi('/api/privacy-requests', privacyRequestRoutes, 'privacyRequests');

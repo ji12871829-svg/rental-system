@@ -44,6 +44,12 @@ export const env = {
   // browser makes no cross-origin request. This keeps split deploys working.
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   smsProvider: (process.env.SMS_PROVIDER || 'mock').toLowerCase() as 'mock' | 'africastalking' | 'twilio' | 'textbee',
+  // WhatsApp Cloud API (official Meta messaging) — Graph API version pinned
+  // at request time. The credentials themselves (WHATSAPP_TOKEN /
+  // WHATSAPP_PHONE_NUMBER_ID) are read at call time by whatsappProvider so an
+  // operator can add them without a rebuild, and so the tests can inject
+  // them per-suite.
+  whatsappApiVersion: process.env.WHATSAPP_API_VERSION || 'v21.0',
   // Auto-send receipt SMS right after the payment commits (set false to keep
   // them PENDING for manual sending from the SMS history page).
   smsAutoSend: (process.env.SMS_AUTO_SEND || 'true').toLowerCase() !== 'false',

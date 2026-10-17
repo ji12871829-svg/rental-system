@@ -15,6 +15,10 @@
 //   7. Audience RENT reaches rent debtors (incl. owes-both) but not water-only;
 //      audience WATER the mirror image; paid tenants hear nothing either way.
 //   8. Response counts queueing, not delivery (auto-send is off under test).
+//   9. Repeat cap: a tenant chased MAX_ARREARS_REMINDERS_PER_MONTH (3) times
+//      this month is skipped with ALREADY_REMINDed — presses queue up to the
+//      allowance, the press that would exceed it queues nothing. A FAILED row
+//      frees its slot (that attempt never reached a phone).
 //
 // Hermetic: the suite creates its own units/tenants/payments/readings and
 // removes them in afterAll (payments and readings are ON DELETE RESTRICT, so
@@ -92,6 +96,14 @@ async function smsRowsFor(tenantId: number) {
       [tenantId],
     )
   ).rows as { message: string; status: string; template_kind: string }[];
+}
+
+// Fresh queue state for a tenant: the repeat cap counts reminder-family rows
+// this month, so tests that need a blast to actually queue (wording, audience
+// targeting) clear the fixture tenants' rows first.
+async function clearSmsRows(): Promise<void> {
+  const ids = [rentTenantId, waterTenantId, bothTenantId].filter(Boolean);
+  await pool.query(`DELETE FROM sms_notifications WHERE tenant_id = ANY($1::int[])`, [ids]);
 }
 
 beforeAll(async () => {
@@ -208,7 +220,7 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
     expect(rentRows).toHaveLength(1);
     expect(rentRows[0].status).toBe('PENDING');
     expect(rentRows[0].message).toContain('Bulk Arrears Phone Tenant');
-    expect(rentRows[0].message).toMatch(/rent for Unit .* \(.* 2026\) is unpaid/);
+    expect(rentRows[0].message).toMatch(/rent for Unit .* \(.*\) is unpaid/);
     expect(rentRows[0].message).not.toContain('{{');
 
     // Water-only debtor: reminded about the water charge (KSh 1000 of it),
@@ -224,7 +236,7 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
     expect(bothRows).toHaveLength(1);
     expect(bothRows[0].status).toBe('PENDING');
     expect(bothRows[0].message).toContain('Bulk Arrears Both Tenant');
-    expect(bothRows[0].message).toMatch(/arrears .* 2026: Rent KSh \d+ \+ Water KSh 1000 = Total KSh \d+/);
+    expect(bothRows[0].message).toMatch(/arrears .+: Rent KSh \d+ \+ Water KSh 1000 = Total KSh \d+/);
 
     // Paid-up tenant: nothing queued, ever — no row from this batch.
     expect(await smsRowsFor(paidTenantId)).toHaveLength(0);
@@ -240,6 +252,54 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
     for (const id of [rentTenantId, waterTenantId, bothTenantId]) {
       expect(skipped.some((s) => s.tenantId === id)).toBe(false);
     }
+  });
+
+  it('keeps repeating up to the three-per-month cap, then skips with ALREADY_REMINDed', async () => {
+    // The previous blast queued one reminder per debtor. Under the cap the
+    // next press queues a SECOND reminder for each of them.
+    const res2 = await request(app).post('/api/sms/reminders/bulk-arrears').set(auth(adminToken)).send({});
+    expect(res2.status).toBe(201);
+    expect(await smsRowsFor(rentTenantId)).toHaveLength(2);
+    expect(await smsRowsFor(waterTenantId)).toHaveLength(2);
+    expect(await smsRowsFor(bothTenantId)).toHaveLength(2);
+
+    // Third press reaches the cap — rows sit at three each.
+    await request(app).post('/api/sms/reminders/bulk-arrears').set(auth(adminToken)).send({});
+    expect(await smsRowsFor(rentTenantId)).toHaveLength(3);
+    expect(await smsRowsFor(waterTenantId)).toHaveLength(3);
+    expect(await smsRowsFor(bothTenantId)).toHaveLength(3);
+
+    // Fourth press: every debtor is at the cap — nothing queues for them and
+    // each reports ALREADY_REMINDed.
+    const res4 = await request(app).post('/api/sms/reminders/bulk-arrears').set(auth(adminToken)).send({});
+    expect(res4.status).toBe(201);
+    expect(await smsRowsFor(rentTenantId)).toHaveLength(3);
+    expect(await smsRowsFor(waterTenantId)).toHaveLength(3);
+    expect(await smsRowsFor(bothTenantId)).toHaveLength(3);
+    expect(res4.body.data.skippedAlreadyReminded).toBeGreaterThanOrEqual(3);
+    const skipped4 = res4.body.data.skipped as Array<{ tenantId: number; reason: string }>;
+    for (const id of [rentTenantId, waterTenantId, bothTenantId]) {
+      expect(skipped4.find((s) => s.tenantId === id)?.reason).toBe('ALREADY_REMINDed');
+    }
+    // The paid tenant keeps its own reason even though this blast had
+    // nothing for them either way.
+    expect(skipped4.find((s) => s.tenantId === paidTenantId)?.reason).toBe('PAID');
+
+    // A FAILED row never reached a phone: flipping the rent debtor's oldest
+    // attempt to FAILED frees its slot, and the next press queues a retry.
+    await pool.query(
+      `UPDATE sms_notifications SET status = 'FAILED'
+       WHERE id = (SELECT id FROM sms_notifications
+                   WHERE tenant_id = $1 AND template_kind = 'MANUAL_BULK_ARREARS'
+                   ORDER BY id LIMIT 1)`,
+      [rentTenantId],
+    );
+    const res5 = await request(app).post('/api/sms/reminders/bulk-arrears').set(auth(adminToken)).send({});
+    expect(res5.status).toBe(201);
+    const rows5 = await smsRowsFor(rentTenantId);
+    expect(rows5).toHaveLength(4);
+    expect(rows5.filter((r) => r.status === 'PENDING')).toHaveLength(3);
+    expect(rows5.some((r) => r.status === 'FAILED')).toBe(true);
   });
 
   it('rejects an unknown audience without queueing anything', async () => {
@@ -258,6 +318,7 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
 
   describe('audience targeting', () => {
     it("audience RENT reminds rent debtors only — the water-only debtor hears nothing new", async () => {
+      await clearSmsRows();
       const before = {
         rent: (await smsRowsFor(rentTenantId)).length,
         water: (await smsRowsFor(waterTenantId)).length,
@@ -281,35 +342,81 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
       expect((await smsRowsFor(phonelessTenantId)).length).toBe(before.phoneless);
     });
 
-    it("audience WATER reminds water debtors only — the rent-only debtor hears nothing new", async () => {      const before = {
+    it('audience WATER after the rent blast repeats toward the cap, then stops at it', async () => {
+      // Running straight on from the RENT blast above: both-debtor has one
+      // row, water-only debtor none. Each WATER press queues their next
+      // reminder until both sit at the three-per-month cap.
+      const before = {
         rent: (await smsRowsFor(rentTenantId)).length,
         water: (await smsRowsFor(waterTenantId)).length,
         both: (await smsRowsFor(bothTenantId)).length,
         paid: (await smsRowsFor(paidTenantId)).length,
       };
-      const res = await request(app)
+      expect(before.both).toBe(1);
+
+      // Press #1: the water-only debtor gets their first chase, the
+      // owes-both debtor their second this month.
+      const res1 = await request(app)
         .post('/api/sms/reminders/bulk-arrears')
         .set(auth(adminToken))
         .send({ audience: 'WATER' });
-      expect(res.status).toBe(201);
-      expect(res.body.data.audience).toBe('WATER');
-      expect(res.body.data.skippedOtherBill).toBeGreaterThanOrEqual(1);
+      expect(res1.status).toBe(201);
+      expect(res1.body.data.audience).toBe('WATER');
+      expect(res1.body.data.skippedOtherBill).toBeGreaterThanOrEqual(1);
       expect((await smsRowsFor(waterTenantId)).length).toBe(before.water + 1);
       expect((await smsRowsFor(bothTenantId)).length).toBe(before.both + 1);
       expect((await smsRowsFor(rentTenantId)).length).toBe(before.rent);
       expect((await smsRowsFor(paidTenantId)).length).toBe(before.paid);
+
+      // Press #2 queues the last reminder the owes-both debtor is allowed —
+      // they sit at three rows; the water-only debtor started one text
+      // behind and still has one press of allowance.
+      await request(app)
+        .post('/api/sms/reminders/bulk-arrears')
+        .set(auth(adminToken))
+        .send({ audience: 'WATER' });
+      expect((await smsRowsFor(bothTenantId)).length).toBe(before.both + 2);
+      expect((await smsRowsFor(waterTenantId)).length).toBe(before.water + 2);
+
+      // Press #3: the owes-both debtor has reached the cap — skipped — while
+      // the water-only debtor queues their last allowed reminder.
+      const res3 = await request(app)
+        .post('/api/sms/reminders/bulk-arrears')
+        .set(auth(adminToken))
+        .send({ audience: 'WATER' });
+      expect(res3.status).toBe(201);
+      expect((await smsRowsFor(bothTenantId)).length).toBe(before.both + 2);
+      expect((await smsRowsFor(waterTenantId)).length).toBe(before.water + 3);
+      const skipped = res3.body.data.skipped as Array<{ tenantId: number; reason: string }>;
+      expect(skipped.find((s) => s.tenantId === bothTenantId)?.reason).toBe('ALREADY_REMINDed');
+      expect(skipped.find((s) => s.tenantId === waterTenantId)?.reason).toBeUndefined();
+
+      // Press #4: the water-only debtor has reached the cap too — nothing
+      // queues for either debtor.
+      const res4 = await request(app)
+        .post('/api/sms/reminders/bulk-arrears')
+        .set(auth(adminToken))
+        .send({ audience: 'WATER' });
+      expect(res4.status).toBe(201);
+      expect((await smsRowsFor(bothTenantId)).length).toBe(before.both + 2);
+      expect((await smsRowsFor(waterTenantId)).length).toBe(before.water + 3);
+      const skipped4 = res4.body.data.skipped as Array<{ tenantId: number; reason: string }>;
+      for (const id of [bothTenantId, waterTenantId]) {
+        expect(skipped4.find((s) => s.tenantId === id)?.reason).toBe('ALREADY_REMINDed');
+      }
     });
 
     it('send-money mode points at the dedicated money line with no account reference', async () => {
       // The operator collects by Send Money on a dedicated line while the
       // contact phone stays a different number: reminders must name the
-      // money line and never mention an account.
+      // money line and never mention an account reference.
       const setRes = await request(app)
         .put('/api/branding')
         .set(auth(adminToken))
         .send({ sendMoneyPhone: '0712000001', contactPhone: '0712000002', paybillEnabled: false });
       expect(setRes.status).toBe(200);
       try {
+        await clearSmsRows();
         const before = (await smsRowsFor(rentTenantId)).length;
         const res = await request(app)
           .post('/api/sms/reminders/bulk-arrears')
@@ -334,6 +441,7 @@ describe('POST /api/sms/reminders/bulk-arrears', () => {
         .send({ sendMoneyPhone: null, contactPhone: '0712000003', paybillEnabled: false });
       expect(setRes.status).toBe(200);
       try {
+        await clearSmsRows();
         const before = (await smsRowsFor(rentTenantId)).length;
         const res = await request(app)
           .post('/api/sms/reminders/bulk-arrears')

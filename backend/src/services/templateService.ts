@@ -19,6 +19,7 @@ export type TemplateKind =
   | 'SMS_COMBINED_RECEIPT'
   | 'SMS_BALANCE_DUE'
   | 'SMS_OVERDUE'
+  | 'SMS_FINAL_NOTICE'
   | 'SMS_LANDLORD_ALERT'
   | 'SMS_RENT_DUE_SOON'
   | 'SMS_WATER_BILLING'
@@ -79,23 +80,35 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     kind: 'SMS_BALANCE_DUE',
     label: 'Balance Due Statement',
     channel: 'SMS' as const,
-    description: 'The itemized arrears reminder an operator sends from the SMS page, a tenant card, or the one-click bulk button — rent and water stated separately. {{account_clause}} carries the account reference and vanishes when the operator collects by Send Money (no reference exists). Rent-only arrears automatically shorten when nothing is customized.',
-    fields: ['name', 'unit', 'period', 'rent_due', 'water_due', 'total_due', 'account', 'account_clause', 'payment_method', 'currency', 'business'],
+    description: 'The itemized arrears reminder an operator sends from the SMS page, a tenant card, or the one-click bulk button — rent and water stated separately, with the pay-by deadline ({{deadline}}). {{account_clause}} carries the account reference and vanishes when the operator collects by Send Money (no reference exists). Rent-only arrears automatically shorten when nothing is customized.',
+    fields: ['name', 'unit', 'period', 'rent_due', 'water_due', 'total_due', 'account', 'account_clause', 'deadline', 'payment_method', 'currency', 'business'],
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, Unit {{unit}} arrears {{period}}: Rent {{currency}} {{rent_due}} + Water {{currency}} {{water_due}} = Total {{currency}} {{total_due}}. Pay via {{payment_method}}{{account_clause}}. If already paid, ignore this message. Thank you.',
+      'Dear {{name}}, Unit {{unit}} arrears {{period}}: Rent {{currency}} {{rent_due}} + Water {{currency}} {{water_due}} = Total {{currency}} {{total_due}}. Pay by {{deadline}} via {{payment_method}}{{account_clause}}. If already paid, ignore this message. Thank you.',
   },
   {
     kind: 'SMS_OVERDUE',
     label: 'Overdue Notice',
     channel: 'SMS' as const,
-    description: 'The firmer "Overdue Notice" reminder for a past-due balance.',
-    fields: ['name', 'unit', 'period', 'amount_due', 'total_due', 'currency', 'business'],
+    description: 'The firmer "Overdue Notice" reminder for a past-due balance — settle by {{deadline}} (the 10th, or the next one once this month\'s has passed) or a late payment fee follows.',
+    fields: ['name', 'unit', 'period', 'amount_due', 'total_due', 'deadline', 'currency', 'business'],
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, the rent for Unit {{unit}} is overdue by {{currency}} {{amount_due}} ({{period}}). Kindly settle this amount to avoid a late payment fee. Your total balance is {{currency}} {{total_due}}. If already paid, ignore this message. Thank you.',
+      'Dear {{name}}, the rent for Unit {{unit}} is overdue by {{currency}} {{amount_due}} ({{period}}). Kindly settle by {{deadline}} to avoid a late payment fee. Your total balance is {{currency}} {{total_due}}. If already paid, ignore this message. Thank you.',
+  },
+  {
+    kind: 'SMS_FINAL_NOTICE',
+    label: 'Final Notice',
+    channel: 'SMS' as const,
+    description:
+      'The last written call to pay, sent from a tenant card after routine reminders have gone unanswered: it leads with FINAL NOTICE, names the unpaid arrears, asks for settlement by {{deadline}}, and invites the tenant to call the office to agree the way forward. Professional and courteous throughout — no legal or eviction wording. Sent only per tenant, and only when something is actually owed. Rent-only and water-only arrears automatically shorten when nothing is customized.',
+    fields: ['name', 'unit', 'period', 'rent_due', 'water_due', 'total_due', 'account', 'account_clause', 'contact', 'deadline', 'payment_method', 'currency', 'business'],
+    hasSubject: false,
+    defaultSubject: null,
+    defaultBody:
+      'Dear {{name}}, FINAL NOTICE: Unit {{unit}} arrears {{period}}: Rent {{currency}} {{rent_due}} + Water {{currency}} {{water_due}} = Total {{currency}} {{total_due}} is still unpaid after our earlier reminders. Kindly settle by {{deadline}} via {{payment_method}}{{account_clause}}. If you need more time, or have already paid, call the office on {{contact}} so we can agree the way forward. Thank you.',
   },
   {
     kind: 'SMS_LANDLORD_ALERT',
@@ -115,23 +128,23 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     channel: 'SMS' as const,
     description:
       'The automatic "rent is due" nudge sent on the last day of each month for the month that starts the next day (when Automatic monthly reminders are on in Settings).',
-    fields: ['name', 'unit', 'next_month', 'amount', 'currency', 'payment_method', 'reference_clause', 'business'],
+    fields: ['name', 'unit', 'next_month', 'amount', 'deadline', 'currency', 'payment_method', 'reference_clause', 'business'],
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, a friendly reminder that {{next_month}} rent of {{currency}} {{amount}} for Unit {{unit}} falls due on the 1st. Please pay via {{payment_method}}{{reference_clause}}. Thank you.',
+      'Dear {{name}}, a friendly reminder that {{next_month}} rent of {{currency}} {{amount}} for Unit {{unit}} falls due by 10 {{next_month}}. Please pay via {{payment_method}}{{reference_clause}}. Thank you.',
   },
   {
     kind: 'SMS_WATER_BILLING',
     label: 'Water Billing Notice',
     channel: 'SMS' as const,
     description:
-      'Reminds the tenant their water charge is still unpaid. Sent only when an operator sends it — billing water never spends SMS credit on its own.',
-    fields: ['name', 'unit', 'month', 'year', 'amount', 'previous_reading', 'current_reading', 'units_used', 'payment_method', 'currency', 'business'],
+      'Reminds the tenant their water charge is still unpaid. {{period}} names the unpaid water months ("Sep, Oct 2026"); {{deadline}} is the pay-by date. Sent only when an operator sends it — billing water never spends SMS credit on its own.',
+    fields: ['name', 'unit', 'period', 'amount', 'previous_reading', 'current_reading', 'units_used', 'deadline', 'payment_method', 'currency', 'business'],
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, water for Unit {{unit}} for {{month}} {{year}} is unpaid: {{currency}} {{amount}}. Meter: prev {{previous_reading}}, curr {{current_reading}} ({{units_used}} units). Pay with your rent via {{payment_method}}. If already paid, ignore this message. Thank you.',
+      'Dear {{name}}, water for Unit {{unit}} ({{period}}) is unpaid: {{currency}} {{amount}}. Meter: prev {{previous_reading}}, curr {{current_reading}} ({{units_used}} units). Pay with rent via {{payment_method}} by {{deadline}}. If already paid, ignore this message. Thank you.',
   },
   {
     kind: 'SMS_LATE_FEE',
@@ -150,35 +163,35 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     label: 'New Tenant Welcome',
     channel: 'SMS' as const,
     description:
-      'A one-time welcome when a tenancy starts: when rent falls due and how to pay it. Sent only when an operator sends it.',
+      'A one-time welcome when a tenancy starts: when rent falls due (by the 10th of each month) and how to pay it. Sent only when an operator sends it.',
     fields: ['name', 'unit', 'amount', 'account', 'reference_clause', 'payment_method', 'currency', 'business'],
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, welcome to Unit {{unit}}! Rent of {{currency}} {{amount}} falls due on the 1st of each month. Pay via {{payment_method}}{{reference_clause}}. We wish you a comfortable stay.',
+      'Dear {{name}}, welcome to Unit {{unit}}! Rent of {{currency}} {{amount}} falls due by the 10th of each month. Pay via {{payment_method}}{{reference_clause}}. We wish you a comfortable stay.',
   },
   {
     kind: 'WHATSAPP_BALANCE_DUE',
     label: 'WhatsApp Balance Due',
     channel: 'WHATSAPP' as const,
-    description: 'Pre-filled text for the WhatsApp click-to-chat balance statement (you press send in WhatsApp).',
-    fields: ['name', 'unit', 'month', 'year', 'current_rent', 'previous_balance', 'total_due', 'account', 'pay_line', 'payment_method', 'currency'],
+    description: 'Pre-filled text for the WhatsApp click-to-chat balance statement (you press send in WhatsApp). {{deadline}} is the pay-by date.',
+    fields: ['name', 'unit', 'month', 'year', 'current_rent', 'previous_balance', 'total_due', 'account', 'pay_line', 'deadline', 'payment_method', 'currency'],
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Hello {{name}}, 🌟 Your rent statement for {{month}} {{year}} is ready for Unit {{unit}}. 💰 Current Rent: {{currency}} {{current_rent}} ➕ Previous Balance: {{currency}} {{previous_balance}} 🧾 Total Due: {{currency}} {{total_due}}. {{pay_line}} If you have already paid, please ignore this message. Thank you!',
+      'Hello {{name}}, 🌟 Your rent statement for {{month}} {{year}} is ready for Unit {{unit}}. 💰 Current Rent: {{currency}} {{current_rent}} ➕ Previous Balance: {{currency}} {{previous_balance}} 🧾 Total Due: {{currency}} {{total_due}}. {{pay_line}} Kindly settle by {{deadline}}. If you have already paid, please ignore this message. Thank you!',
   },
   {
     kind: 'WHATSAPP_OVERDUE',
     label: 'WhatsApp Overdue',
     channel: 'WHATSAPP' as const,
     description:
-      'Pre-filled text for the WhatsApp click-to-chat overdue reminder. {{support_link}} expands to the "chat with support" sentence when a support phone is configured, or to nothing otherwise.',
-    fields: ['name', 'unit', 'amount_due', 'support_link', 'currency'],
+      'Pre-filled text for the WhatsApp click-to-chat overdue reminder. {{deadline}} is the pay-by date; {{support_link}} expands to the "chat with support" sentence when a support phone is configured, or to nothing otherwise.',
+    fields: ['name', 'unit', 'amount_due', 'deadline', 'support_link', 'currency'],
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, this is a reminder that your account for Unit {{unit}} has an outstanding balance of {{currency}} {{amount_due}}. Please settle this today to maintain a clear ledger.{{support_link}}',
+      'Dear {{name}}, this is a reminder that your account for Unit {{unit}} has an outstanding balance of {{currency}} {{amount_due}}. Please settle by {{deadline}} to maintain a clear ledger.{{support_link}}',
   },
   {
     kind: 'WHATSAPP_PAYMENT_CONFIRMATION',

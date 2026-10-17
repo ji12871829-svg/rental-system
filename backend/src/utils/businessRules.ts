@@ -201,12 +201,30 @@ export function combinedReceiptMessage(opts: {
 
 // Unpaid months as a compact label — "Oct 2026", or "Aug, Sep, Oct 2026",
 // capped at three with a "+n more" tail so year-long arrears never blow the
-// SMS segment budget.
+// SMS segment budget. The year rides directly after the named months; the
+// tail is parenthesized so it never masquerades as part of the date.
 export function formatArrearsSpan(unpaidMonths: number[], throughMonth: number, year: number): string {
   const short = (m: number): string => MONTH_NAMES[m - 1].slice(0, 3);
   const list = unpaidMonths.length === 0 ? [throughMonth] : unpaidMonths.slice(0, 3);
   const more = unpaidMonths.length - list.length;
-  return `${list.map(short).join(', ')}${more > 0 ? ` +${more} more` : ''} ${year}`;
+  return `${list.map(short).join(', ')} ${year}${more > 0 ? ` (+${more} more)` : ''}`;
+}
+
+// The pay-by deadline a reminder quotes: the estate's cycle is rent chased
+// from the 5th, settled by the 10th. A reminder never names a day already
+// past — a send made on the 10th or earlier quotes "10 Oct 2026"; later in
+// the month it quotes the NEXT 10th ("10 Nov 2026"). Month-end due-soon
+// sends land past the 10th by construction, so they quote next month's
+// 10th — exactly the due date of the rent they announce.
+export function paymentDeadlineLabel(now: Date): string {
+  const day = now.getUTCDate();
+  const target =
+    day <= 10
+      ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 10))
+      : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 10));
+  // getUTCMonth() is 0-based (Jan = 0), matching MONTH_NAMES' array index —
+  // December's +1 rollover normalizes to 0, so January itself needs no shift.
+  return `10 ${MONTH_NAMES[target.getUTCMonth()].slice(0, 3)} ${target.getUTCFullYear()}`;
 }
 
 // --- Tenant reminder templates ----------------------------------------------
@@ -231,16 +249,18 @@ export function monthlyBalanceDueMessage(opts: {
   accountNumber: string;
   paymentMethod: string;
   currency: string;
+  /** Pay-by date, e.g. "10 Oct 2026" (paymentDeadlineLabel). */
+  deadline: string;
   businessIdentity?: string | string[];
 }): string {
-  const { tenantName, unitNumber, period, rentDue, waterDue, totalDue, accountNumber, paymentMethod, currency } = opts;
+  const { tenantName, unitNumber, period, rentDue, waterDue, totalDue, accountNumber, paymentMethod, currency, deadline } = opts;
   // accountNumber is empty in Send-Money mode (no reference field exists),
   // so the reference clause is dropped rather than printed blank.
   const reference = accountNumber ? ` with account ${accountNumber}` : '';
   const body =
     waterDue > 0
-      ? `Dear ${tenantName}, Unit ${unitNumber} arrears ${period}: Rent ${currency} ${rentDue} + Water ${currency} ${waterDue} = Total ${currency} ${totalDue}. Pay via ${paymentMethod}${reference}. If already paid, ignore this message. Thank you.`
-      : `Dear ${tenantName}, rent for Unit ${unitNumber} (${period}) is unpaid: ${currency} ${rentDue}. Pay via ${paymentMethod}${reference}. If already paid, ignore this message. Thank you.`;
+      ? `Dear ${tenantName}, Unit ${unitNumber} arrears ${period}: Rent ${currency} ${rentDue} + Water ${currency} ${waterDue} = Total ${currency} ${totalDue}. Pay by ${deadline} via ${paymentMethod}${reference}. If already paid, ignore this message. Thank you.`
+      : `Dear ${tenantName}, rent for Unit ${unitNumber} (${period}) is unpaid: ${currency} ${rentDue}. Pay by ${deadline} via ${paymentMethod}${reference}. If already paid, ignore this message. Thank you.`;
   return withIdentity(body, opts.businessIdentity);
 }
 
@@ -256,13 +276,59 @@ export function overdueNoticeMessage(opts: {
   amountDue: number;
   totalBalance: number;
   currency: string;
+  /** Pay-by date, e.g. "10 Oct 2026" (paymentDeadlineLabel). */
+  deadline: string;
   businessIdentity?: string | string[];
 }): string {
-  const { tenantName, unitNumber, period, amountDue, totalBalance, currency } = opts;
+  const { tenantName, unitNumber, period, amountDue, totalBalance, currency, deadline } = opts;
   return withIdentity(
-    `Dear ${tenantName}, the rent for Unit ${unitNumber} is overdue by ${currency} ${amountDue} (${period}). Kindly settle this amount to avoid a late payment fee. Your total balance is ${currency} ${totalBalance}. If already paid, ignore this message. Thank you.`,
+    `Dear ${tenantName}, the rent for Unit ${unitNumber} is overdue by ${currency} ${amountDue} (${period}). Kindly settle by ${deadline} to avoid a late payment fee. Your total balance is ${currency} ${totalBalance}. If already paid, ignore this message. Thank you.`,
     opts.businessIdentity,
   );
+}
+
+// "Final Notice": the escalation for a tenant who has let the routine
+// reminders slide — sent only when something is actually owed. The building
+// operates without lease agreements (and lockouts/cut-offs would be unlawful
+// in Kenya regardless), so the letter stays professional and friendly: it
+// leads with FINAL NOTICE, names what is owed itemized exactly like the rest
+// of the family, asks for settlement by the same pay-by deadline, and
+// invites the tenant to call the office to agree the way forward. No
+// termination or eviction language is claimed on the tenant's side — the
+// message keeps its weight from being the final written step before the
+// operator engages personally. The office contact closes the loop for a
+// tenant who has already paid.
+export function finalNoticeMessage(opts: {
+  tenantName: string;
+  unitNumber: string;
+  /** Unpaid months, e.g. "Oct 2026" or "Aug, Sep, Oct 2026". */
+  period: string;
+  rentDue: number;
+  waterDue: number;
+  totalDue: number;
+  accountNumber: string;
+  paymentMethod: string;
+  currency: string;
+  /** Pay-by date, e.g. "10 Nov 2026" (paymentDeadlineLabel). */
+  deadline: string;
+  /** Business contact phone for the "already paid? call" clause — omitted when unset. */
+  contactPhone: string | null;
+  businessIdentity?: string | string[];
+}): string {
+  const { tenantName, unitNumber, period, rentDue, waterDue, totalDue, accountNumber, paymentMethod, currency, deadline, contactPhone } = opts;
+  // accountNumber is empty in Send-Money mode (no reference field exists),
+  // so the reference clause is dropped rather than printed blank.
+  const reference = accountNumber ? ` with account ${accountNumber}` : '';
+  const call = contactPhone
+    ? ` If you need more time, or have already paid, call the office on ${contactPhone} so we can agree the way forward.`
+    : ` If you need more time, or have already paid, come to the office so we can agree the way forward.`;
+  const body =
+    rentDue > 0
+      ? waterDue > 0
+        ? `Dear ${tenantName}, FINAL NOTICE: Unit ${unitNumber} arrears ${period}: Rent ${currency} ${rentDue} + Water ${currency} ${waterDue} = Total ${currency} ${totalDue} is still unpaid after our earlier reminders. Kindly settle by ${deadline} via ${paymentMethod}${reference}.${call} Thank you.`
+        : `Dear ${tenantName}, FINAL NOTICE: the rent for Unit ${unitNumber} is overdue by ${currency} ${rentDue} (${period}) after our earlier reminders. Kindly settle by ${deadline} via ${paymentMethod}${reference}.${call} Thank you.`
+      : `Dear ${tenantName}, FINAL NOTICE: water for Unit ${unitNumber} (${period}) of ${currency} ${waterDue} is still unpaid after our earlier reminders. Kindly settle it with your rent by ${deadline} via ${paymentMethod}.${call} Thank you.`;
+  return withIdentity(body, opts.businessIdentity);
 }
 
 // --- Owner-facing alert ------------------------------------------------------
@@ -308,7 +374,7 @@ export function rentDueSoonMessage(opts: {
   const { tenantName, unitNumber, nextMonthName, year, rentAmount, paymentMethod, accountNumber, currency } = opts;
   const reference = accountNumber ? `, quoting ${accountNumber} as the account reference` : '';
   return withIdentity(
-    `Dear ${tenantName}, a friendly reminder that ${nextMonthName} ${year} rent of ${currency} ${rentAmount} for Unit ${unitNumber} falls due on the 1st. Please pay via ${paymentMethod}${reference}. Thank you.`,
+    `Dear ${tenantName}, a friendly reminder that ${nextMonthName} ${year} rent of ${currency} ${rentAmount} for Unit ${unitNumber} falls due by 10 ${nextMonthName}. Please pay via ${paymentMethod}${reference}. Thank you.`,
     opts.businessIdentity,
   );
 }
@@ -332,16 +398,19 @@ export function rentDueSoonMessage(opts: {
 export function waterBillingNoticeMessage(opts: {
   tenantName: string;
   unitNumber: string;
-  monthName: string;
-  year: number;
+  /** Unpaid water months as a label, e.g. "Sep, Oct 2026" — matches the rent
+   *  notices' span style, so a two-month water debt names both months. */
+  period: string;
   amount: number;
   paymentMethod: string;
   currency: string;
+  /** Pay-by date, e.g. "10 Oct 2026" (paymentDeadlineLabel). */
+  deadline: string;
   previousReading?: number | null;
   currentReading?: number | null;
   businessIdentity?: string | string[];
 }): string {
-  const { tenantName, unitNumber, monthName, year, amount, paymentMethod, currency } = opts;
+  const { tenantName, unitNumber, period, amount, paymentMethod, currency, deadline } = opts;
   const prev = opts.previousReading ?? null;
   const curr = opts.currentReading ?? null;
   const proof =
@@ -349,7 +418,7 @@ export function waterBillingNoticeMessage(opts: {
       ? ` Meter: prev ${prev}, curr ${curr} (${Math.round((curr - prev) * 100) / 100} units).`
       : '';
   return withIdentity(
-    `Dear ${tenantName}, water for Unit ${unitNumber} for ${monthName} ${year} is unpaid: ${currency} ${amount}.${proof} Pay with your rent via ${paymentMethod}. If already paid, ignore this message. Thank you.`,
+    `Dear ${tenantName}, water for Unit ${unitNumber} (${period}) is unpaid: ${currency} ${amount}.${proof} Pay with rent via ${paymentMethod} by ${deadline}. If already paid, ignore this message. Thank you.`,
     opts.businessIdentity,
   );
 }
@@ -387,7 +456,7 @@ export function welcomeMessage(opts: {
   const { tenantName, unitNumber, rentAmount, paymentMethod, accountNumber, currency } = opts;
   const reference = accountNumber ? `, quoting ${accountNumber} as the account reference` : '';
   return withIdentity(
-    `Dear ${tenantName}, welcome to Unit ${unitNumber}! Rent of ${currency} ${rentAmount} falls due on the 1st of each month. Pay via ${paymentMethod}${reference}. We wish you a comfortable stay.`,
+    `Dear ${tenantName}, welcome to Unit ${unitNumber}! Rent of ${currency} ${rentAmount} falls due by the 10th of each month. Pay via ${paymentMethod}${reference}. We wish you a comfortable stay.`,
     opts.businessIdentity,
   );
 }
@@ -419,9 +488,11 @@ export function whatsappBalanceDueMessage(opts: {  tenantName: string;
   accountNumber: string;
   paymentMethod: string;
   currency: string;
+  /** Pay-by date, e.g. "10 Oct 2026" (paymentDeadlineLabel). */
+  deadline: string;
 }): string {
-  const { tenantName, unitNumber, monthName, year, currentRent, previousBalance, totalDue, accountNumber, paymentMethod, currency } = opts;
-  return `Hello ${tenantName}, 🌟 Your rent statement for ${monthName} ${year} is ready for Unit ${unitNumber}. 💰 Current Rent: ${currency} ${currentRent} ➕ Previous Balance: ${currency} ${previousBalance} 🧾 Total Due: ${currency} ${totalDue}. ${whatsappPayLine(accountNumber, paymentMethod)} If you have already paid, please ignore this message. Thank you!`;
+  const { tenantName, unitNumber, monthName, year, currentRent, previousBalance, totalDue, accountNumber, paymentMethod, currency, deadline } = opts;
+  return `Hello ${tenantName}, 🌟 Your rent statement for ${monthName} ${year} is ready for Unit ${unitNumber}. 💰 Current Rent: ${currency} ${currentRent} ➕ Previous Balance: ${currency} ${previousBalance} 🧾 Total Due: ${currency} ${totalDue}. ${whatsappPayLine(accountNumber, paymentMethod)} Kindly settle by ${deadline}. If you have already paid, please ignore this message. Thank you!`;
 }
 
 // WhatsApp overdue notice: softer than SMS but still firm, with a chat link.
@@ -431,12 +502,14 @@ export function whatsappOverdueMessage(opts: {
   amountDue: number;
   supportPhone: string | null;
   currency: string;
+  /** Pay-by date, e.g. "10 Oct 2026" (paymentDeadlineLabel). */
+  deadline: string;
 }): string {
-  const { tenantName, unitNumber, amountDue, supportPhone, currency } = opts;
+  const { tenantName, unitNumber, amountDue, supportPhone, currency, deadline } = opts;
   const chat = supportPhone
     ? ` Click here to chat with support if you have any questions: https://wa.me/${supportPhone.replace(/\D/g, '')}.`
     : '';
-  return `Dear ${tenantName}, this is a reminder that your account for Unit ${unitNumber} has an outstanding balance of ${currency} ${amountDue}. Please settle this today to maintain a clear ledger.${chat}`;
+  return `Dear ${tenantName}, this is a reminder that your account for Unit ${unitNumber} has an outstanding balance of ${currency} ${amountDue}. Please settle by ${deadline} to maintain a clear ledger.${chat}`;
 }
 
 // WhatsApp payment confirmation: warm thank-you with the updated balance.

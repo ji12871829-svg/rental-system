@@ -44,13 +44,14 @@ describe('template fallback (applyTemplate)', () => {
 });
 
 describe('template kind registry', () => {
-  it('declares exactly the 14 supported kinds', () => {
+  it('declares exactly the 15 supported kinds', () => {
     expect(TEMPLATE_KINDS.map((k) => k.kind)).toEqual([
       'SMS_RENT_RECEIPT',
       'SMS_WATER_RECEIPT',
       'SMS_COMBINED_RECEIPT',
       'SMS_BALANCE_DUE',
       'SMS_OVERDUE',
+      'SMS_FINAL_NOTICE',
       'SMS_LANDLORD_ALERT',
       'SMS_RENT_DUE_SOON',
       'SMS_WATER_BILLING',

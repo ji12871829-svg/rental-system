@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button, EmptyState, Field, Modal, PageHeader, Pagination, Select, SkeletonTable, StatusBadge, TextInput, useFetch, useToast } from '../components/ui';
 import { DataRequestLetterModal, type LetterData } from '../components/DataRequestLetter';
 import { api, qs } from '../lib/api';
+import { downloadCsv, toCsv } from '../lib/csv';
 import { downloadBlob } from '../lib/download';
 import { useAuth } from '../lib/auth';
 import { money, formatDate } from '../lib/format';
@@ -39,11 +40,16 @@ interface Tenant {
 // billed, a fee applied, a tenancy starting) rather than amount-owed
 // statements, and are SMS-only — the modal hides the channel picker for them.
 type ReminderChannel = 'SMS' | 'WHATSAPP' | 'EMAIL';
-type ManualMessageKind = 'BALANCE_DUE' | 'OVERDUE' | 'WATER_BILLING' | 'LATE_FEE' | 'WELCOME';
+type ManualMessageKind = 'BALANCE_DUE' | 'OVERDUE' | 'FINAL_NOTICE' | 'WATER_BILLING' | 'LATE_FEE' | 'WELCOME';
+// SMS-only kinds: the event notices (water billing / late fee / welcome) —
+// WhatsApp and email have no composition for them. The FINAL_NOTICE is
+// deliberately NOT here: it travels by SMS or by direct WhatsApp (same
+// escalation letter), so it gets both tabs but never Email.
 const SMS_ONLY_KINDS: ReadonlySet<ManualMessageKind> = new Set<ManualMessageKind>(['WATER_BILLING', 'LATE_FEE', 'WELCOME']);
 const KIND_LABELS: Record<ManualMessageKind, string> = {
   BALANCE_DUE: 'Statement / balance due',
   OVERDUE: 'Overdue notice',
+  FINAL_NOTICE: 'Final notice',
   WATER_BILLING: 'Water billing notice',
   LATE_FEE: 'Late payment fee',
   WELCOME: 'New tenant welcome',
@@ -54,6 +60,7 @@ const KIND_LABELS: Record<ManualMessageKind, string> = {
 const ACTION_KIND: Record<string, ManualMessageKind> = {
   'sms-due': 'BALANCE_DUE',
   'sms-overdue': 'OVERDUE',
+  'sms-final': 'FINAL_NOTICE',
   'sms-water': 'WATER_BILLING',
   'sms-latefee': 'LATE_FEE',
   'sms-welcome': 'WELCOME',
@@ -163,6 +170,20 @@ export default function Tenants() {
           <TriangleAlert size={15} strokeWidth={1.75} aria-hidden />
           {gapCount !== null && gapCount > 0 ? `Contact gaps (${gapCount})` : 'Contact gaps'}
         </Button>
+        {(data?.data.length ?? 0) > 0 && (
+          <div className="ml-auto">
+            <Button
+              variant="ghost"
+              className="!px-2 !py-1 text-xs"
+              onClick={() => downloadCsv('tenants.csv', toCsv(
+                ['Tenant', 'Phone', 'Email', 'Unit', 'Move In', 'Month Status', 'Deposit', 'Status'],
+                data!.data.map((t) => [t.full_name, t.phone_number ?? '', t.email ?? '', t.unit_number ?? '', t.move_in_date ?? '', t.current_month_rent_status, t.security_deposit, t.status])
+              ))}
+            >
+              Export CSV
+            </Button>
+          </div>
+        )}
       </div>
 
       {showContactGaps && (
@@ -306,6 +327,7 @@ export default function Tenants() {
                           <option value="move-out">Move out</option>
                           <option value="sms-due">Reminder: statement / balance due…</option>
                           <option value="sms-overdue">Reminder: overdue notice…</option>
+                          <option value="sms-final">Notice: FINAL NOTICE / last call to pay…</option>
                           <option value="sms-water">Notice: water billing…</option>
                           <option value="sms-latefee">Notice: late payment fee…</option>
                           <option value="sms-welcome">Notice: new tenant welcome…</option>
@@ -784,11 +806,13 @@ function TransferModal({ tenant, onClose, onDone }: { tenant: Tenant | null; onC
 // One dialog, three channels — the templates the operator picked from the
 // Tenants row actions, composed from the live ledger:
 //   SMS — queued as PENDING, sent from SMS Notifications (or auto-send)
-//   WhatsApp — opens a wa.me click-to-chat with the text pre-filled; nothing
-//     is sent until the operator presses send in WhatsApp itself
+//   WhatsApp — direct send through Meta's Cloud API when the backend is
+//     connected (the returned status is the real outcome; a wa.me link rides
+//     along as the manual fallback), or click-to-chat otherwise
 //   Email — the formal statement breakdown queued as a PENDING email
 // The three notice kinds (water billing / late fee / welcome) are SMS-only, so
 // the channel picker is not rendered for them and the compose is always SMS.
+// The Final Notice shows SMS + WhatsApp tabs (never Email).
 function ReminderModal({ request, busy, onClose, onDone, onError, setBusy }: {
   request: { tenant: Tenant; kind: ManualMessageKind } | null;
   busy: boolean;
@@ -799,8 +823,17 @@ function ReminderModal({ request, busy, onClose, onDone, onError, setBusy }: {
 }) {
   const [channel, setChannel] = useState<ReminderChannel>('SMS');
   const [preview, setPreview] = useState<{ message: string; whatsappUrl: string | null } | null>(null);
+  const [whatsappLive, setWhatsappLive] = useState<boolean>(false);
+  // The registered WhatsApp template the backend reports for this compose
+  // (null = free-form send). Only used to word the dispatch line honestly.
+  const [whatsappTemplate, setWhatsappTemplate] = useState<string | null>(null);
+  // The outcome of a direct Cloud API send (button press): shows inline so a
+  // refusal (24-hour window, a number not on WhatsApp) is explained where it
+  // happened, with the manual fallback one click away. Cleared on re-compose.
+  const [waTalk, setWaTalk] = useState<{ status: 'SENT' | 'PENDING' | 'FAILED' | 'ERRONEOUS' | null; failure: string | null; id: number | null } | null>(null);
 
   const smsOnly = request !== null && SMS_ONLY_KINDS.has(request.kind);
+  const finalNotice = request?.kind === 'FINAL_NOTICE';
   // The channel picker is hidden for the SMS-only notice kinds, so a channel
   // left over from a previous reminder must not leak into this compose — the
   // backend would reject it and the dialog would close with an error.
@@ -810,19 +843,24 @@ function ReminderModal({ request, busy, onClose, onDone, onError, setBusy }: {
   // Re-compose whenever the tenant/kind/channel changes. The backend queues
   // immediately for SMS/EMAIL (the modal is the review surface — the queued
   // row stays the source of truth and can be inspected in the history pages);
-  // WhatsApp only composes, sending happens in WhatsApp itself.
+  // WhatsApp only composes here — the text is previewed, and the send only
+  // happens when the operator presses the button.
   useEffect(() => {
     setPreview(null);
+    setWaTalk(null);
+    setWhatsappTemplate(null);
     if (!request) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await api.post<{ data: { smsId: number | null; emailId: number | null; whatsappUrl: string | null; message: string; autoSend: boolean } }>(
+        const res = await api.post<{ data: { smsId: number | null; emailId: number | null; whatsappUrl: string | null; whatsappLive?: boolean; whatsappId?: number | null; whatsappStatus?: 'SENT' | 'PENDING' | 'FAILED' | 'ERRONEOUS' | null; whatsappFailure?: string | null; whatsappTemplate?: string | null; message: string; autoSend: boolean } }>(
           `/api/tenants/${request.tenant.id}/sms-reminder`,
           { kind: request.kind, channel: activeChannel },
         );
         if (cancelled) return;
         setPreview({ message: res.data.message, whatsappUrl: res.data.whatsappUrl });
+        setWhatsappLive(res.data.whatsappLive === true);
+        if (activeChannel === 'WHATSAPP') setWhatsappTemplate(res.data.whatsappTemplate ?? null);
       } catch (err) {
         if (!cancelled) onError((err as Error).message);
         if (!cancelled) onClose();
@@ -831,7 +869,43 @@ function ReminderModal({ request, busy, onClose, onDone, onError, setBusy }: {
     return () => { cancelled = true; };
   }, [request, activeChannel]); // eslint-disable-line react-hooks/exhaustive-deps -- onClose/onError are stable UI callbacks; identity changes must not re-queue
 
+  // Direct WhatsApp delivery — one press, one outcome, reported inline.
+  async function sendWhatsapp() {
+    if (!request) return;
+    setBusy(true);
+    try {
+      const res = await api.post<{ data: { whatsappId?: number | null; whatsappStatus?: 'SENT' | 'PENDING' | 'FAILED' | 'ERRONEOUS' | null; whatsappFailure?: string | null } }>(
+        `/api/tenants/${request.tenant.id}/sms-reminder`,
+        { kind: request.kind, channel: 'WHATSAPP', deliver: true },
+      );
+      const status = res.data.whatsappStatus ?? 'PENDING';
+      const failure = res.data.whatsappFailure ?? null;
+      setWaTalk({ status, failure, id: res.data.whatsappId ?? null });
+      if (status === 'SENT') {
+        onDone(`Sent on WhatsApp to ${request.tenant.full_name}.`);
+        onClose();
+      } else if (status === 'PENDING') {
+        onDone(`WhatsApp message for ${request.tenant.full_name} queued — send it from the WhatsApp page.`);
+        onClose();
+      } else {
+        onError(failure ?? 'WhatsApp refused the send — see the details in the dialog.');
+      }
+    } catch (err) {
+      onError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!request) return null;
+
+  const openWhatsappManually = () => {
+    window.open(preview?.whatsappUrl ?? undefined, '_blank', 'noopener');
+    onDone(`WhatsApp opened for ${request.tenant.full_name} — review and press send.`);
+  };
+
+  const tabs: Array<['SMS' | 'WHATSAPP' | 'EMAIL', string]> =
+    smsOnly ? [] : finalNotice ? [['SMS', 'SMS'], ['WHATSAPP', 'WhatsApp']] : [['SMS', 'SMS'], ['WHATSAPP', 'WhatsApp'], ['EMAIL', 'Email']];
 
   return (
     <Modal open={request !== null} title={`${smsOnly ? 'Notice' : 'Reminder'} · ${kindLabel}`} onClose={onClose}>
@@ -839,12 +913,22 @@ function ReminderModal({ request, busy, onClose, onDone, onError, setBusy }: {
         To <span className="font-semibold">{request.tenant.full_name}</span> — composed from the live ledger.
       </p>
 
+      {request.kind === 'FINAL_NOTICE' && (
+        <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs leading-relaxed text-red-800">
+          Last written call to pay — send this only after routine reminders have gone unanswered. It leads with FINAL
+          NOTICE, states what remains unpaid and asks for settlement by the deadline, inviting the tenant to call the
+          office to agree the way forward. Professional and courteous throughout, with the office number for a tenant
+          who has already paid.
+        </p>
+      )}
+
       {/* Channel picker. Hidden for the SMS-only notice kinds, which have no
           WhatsApp or email composition — offering the tabs there would fail
-          the compose and close the dialog with a 400. */}
-      {!smsOnly && (
-      <div role="tablist" aria-label="Reminder channel" className="mt-3 grid grid-cols-3 gap-2 rounded-xl bg-gray-100 p-1">
-        {([['SMS', 'SMS'], ['WHATSAPP', 'WhatsApp'], ['EMAIL', 'Email']] as const).map(([value, label]) => (
+          the compose and close the dialog with a 400. The Final Notice drops
+          the Email tab (formal legal warnings travel by SMS or WhatsApp). */}
+      {tabs.length > 0 && (
+      <div role="tablist" aria-label="Reminder channel" className={`mt-3 grid gap-2 rounded-xl bg-gray-100 p-1 ${tabs.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+        {tabs.map(([value, label]) => (
           <button
             key={value}
             type="button"
@@ -871,25 +955,56 @@ function ReminderModal({ request, busy, onClose, onDone, onError, setBusy }: {
 
       <p className="mt-3 text-xs text-gray-500">
         {activeChannel === 'SMS' && 'Queued as PENDING — send it from SMS Notifications (auto-sends when that setting is on).'}
-        {activeChannel === 'WHATSAPP' && 'Nothing is sent yet — the button opens WhatsApp with this text pre-filled for you to review and send.'}
+        {activeChannel === 'WHATSAPP' && (
+          whatsappLive
+            ? whatsappTemplate
+              ? `Sends as approved WhatsApp template \u2018${whatsappTemplate}\u2019 — templates deliver at any time, with no 24-hour window restriction.`
+              : 'Connected to Meta\u2019s WhatsApp Cloud API — the button sends directly from here.'
+            : 'Nothing is sent yet — the button opens WhatsApp with this text pre-filled for you to review and send.'
+        )}
         {activeChannel === 'EMAIL' && 'The formal statement is queued as PENDING — send it from Tenant Email (or it sends when the email pipeline is live).'}
       </p>
 
+      {/* Direct-send outcome (WhatsApp Cloud API) — error states stay open so
+          the reason is readable next to the manual fallback. */}
+      {waTalk && waTalk.status !== 'SENT' && waTalk.status !== null && (
+        <div className={`mt-3 rounded-lg px-3 py-2 text-xs leading-relaxed ${waTalk.status === 'PENDING' ? 'bg-brand-50 text-brand-800' : 'bg-red-50 text-red-800'}`}>
+          {waTalk.status === 'PENDING'
+            ? 'Queued but not delivered yet — send it manually from the WhatsApp page.'
+            : waTalk.failure ?? 'WhatsApp refused the send.'}
+          {waTalk.status !== 'PENDING' && preview?.whatsappUrl && (
+            <button
+              type="button"
+              onClick={openWhatsappManually}
+              className="ml-2 font-semibold underline hover:no-underline"
+            >
+              Open WhatsApp manually instead
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose} disabled={busy}>Close</Button>
-        {activeChannel === 'WHATSAPP' && preview?.whatsappUrl ? (
-          <Button
-            disabled={busy}
-            onClick={() => {
-              setBusy(true);
-              window.open(preview.whatsappUrl ?? undefined, '_blank', 'noopener');
-              onDone(`WhatsApp opened for ${request.tenant.full_name} — review and press send.`);
-              setBusy(false);
-            }}
-          >
-            <MessageSquare size={15} strokeWidth={2} aria-hidden /> Open WhatsApp
-          </Button>
-        ) : (
+        {activeChannel === 'WHATSAPP' && (
+          whatsappLive ? (
+            <Button
+              disabled={busy || preview === null}
+              onClick={() => { void sendWhatsapp(); }}
+            >
+              {busy ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <MessageSquare size={15} strokeWidth={2} aria-hidden />}
+              Send on WhatsApp
+            </Button>
+          ) : preview?.whatsappUrl ? (
+            <Button
+              disabled={busy}
+              onClick={() => { setBusy(true); openWhatsappManually(); setBusy(false); }}
+            >
+              <MessageSquare size={15} strokeWidth={2} aria-hidden /> Open WhatsApp
+            </Button>
+          ) : null
+        )}
+        {activeChannel !== 'WHATSAPP' && (
           <Button
             disabled={busy || preview === null}
             onClick={() => {

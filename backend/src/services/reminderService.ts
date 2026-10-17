@@ -4,20 +4,27 @@
 // composes the chosen channel:
 //   SMS      — PENDING sms_notifications row via smsService.queueSms
 //   EMAIL    — PENDING email_notifications row via emailService.queuePreparedEmail
-//   WHATSAPP — no queue, no send: a wa.me click-to-chat URL the operator
-//              reviews and sends from WhatsApp itself (no provider, no cost)
+//   WHATSAPP — either the click-to-chat URL (a wa.me link the operator
+//              reviews and sends from WhatsApp itself) or, when the Meta
+//              Cloud API is connected AND the request asked for delivery,
+//              a whatsapp_notifications row sent directly through the Graph
+//              API (the button press is the send). The URL rides along as
+//              the manual fallback either way.
 // Each channel's wording can be overridden by a Message Templates row; merge
 // fields resolve against the same figures. Before this module existed the
 // flow lived in smsService and reached into emailService for the email twin —
 // now both channel modules stay channel-only.
 
 import { query, queryOne } from '../config/db';
+import { toNumber } from '../utils/money';
 import { MONTH_NAMES } from '../types';
 import {
   formatArrearsSpan,
   lateFeeNoticeMessage,
   monthlyBalanceDueMessage,
+  finalNoticeMessage,
   overdueNoticeMessage,
+  paymentDeadlineLabel,
   rentDueSoonMessage,
   waterBillingNoticeMessage,
   welcomeMessage,
@@ -35,6 +42,8 @@ import { renderMergeFields, type MergeVars } from '../utils/mergeFields';
 import { rentMonths, tenantBalances } from './tenantLedger';
 import { queuePreparedEmail } from './emailService';
 import { dispatchAutoSend, queueSms } from './smsService';
+import { getWhatsappConfig, getWhatsappTemplates, buildWhatsappTemplateParams } from './whatsappProvider';
+import { queuePreparedWhatsapp, sendWhatsappNotification } from './whatsappService';
 
 // The shared figures every reminder channel composes from. previousRent
 // (YTD expected minus THIS month's expected) drives the statement's
@@ -57,9 +66,14 @@ interface ReminderFigures {
   combinedBalance: number;
   /** Unpaid rent months as a compact label ("Oct 2026" / "Aug, Sep, Oct 2026"). */
   arrearsSpan: string;
+  /** Unpaid water months as a compact label — falls back to the rent span
+   *  when no water is owed, so templates always have a period to quote. */
+  waterArrearsSpan: string;
   paymentMethod: string;
   accountNumber: string;
   identityName: string | null;
+  /** Business contact phone for "already paid? call us" clauses — null when unset. */
+  contactPhone: string | null;
   // Latest meter reading for the unit (the row the current bill was computed
   // from) — feeds the proof clause on water notices. Null when the unit has
   // no readings (builders omit the clause rather than printing blanks).
@@ -144,6 +158,37 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
     .map((m) => m.month);
   const arrearsSpan = formatArrearsSpan(unpaidMonths, month, year);
 
+  // Unpaid water months — the same span idea for the water notice. Water bills
+  // come from meter readings (unit-scoped) and payments carry a billing month,
+  // so the cumulative deficit after each month marks which months are still
+  // unsettled. A tenant owing September and October readings reads
+  // "(Sep, Oct 2026)" instead of naming the current month alone.
+  let waterArrearsSpan = arrearsSpan;
+  if (tenant.unit_id !== null && waterBalance > 0.009) {
+    const rows = await query<{ month: number; billed: string; paid: string }>(
+      `WITH b AS (
+         SELECT billing_month AS m, SUM(water_bill) AS bill FROM water_meter_readings
+         WHERE unit_id = $1 AND billing_year = $2 GROUP BY 1
+       ), p AS (
+         SELECT billing_month AS m, SUM(amount) AS paid FROM water_payments
+         WHERE tenant_id = $1 AND billing_year = $2 GROUP BY 1
+       )
+       SELECT ms.m AS month, COALESCE(b.bill, 0) AS billed, COALESCE(p.paid, 0) AS paid
+       FROM generate_series(1, $3::int) AS ms(m)
+       LEFT JOIN b ON b.m = ms.m
+       LEFT JOIN p ON p.m = ms.m
+       ORDER BY ms.m`,
+      [tenant.unit_id, year, month],
+    );
+    let deficit = 0;
+    const unpaidWaterMonths: number[] = [];
+    for (const r of rows) {
+      deficit += toNumber(r.billed) - toNumber(r.paid);
+      if (deficit > 0.009) unpaidWaterMonths.push(r.month);
+    }
+    waterArrearsSpan = formatArrearsSpan(unpaidWaterMonths, month, year);
+  }
+
   const identity = await getBusinessIdentity();
   const paybill = await getPaybillInstructions();
   const { paymentMethod, accountNumber } = resolvePaymentInstructions({
@@ -188,14 +233,16 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
     rentBalance,
     combinedBalance,
     arrearsSpan,
+    waterArrearsSpan,
     paymentMethod,
     accountNumber,
     identityName: identity.name,
+    contactPhone: identity.phone ?? null,
     latestWaterReading,
   };
 }
 
-export type ReminderKind = 'BALANCE_DUE' | 'OVERDUE' | 'DUE_SOON' | 'WATER_BILLING' | 'LATE_FEE' | 'WELCOME';// The three notice kinds report an event rather than an amount owed, and are
+export type ReminderKind = 'BALANCE_DUE' | 'OVERDUE' | 'FINAL_NOTICE' | 'DUE_SOON' | 'WATER_BILLING' | 'LATE_FEE' | 'WELCOME';// The three notice kinds report an event rather than an amount owed, and are
 // SMS-only: WhatsApp and email have no composition for them, so the route
 // refuses the combination instead of silently falling back to a statement.
 export const NOTICE_KINDS: ReadonlySet<ReminderKind> = new Set<ReminderKind>(['WATER_BILLING', 'LATE_FEE', 'WELCOME']);
@@ -204,19 +251,36 @@ export interface ReminderResult {
   message: string;
   smsId: number | null;
   emailId: number | null;
-  /** WhatsApp click-to-chat URL (wa.me) the operator opens — not queued. */
+  /** WhatsApp click-to-chat URL (wa.me) — the manual fallback on every WhatsApp result. */
   whatsappUrl: string | null;
+  /**
+   * WhatsApp Cloud API delivery state. `whatsappLive` flags whether the
+   * provider is connected (so the UI knows which button to show). The three
+   * row fields are populated ONLY when a direct send was requested
+   * (prepareReminder's `deliver` flag): the row that was queued, its final
+   * status, and the failure reason when Meta (or the network) refused.
+   */
+  whatsappLive?: boolean;
+  whatsappId?: number | null;
+  whatsappStatus?: 'PENDING' | 'SENT' | 'FAILED' | 'ERRONEOUS' | null;
+  whatsappFailure?: string | null;
+  /**
+   * Registered WhatsApp template the send will use (WHATSAPP_TEMPLATE_* env),
+   * or null for free-form sending. Surfaced in preview AND delivery results
+   * so the modal can tell the operator which template carries the message.
+   */
+  whatsappTemplate?: string | null;
 }
 
 // Queue/compose a tenant reminder on the chosen channel. Each channel has
 // its own helper below; this dispatcher resolves the shared figures once and
-// delegates. Returns null (SMS/EMAIL) when the tenant lacks the channel's
-// contact point.
+// delegates. Returns null (SMS/EMAIL/preview-WhatsApp) when the tenant lacks
+// the channel's contact point.
 export async function prepareReminder(
   tenantId: number,
   kind: ReminderKind,
   channel: ReminderChannel,
-  opts: { userId?: number | null; templateKind?: string | null } = {},
+  opts: { userId?: number | null; templateKind?: string | null; deliver?: boolean } = {},
 ): Promise<ReminderResult | null> {
   const f = await gatherReminderFigures(tenantId);
   // The notice kinds are SMS-only — refuse the other channels rather than
@@ -234,17 +298,47 @@ export async function prepareReminder(
   if (kind === 'LATE_FEE' && f.rentBalance <= 0) {
     throw badRequest('This tenant has no overdue rent, so there is no late fee to report.');
   }
+  // The Final Notice demands money by SMS or direct WhatsApp (the same
+  // escalation letter on either channel); email is refused — a formal legal
+  // warning must land, not sit in a spam folder. It is refused outright for
+  // a tenant whose ledger shows nothing (or a net credit): there is no
+  // arrears to demand, let alone escalate about.
+  if (kind === 'FINAL_NOTICE' && channel === 'EMAIL') {
+    throw badRequest('The Final Notice is not available by email.');
+  }
+  if (kind === 'FINAL_NOTICE' && Math.max(f.combinedBalance, 0) <= 0.009) {
+    throw badRequest('This tenant owes nothing on the ledger — there is no arrears for a Final Notice to demand.');
+  }
   // DUE_SOON is the scheduler's SMS-only nudge; the manual channels treat it
   // as the neutral BALANCE_DUE statement rather than mislabeling it.
   const channelKind: ReminderKind = kind === 'DUE_SOON' ? 'BALANCE_DUE' : kind;
-  if (channel === 'WHATSAPP') return whatsappReminder(f, channelKind, tenantId, opts.userId ?? null);
+  if (channel === 'WHATSAPP') {
+    return whatsappReminder(f, channelKind, tenantId, opts.userId ?? null, opts.deliver === true);
+  }
   if (channel === 'EMAIL') return emailReminder(f, channelKind, tenantId, opts.userId ?? null);
   // SMS (default) — keeps the real kind so SMS_RENT_DUE_SOON can override,
   // and tags the row (templateKind) so the scheduler can dedupe its batches.
   return smsReminder(f, kind, tenantId, opts.userId ?? null, opts.templateKind ?? null);
 }
 
-// WHATSAPP — nothing is queued or sent: returns a wa.me click-to-chat URL
+// WHATSAPP — two delivery modes on one composition:
+//   preview / click-to-chat (deliver=false)  nothing is queued or sent:
+//     the result carries a wa.me URL the operator opens and presses send on.
+//     No provider cost, no unreviewed outbound. This is also the automatic
+//     fallback whenever the Cloud API is not connected.
+//   direct Cloud API (deliver=true)          the button press IS the send:
+//     a whatsapp_notifications row is queued and delivered through Meta's
+//     Graph API immediately; the returned status is the real outcome
+//     (SENT / FAILED / ERRONEOUS + reason) so the operator sees it in the
+//     same click. The wa.me URL rides along in the result as the manual
+//     fallback when the automated path fails.
+//
+// Wording: the two balance kinds (BALANCE_DUE / OVERDUE) have their own
+// WhatsApp builders + customizable WHATSAPP_* templates. Every other kind
+// (Final Notice included) shares the SMS composition exactly — same custom
+// template override, same fallback builder — so both channels say the same
+// thing about the same arrears.
+//
 // The exact "chat with support" sentence whatsappOverdueMessage appends,
 // factored out so the customized WHATSAPP_OVERDUE template's {{support_link}}
 // merge field expands to identical text.
@@ -254,76 +348,155 @@ function whatsappSupportLink(phone: string | null): string {
     : '';
 }
 
-// with the text pre-filled. The operator reviews it in WhatsApp before
-// pressing send; there is no provider cost and no unreviewed outbound.
+// Template parameter {{3}}: a compact itemized dues line — what is owed, for
+// which months — not the full letter (the letter lives in the registered
+// template's static wording). Amounts render bare (KSh 55000) to match every
+// other builder's money formatting.
+function whatsappTemplateDuesText(f: ReminderFigures): string {
+  const rent = Math.max(f.rentBalance, 0);
+  const water = Math.max(f.waterBalance, 0);
+  const parts: string[] = [];
+  if (rent > 0) parts.push(`Rent for ${f.arrearsSpan}: ${f.currency} ${rent}`);
+  if (water > 0) parts.push(`Water for ${f.waterArrearsSpan}: ${f.currency} ${water}`);
+  const total = Math.max(f.combinedBalance, 0);
+  return parts.length ? `${parts.join(' + ')} — total ${f.currency} ${total}` : `${f.currency} ${total}`;
+}
+
 async function whatsappReminder(
   f: ReminderFigures,
   kind: ReminderKind,
   tenantId: number,
   userId: number | null,
+  deliver = false,
 ): Promise<ReminderResult | null> {
-  // A customized Message Templates row (WHATSAPP_BALANCE_DUE /
-  // WHATSAPP_OVERDUE) overrides the pre-filled wording. {{support_link}}
-  // expands to the same "chat with support" sentence whatsappOverdueMessage
-  // appends, or to nothing when no support phone is configured.
-  const custom = await getCustomTemplate(kind === 'BALANCE_DUE' ? 'WHATSAPP_BALANCE_DUE' : 'WHATSAPP_OVERDUE');
-  const text = custom
-    ? renderMergeFields(
-        custom.body,
-        kind === 'BALANCE_DUE'
-          ? {
-              name: f.tenantName,
-              unit: f.unitNumber,
-              month: f.monthName,
-              year: f.year,
-              current_rent: f.currentRent,
-              previous_balance: f.previousRentBalance,
-              total_due: Math.max(f.combinedBalance, 0),
-              account: `Unit ${f.unitNumber}`,
-              pay_line: whatsappPayLine(f.accountNumber, f.paymentMethod),
-              payment_method: f.paymentMethod,
-              currency: f.currency,
-            }
-          : {
-              name: f.tenantName,
-              unit: f.unitNumber,
-              amount_due: Math.max(f.rentBalance, 0),
-              support_link: whatsappSupportLink((await getBusinessIdentity()).phone),
-              currency: f.currency,
-            },
-      )
-    : kind === 'BALANCE_DUE'
-    ? whatsappBalanceDueMessage({
-        tenantName: f.tenantName,
-        unitNumber: f.unitNumber,
-        monthName: f.monthName,
-        year: f.year,
-        currentRent: f.currentRent,
-        previousBalance: f.previousRentBalance,
-        totalDue: Math.max(f.combinedBalance, 0),
-        accountNumber: f.accountNumber,
-        paymentMethod: f.paymentMethod,
-        currency: f.currency,
-      })
-    : whatsappOverdueMessage({
-        tenantName: f.tenantName,
-        unitNumber: f.unitNumber,
-        amountDue: Math.max(f.rentBalance, 0),
-        supportPhone: (await getBusinessIdentity()).phone,
-        currency: f.currency,
-      });
+  const deadline = paymentDeadlineLabel(new Date());
+  // Template mode: the operator's registered approved template for this kind
+  // replaces free-form sending entirely (no 24-hour window). The Final Notice
+  // has its own template because its wording is legally distinct; every other
+  // kind shares the reminder template.
+  const templates = getWhatsappTemplates();
+  const templateName = kind === 'FINAL_NOTICE' ? templates.finalNotice : templates.reminder;
+  let text: string;
+  if (kind === 'BALANCE_DUE' || kind === 'OVERDUE') {
+    // A customized Message Templates row (WHATSAPP_BALANCE_DUE /
+    // WHATSAPP_OVERDUE) overrides the pre-filled wording.
+    const custom = await getCustomTemplate(kind === 'BALANCE_DUE' ? 'WHATSAPP_BALANCE_DUE' : 'WHATSAPP_OVERDUE');
+    text = custom
+      ? renderMergeFields(
+          custom.body,
+          kind === 'BALANCE_DUE'
+            ? {
+                name: f.tenantName,
+                unit: f.unitNumber,
+                month: f.monthName,
+                year: f.year,
+                current_rent: f.currentRent,
+                previous_balance: f.previousRentBalance,
+                total_due: Math.max(f.combinedBalance, 0),
+                account: `Unit ${f.unitNumber}`,
+                pay_line: whatsappPayLine(f.accountNumber, f.paymentMethod),
+                payment_method: f.paymentMethod,
+                currency: f.currency,
+                deadline,
+              }
+            : {
+                name: f.tenantName,
+                unit: f.unitNumber,
+                amount_due: Math.max(f.rentBalance, 0),
+                support_link: whatsappSupportLink((await getBusinessIdentity()).phone),
+                currency: f.currency,
+                deadline,
+              },
+        )
+      : kind === 'BALANCE_DUE'
+      ? whatsappBalanceDueMessage({
+          tenantName: f.tenantName,
+          unitNumber: f.unitNumber,
+          monthName: f.monthName,
+          year: f.year,
+          currentRent: f.currentRent,
+          previousBalance: f.previousRentBalance,
+          totalDue: Math.max(f.combinedBalance, 0),
+          accountNumber: f.accountNumber,
+          paymentMethod: f.paymentMethod,
+          currency: f.currency,
+          deadline,
+        })
+      : whatsappOverdueMessage({
+          tenantName: f.tenantName,
+          unitNumber: f.unitNumber,
+          amountDue: Math.max(f.rentBalance, 0),
+          supportPhone: (await getBusinessIdentity()).phone,
+          currency: f.currency,
+          deadline,
+        });
+  } else {
+    // Shared composition — Final Notice (and any future amount kind) reads
+    // exactly like its SMS twin, customized template included.
+    text = await composeReminderSmsText(f, kind);
+  }
   if (!f.phoneNumber) return null;
   const digits = f.phoneNumber.replace(/\D/g, '');
-  // Kenya numbers stored as 07… normalize to 2547… for wa.me.
+  // Kenya numbers stored as 07… normalize to 2547… for wa.me / Meta wa_id.
   const intl = digits.startsWith('0') ? `254${digits.slice(1)}` : digits;
-  await logAudit({
+  const whatsappUrl = `https://wa.me/${intl}?text=${encodeURIComponent(text)}`;
+
+  if (!deliver) {
+    await logAudit({
+      userId,
+      action: 'REMINDER_WHATSAPP_COMPOSED',
+      entity: 'tenant',
+      entityId: tenantId,
+      newValue: { kind },
+    });
+    return {
+      message: text,
+      smsId: null,
+      emailId: null,
+      whatsappUrl,
+      whatsappLive: getWhatsappConfig().live,
+      whatsappTemplate: templateName,
+    };
+  }
+
+  // Direct delivery — refuse before queueing when the channel is not
+  // connected, so the row never exists in a state nothing will send.
+  if (!getWhatsappConfig().live) {
+    throw badRequest(
+      'Direct WhatsApp delivery is not configured — set WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID in backend/.env, or open the WhatsApp link and send it manually.'
+    );
+  }
+  const queued = await queuePreparedWhatsapp({
+    tenantId,
+    phoneNumber: f.phoneNumber,
+    message: text,
+    templateKind: templateName,
+    // Parameters persist on the row so a retry sweep (or a manual re-send)
+    // replays exactly the figures the operator saw when they pressed Send.
+    templateParams: templateName
+      ? buildWhatsappTemplateParams({
+          tenantName: f.tenantName,
+          unitLabel: `Unit ${f.unitNumber}`,
+          duesText: whatsappTemplateDuesText(f),
+          deadline,
+          payMethod: f.paymentMethod,
+          contactPhone: f.contactPhone,
+        })
+      : null,
     userId,
-    action: 'REMINDER_WHATSAPP_COMPOSED',
-    entity: 'tenant',
-    entityId: tenantId,
-    newValue: { kind },
   });
-  return { message: text, smsId: null, emailId: null, whatsappUrl: `https://wa.me/${intl}?text=${encodeURIComponent(text)}` };
+  const sent = await sendWhatsappNotification(queued.id);
+  return {
+    message: text,
+    smsId: null,
+    emailId: null,
+    whatsappUrl,
+    whatsappLive: true,
+    whatsappId: sent.id,
+    whatsappStatus: sent.status,
+    whatsappFailure: sent.failure_reason,
+    whatsappTemplate: templateName,
+  };
 }
 
 // EMAIL — PENDING email_notifications row (formal statement breakdown).
@@ -375,24 +548,7 @@ async function smsReminder(
   templateKind: string | null = null,
 ): Promise<ReminderResult | null> {
   if (!f.phoneNumber) return null;
-  // A customized Message Templates row overrides the hardcoded wording for
-  // every kind; merge fields resolve per tenant from the same figures.
-  const templateKindName: TemplateKind = TEMPLATE_KIND_BY_REMINDER[kind];
-  const custom = await getCustomTemplate(templateKindName);
-  // DUE_SOON speaks about NEXT month (it is sent on the last day of this one).
-  const nextMonth = f.month === 12 ? 1 : f.month + 1;
-  const nextYear = f.month === 12 ? f.year + 1 : f.year;
-  const baseVars = {
-    name: f.tenantName,
-    unit: f.unitNumber,
-    month: f.monthName,
-    year: f.year,
-    currency: f.currency,
-    business: f.identityName ?? '',
-  };
-  const message = custom
-    ? renderMergeFields(custom.body, mergeVarsFor(kind, f, baseVars, nextMonth))
-    : fallbackSmsMessage(kind, f, nextMonth, nextYear);
+  const message = await composeReminderSmsText(f, kind);
   const smsId = await queueSms({ tenantId, phoneNumber: f.phoneNumber, message, templateKind });
   await logAudit({
     userId,
@@ -404,6 +560,34 @@ async function smsReminder(
   return { message, smsId, emailId: null, whatsappUrl: null };
 }
 
+// The SMS text for a reminder kind — a customized Message Templates row
+// overrides the hardcoded wording for every kind; merge fields resolve per
+// tenant from the same figures. Shared by the SMS row and the WHATSAPP
+// channel's non-balance kinds (Final Notice included), so both channels say
+// the same thing about the same arrears.
+async function composeReminderSmsText(f: ReminderFigures, kind: ReminderKind): Promise<string> {
+  const templateKindName: TemplateKind = TEMPLATE_KIND_BY_REMINDER[kind];
+  const custom = await getCustomTemplate(templateKindName);
+  // DUE_SOON speaks about NEXT month (it is sent on the last day of this one).
+  const nextMonth = f.month === 12 ? 1 : f.month + 1;
+  const nextYear = f.month === 12 ? f.year + 1 : f.year;
+  // The pay-by date every chase quotes: "10 Oct 2026" on the 10th or earlier,
+  // otherwise the next month's 10th — a reminder never names a past deadline.
+  const deadline = paymentDeadlineLabel(new Date());
+  const baseVars = {
+    name: f.tenantName,
+    unit: f.unitNumber,
+    month: f.monthName,
+    year: f.year,
+    currency: f.currency,
+    deadline,
+    business: f.identityName ?? '',
+  };
+  return custom
+    ? renderMergeFields(custom.body, mergeVarsFor(kind, f, baseVars, nextMonth))
+    : fallbackSmsMessage(kind, f, nextMonth, nextYear, deadline);
+}
+
 // Reminder kind -> the Message Templates kind whose customization overrides
 // it. A map rather than a chain of ternaries on purpose: adding a kind here
 // is what wires up both the override and the fallback, so a new notice cannot
@@ -412,6 +596,7 @@ const TEMPLATE_KIND_BY_REMINDER: Record<ReminderKind, TemplateKind> = {
   BALANCE_DUE: 'SMS_BALANCE_DUE',
   DUE_SOON: 'SMS_RENT_DUE_SOON',
   OVERDUE: 'SMS_OVERDUE',
+  FINAL_NOTICE: 'SMS_FINAL_NOTICE',
   WATER_BILLING: 'SMS_WATER_BILLING',
   LATE_FEE: 'SMS_LATE_FEE',
   WELCOME: 'SMS_WELCOME',
@@ -436,6 +621,7 @@ function mergeVarsFor(kind: ReminderKind, f: ReminderFigures, baseVars: MergeVar
       const curr = f.latestWaterReading?.current ?? null;
       return {
         ...baseVars,
+        period: f.waterArrearsSpan,
         amount: Math.max(f.waterBalance, 0),
         payment_method: f.paymentMethod,
         previous_reading: prev,
@@ -445,6 +631,18 @@ function mergeVarsFor(kind: ReminderKind, f: ReminderFigures, baseVars: MergeVar
     }
     case 'LATE_FEE':
       return { ...baseVars, amount_due: Math.max(f.rentBalance, 0) };
+    case 'FINAL_NOTICE':
+      return {
+        ...baseVars,
+        period: Math.max(f.rentBalance, 0) > 0 ? f.arrearsSpan : f.waterArrearsSpan,
+        account: unitLabel,
+        account_clause: accountClause,
+        rent_due: Math.max(f.rentBalance, 0),
+        water_due: Math.max(f.waterBalance, 0),
+        total_due: Math.max(f.combinedBalance, 0),
+        contact: f.contactPhone ?? '',
+        payment_method: f.paymentMethod,
+      };
     case 'WELCOME':
       return { ...baseVars, account: unitLabel, reference_clause: referenceClause, amount: Math.max(f.currentRent, 0), payment_method: f.paymentMethod };
     case 'OVERDUE':
@@ -455,7 +653,7 @@ function mergeVarsFor(kind: ReminderKind, f: ReminderFigures, baseVars: MergeVar
 
 // The hardcoded builders, used when nobody has customized that kind — same six
 // kinds as above, so an untouched install sends exactly the default wording.
-function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: number, nextYear: number): string {
+function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: number, nextYear: number, deadline: string): string {
   const identity = f.identityName ?? undefined;
   switch (kind) {
     case 'BALANCE_DUE':
@@ -464,7 +662,7 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
         rentDue: Math.max(f.rentBalance, 0),
         waterDue: Math.max(f.waterBalance, 0),
         totalDue: Math.max(f.combinedBalance, 0), accountNumber: f.accountNumber,
-        paymentMethod: f.paymentMethod, currency: f.currency, businessIdentity: identity,
+        paymentMethod: f.paymentMethod, currency: f.currency, deadline, businessIdentity: identity,
       });
     case 'DUE_SOON':
       return rentDueSoonMessage({
@@ -473,8 +671,8 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
       });
     case 'WATER_BILLING':
       return waterBillingNoticeMessage({
-        tenantName: f.tenantName, unitNumber: f.unitNumber, monthName: f.monthName, year: f.year,
-        amount: Math.max(f.waterBalance, 0), paymentMethod: f.paymentMethod, currency: f.currency,
+        tenantName: f.tenantName, unitNumber: f.unitNumber, period: f.waterArrearsSpan,
+        amount: Math.max(f.waterBalance, 0), paymentMethod: f.paymentMethod, currency: f.currency, deadline,
         previousReading: f.latestWaterReading?.previous ?? null,
         currentReading: f.latestWaterReading?.current ?? null,
         businessIdentity: identity,
@@ -483,6 +681,16 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
       return lateFeeNoticeMessage({
         tenantName: f.tenantName, unitNumber: f.unitNumber, amountDue: Math.max(f.rentBalance, 0),
         currency: f.currency, businessIdentity: identity,
+      });
+    case 'FINAL_NOTICE':
+      return finalNoticeMessage({
+        tenantName: f.tenantName, unitNumber: f.unitNumber,
+        period: Math.max(f.rentBalance, 0) > 0 ? f.arrearsSpan : f.waterArrearsSpan,
+        rentDue: Math.max(f.rentBalance, 0),
+        waterDue: Math.max(f.waterBalance, 0),
+        totalDue: Math.max(f.combinedBalance, 0), accountNumber: f.accountNumber,
+        paymentMethod: f.paymentMethod, currency: f.currency, deadline,
+        contactPhone: f.contactPhone, businessIdentity: identity,
       });
     case 'WELCOME':
       return welcomeMessage({
@@ -493,7 +701,7 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
     default:
       return overdueNoticeMessage({
         tenantName: f.tenantName, unitNumber: f.unitNumber, period: f.arrearsSpan, amountDue: Math.max(f.rentBalance, 0),
-        totalBalance: Math.max(f.combinedBalance, 0), currency: f.currency, businessIdentity: identity,
+        totalBalance: Math.max(f.combinedBalance, 0), currency: f.currency, deadline, businessIdentity: identity,
       });
   }
 }
@@ -513,12 +721,49 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
 // Custom Message Templates apply exactly as they do for a hand-queued
 // reminder. Queue-only: rows auto-dispatch when the SMS pipeline is on,
 // otherwise they wait as PENDING for manual send from the SMS page.
-// Idempotency is deliberately NOT enforced here: the operator explicitly
-// pressed the button, so a second press is a conscious re-send, not a
-// scheduler accident.
+// Idempotency: a tenant who has already received MAX_ARREARS_REMINDERS_PER_
+// MONTH (three) reminder SMS this reporting month is skipped with
+// ALREADY_REMINDed — the bulk buttons allow a patient chase (a first
+// reminder plus two repeats) and then stop. An accidental re-click and
+// the scheduler's earlier batch stop inside the same allowance. The tagged
+// reminder family counts (bulk rows, scheduler batches, hand sends from
+// the Tenants page); receipts and landlord alerts are separate rows and
+// a per-tenant hand send stays available as the deliberate re-send path
+// (it counts toward the cap but is itself never blocked).
 export type BulkAudience = 'ALL' | 'RENT' | 'WATER';
 
-type BulkSkipReason = 'NO_PHONE' | 'PAID' | 'OTHER_BILL';
+type BulkSkipReason = 'NO_PHONE' | 'PAID' | 'OTHER_BILL' | 'ALREADY_REMINDed';
+
+// The template_kind tags that mark a row as "we already chased this tenant
+// this month" — the bulk buttons, the scheduled batches, and hand sends from
+// the Tenants page (routes/tenants.ts). Receipt rows carry receipt_id and
+// landlord alerts carry tenant_id NULL, so neither can match a tenant here.
+const REMINDER_TAGS = ['MANUAL_BULK_ARREARS', 'MANUAL_REMINDER', 'AUTO_DUE_SOON', 'AUTO_OVERDUE'];
+
+// How many reminder-family texts a tenant may receive in one reporting month
+// before the bulk buttons start skipping them: the first reminder plus two
+// patient repeats. A hand send from the Tenants page counts toward the cap
+// (it is a reminder too) but is itself never blocked, and a FAILED row never
+// reached the phone so it frees its slot for the next attempt.
+const MAX_ARREARS_REMINDERS_PER_MONTH = 3;
+
+/** Which of these tenants have already received MAX_ARREARS_REMINDERS_PER_MONTH
+ *  reminder-family SMS since `since` (the month start). A FAILED row never
+ *  reached the phone and does not consume a slot — a re-click after a failure
+ *  is a retry, not a duplicate; a PENDING row counts, because queuing twice
+ *  would double-send once the pipeline flushes. Shared by the bulk buttons
+ *  and the scheduled overdue chase. */
+export async function tenantsRemindedSince(tenantIds: number[], since: Date): Promise<Set<number>> {
+  if (tenantIds.length === 0) return new Set();
+  const rows = await query<{ tenant_id: number }>(
+    `SELECT tenant_id FROM sms_notifications
+     WHERE tenant_id = ANY($1::int[]) AND template_kind = ANY($2::text[])
+       AND status <> 'FAILED' AND created_at >= $3
+     GROUP BY tenant_id HAVING COUNT(*) >= $4`,
+    [tenantIds, REMINDER_TAGS, since, MAX_ARREARS_REMINDERS_PER_MONTH],
+  );
+  return new Set(rows.map((r) => r.tenant_id));
+}
 
 interface BulkSkippedTenant {
   tenantId: number;
@@ -538,6 +783,8 @@ export interface BulkArrearsResult {
   skippedNoPhone: number;
   /** Owes money, but only on the bill outside the chosen audience. */
   skippedOtherBill: number;
+  /** In the audience, but already chased MAX_ARREARS_REMINDERS_PER_MONTH times this month. */
+  skippedAlreadyReminded: number;
   /** Every skipped tenant by name, so the operator can see exactly who and why. */
   skipped: BulkSkippedTenant[];
 }
@@ -562,7 +809,17 @@ export async function sendBulkArrearsReminders(opts: {
   let skippedPaid = 0;
   let skippedNoPhone = 0;
   let skippedOtherBill = 0;
+  let skippedAlreadyReminded = 0;
   const skipped: BulkSkippedTenant[] = [];
+
+  // Who was already chased this month — one indexed lookup for the whole
+  // blast, not one query per tenant. The window is this reporting month,
+  // the same (year, month) the ledger figures above are read against.
+  const monthStart = new Date(Date.UTC(year, month - 1, 1));
+  const alreadyReminded = await tenantsRemindedSince(
+    tenants.map((t) => t.id),
+    monthStart,
+  );
 
   for (const tenant of tenants) {
     const ledger = await tenantBalances(tenant.id, year, month);
@@ -587,6 +844,11 @@ export async function sendBulkArrearsReminders(opts: {
       continue;
     }
     owing += 1;
+    if (alreadyReminded.has(tenant.id)) {
+      skippedAlreadyReminded += 1;
+      skipped.push({ tenantId: tenant.id, tenantName: tenant.full_name, unitNumber: tenant.unit_number, reason: 'ALREADY_REMINDed', bill: null });
+      continue;
+    }
     const kind: ReminderKind =
       rentOwing && ledger.combinedBalance > 0.009
         ? 'BALANCE_DUE'
@@ -610,8 +872,8 @@ export async function sendBulkArrearsReminders(opts: {
     userId: opts.userId ?? null,
     action: 'BULK_ARREARS_REMINDERS',
     entity: 'tenants',
-    newValue: { audience, total: tenants.length, owing, queued, skippedPaid, skippedNoPhone, skippedOtherBill },
+    newValue: { audience, total: tenants.length, owing, queued, skippedPaid, skippedNoPhone, skippedOtherBill, skippedAlreadyReminded },
   });
 
-  return { total: tenants.length, audience, owing, queued, skippedPaid, skippedNoPhone, skippedOtherBill, skipped };
+  return { total: tenants.length, audience, owing, queued, skippedPaid, skippedNoPhone, skippedOtherBill, skippedAlreadyReminded, skipped };
 }
