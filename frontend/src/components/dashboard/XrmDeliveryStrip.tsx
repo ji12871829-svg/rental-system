@@ -16,18 +16,18 @@ interface XrmDeliveryStripProps {
 /** Compact delivery-health strip — mirrors the xampp RMS delivery indicators
  *  (SMS wallet + this-month send/fail counts) in a tight 3-up card, replacing
  *  the local HealthCards strip. WhatsApp joins the row when the payload carries
- *  it (older backends predate the key and the card just disappears). Self-gates
- *  the SMS/email half: nothing renders when there's nothing to report — but a
- *  WhatsApp provider that is live (or has rows this month) always shows, so the
- *  operator can see channel state at a glance. */
+ *  it (older backends predate the key and the card just disappears) and stays
+ *  visible whenever present — the operator asked for a standing delivery view,
+ *  not one that vanishes on a quiet month. The SMS/email half keeps the
+ *  self-gating: no render when there's nothing to report. */
 export function XrmDeliveryStrip({ data: { sms, email, whatsapp: wa } }: XrmDeliveryStripProps) {
   const smsState = smsStateLabel(sms.balance);
   const smsStuck = sms.failedThisMonth > 0;
   const emailStuck = (email?.failedThisMonth ?? 0) + (email?.pendingCount ?? 0) > 0;
   const waStuck = (wa?.failedThisMonth ?? 0) + (wa?.erroneousCount ?? 0) > 0;
-  const waVisible = !!wa && (waStuck || wa.sentThisMonth > 0 || !wa.live);
+  const waVisible = !!wa;
 
-  if (!smsStuck && !emailStuck && smsState.tone === 'neutral' && !email && !waVisible) return null;
+  if (!waVisible && !smsStuck && !emailStuck && smsState.tone === 'neutral' && !email) return null;
 
   return (
     <div className="mt-6">
