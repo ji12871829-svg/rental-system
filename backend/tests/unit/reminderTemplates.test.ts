@@ -134,13 +134,13 @@ describe('overdueNoticeMessage', () => {
   });
 });
 
-// --- Final Notice (eviction warning) ------------------------------------------
-// The firm escalation: leads with FINAL NOTICE, states what is unpaid exactly
-// like the rest of the family, and warns of the consequence the operator can
-// lawfully pursue — termination of the tenancy and eviction proceedings under
-// the lease. Deliberately measured: it is a slightly longer message than the
-// routine reminders (3 segments in the worst case is acceptable for a letter
-// this heavy), but it stays plain GSM-7 ASCII.
+// --- Final Notice --------------------------------------------------------------
+// The escalation: leads with FINAL NOTICE, states what is unpaid exactly like
+// the rest of the family, and closes Soft — professional and courteous, no
+// lease, termination or eviction language (the building has no lease
+// agreements; the operator wants firm-but-friendly correspondence). It is a
+// slightly longer message than the routine reminders (3 segments in the worst
+// case is acceptable for a letter this heavy), but it stays plain GSM-7 ASCII.
 describe('finalNoticeMessage', () => {
   it('leads with FINAL NOTICE and itemizes both sides when rent and water are owed', () => {
     const msg = finalNoticeMessage({
@@ -156,11 +156,11 @@ describe('finalNoticeMessage', () => {
       contactPhone: '0706719042',
     });
     expect(msg).toBe(
-      'Dear Jane Wanjiku, FINAL NOTICE: Unit B4 arrears Aug, Sep, Oct 2026: Rent KSh 9000 + Water KSh 1200 = Total KSh 10200 is unpaid despite reminders. Pay by 10 Nov 2026 via M-Pesa PayBill 247252 with account Unit B4, or we will begin termination of your tenancy and eviction proceedings as per the lease. Already paid or unable to pay? Call 0706719042. Thank you.',
+      'Dear Jane Wanjiku, FINAL NOTICE: Unit B4 arrears Aug, Sep, Oct 2026: Rent KSh 9000 + Water KSh 1200 = Total KSh 10200 is still unpaid after our earlier reminders. Kindly settle by 10 Nov 2026 via M-Pesa PayBill 247252 with account Unit B4. If you need more time, or have already paid, call the office on 0706719042 so we can agree the way forward. Thank you.',
     );
   });
 
-  it('uses the rent-only wording and still warns of termination when only rent is owed', () => {
+  it('uses the rent-only wording when only rent is owed', () => {
     const msg = finalNoticeMessage({
       ...base,
       period: 'Oct 2026',
@@ -174,11 +174,11 @@ describe('finalNoticeMessage', () => {
       contactPhone: '0706719042',
     });
     expect(msg).toBe(
-      'Dear Jane Wanjiku, FINAL NOTICE: the rent for Unit B4 is overdue by KSh 4500 (Oct 2026) and reminders have gone unanswered. Pay by 10 Nov 2026 via M-Pesa to 0743799002, or we will begin termination of your tenancy and eviction proceedings as per the lease. Already paid or unable to pay? Call 0706719042. Thank you.',
+      'Dear Jane Wanjiku, FINAL NOTICE: the rent for Unit B4 is overdue by KSh 4500 (Oct 2026) after our earlier reminders. Kindly settle by 10 Nov 2026 via M-Pesa to 0743799002. If you need more time, or have already paid, call the office on 0706719042 so we can agree the way forward. Thank you.',
     );
   });
 
-  it('demands the water side when rent is clear, and drops the call clause without a contact phone', () => {
+  it('covers the water side when rent is clear, and drops the call clause without a contact phone', () => {
     const msg = finalNoticeMessage({
       ...base,
       period: 'Sep, Oct 2026',
@@ -192,11 +192,11 @@ describe('finalNoticeMessage', () => {
       contactPhone: null,
     });
     expect(msg).toBe(
-      'Dear Jane Wanjiku, FINAL NOTICE: water for Unit B4 (Sep, Oct 2026) of KSh 1600 is unpaid despite reminders. Pay by 10 Nov 2026 with your rent via M-Pesa to 0743799002, or we will begin termination of your tenancy and eviction proceedings as per the lease. Thank you.',
+      'Dear Jane Wanjiku, FINAL NOTICE: water for Unit B4 (Sep, Oct 2026) of KSh 1600 is still unpaid after our earlier reminders. Kindly settle it with your rent by 10 Nov 2026 via M-Pesa to 0743799002. If you need more time, or have already paid, come to the office so we can agree the way forward. Thank you.',
     );
   });
 
-  it('escalates on the lawful track — never a lockout or denied-access threat', () => {
+  it('stays professional and soft — never legal threats, a lockout or denied access', () => {
     const msg = finalNoticeMessage({
       ...base,
       period: 'Oct 2026',
@@ -209,8 +209,8 @@ describe('finalNoticeMessage', () => {
       deadline: '10 Nov 2026',
       contactPhone: '0706719042',
     });
-    expect(msg).toContain('eviction proceedings as per the lease');
-    expect(msg).not.toMatch(/lock|door|denied access|cut off|barred/i);
+    expect(msg).not.toMatch(/evict|terminat|lease|lock|door|denied access|cut off|barred/i);
+    expect(msg).toContain('agree the way forward');
   });
 
   it('stays plain GSM-7 ASCII in the worst case', () => {

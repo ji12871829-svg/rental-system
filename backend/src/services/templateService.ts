@@ -100,15 +100,15 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
   },
   {
     kind: 'SMS_FINAL_NOTICE',
-    label: 'Final Notice (Eviction Warning)',
+    label: 'Final Notice',
     channel: 'SMS' as const,
     description:
-      'The firm escalation the operator sends from a tenant card after routine reminders have gone unanswered: it leads with FINAL NOTICE, names the unpaid arrears, demands payment by {{deadline}}, and warns that the tenancy will be terminated and eviction proceedings started under the lease. Sent only per tenant, and only when something is actually owed. Rent-only and water-only arrears automatically shorten when nothing is customized.',
+      'The last written call to pay, sent from a tenant card after routine reminders have gone unanswered: it leads with FINAL NOTICE, names the unpaid arrears, asks for settlement by {{deadline}}, and invites the tenant to call the office to agree the way forward. Professional and courteous throughout — no legal or eviction wording. Sent only per tenant, and only when something is actually owed. Rent-only and water-only arrears automatically shorten when nothing is customized.',
     fields: ['name', 'unit', 'period', 'rent_due', 'water_due', 'total_due', 'account', 'account_clause', 'contact', 'deadline', 'payment_method', 'currency', 'business'],
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, FINAL NOTICE: Unit {{unit}} arrears {{period}}: Rent {{currency}} {{rent_due}} + Water {{currency}} {{water_due}} = Total {{currency}} {{total_due}} is unpaid despite reminders. Pay by {{deadline}} via {{payment_method}}{{account_clause}}, or we will begin termination of your tenancy and eviction proceedings as per the lease. Already paid or unable to pay? Call {{contact}}. Thank you.',
+      'Dear {{name}}, FINAL NOTICE: Unit {{unit}} arrears {{period}}: Rent {{currency}} {{rent_due}} + Water {{currency}} {{water_due}} = Total {{currency}} {{total_due}} is still unpaid after our earlier reminders. Kindly settle by {{deadline}} via {{payment_method}}{{account_clause}}. If you need more time, or have already paid, call the office on {{contact}} so we can agree the way forward. Thank you.',
   },
   {
     kind: 'SMS_LANDLORD_ALERT',

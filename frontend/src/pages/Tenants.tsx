@@ -49,7 +49,7 @@ const SMS_ONLY_KINDS: ReadonlySet<ManualMessageKind> = new Set<ManualMessageKind
 const KIND_LABELS: Record<ManualMessageKind, string> = {
   BALANCE_DUE: 'Statement / balance due',
   OVERDUE: 'Overdue notice',
-  FINAL_NOTICE: 'Final notice (eviction warning)',
+  FINAL_NOTICE: 'Final notice',
   WATER_BILLING: 'Water billing notice',
   LATE_FEE: 'Late payment fee',
   WELCOME: 'New tenant welcome',
@@ -327,7 +327,7 @@ export default function Tenants() {
                           <option value="move-out">Move out</option>
                           <option value="sms-due">Reminder: statement / balance due…</option>
                           <option value="sms-overdue">Reminder: overdue notice…</option>
-                          <option value="sms-final">Notice: FINAL NOTICE / eviction warning…</option>
+                          <option value="sms-final">Notice: FINAL NOTICE / last call to pay…</option>
                           <option value="sms-water">Notice: water billing…</option>
                           <option value="sms-latefee">Notice: late payment fee…</option>
                           <option value="sms-welcome">Notice: new tenant welcome…</option>
@@ -915,9 +915,10 @@ function ReminderModal({ request, busy, onClose, onDone, onError, setBusy }: {
 
       {request.kind === 'FINAL_NOTICE' && (
         <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs leading-relaxed text-red-800">
-          Firm escalation — send this only after routine reminders have gone unanswered. It warns the tenant in writing
-          that the tenancy will be terminated and eviction proceedings started under the lease if the arrears stay
-          unpaid, and gives the office number for a tenant who has already paid.
+          Last written call to pay — send this only after routine reminders have gone unanswered. It leads with FINAL
+          NOTICE, states what remains unpaid and asks for settlement by the deadline, inviting the tenant to call the
+          office to agree the way forward. Professional and courteous throughout, with the office number for a tenant
+          who has already paid.
         </p>
       )}
 

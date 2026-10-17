@@ -311,7 +311,9 @@ describe('Tenant reminders — Final Notice (SMS escalation)', () => {
     expect(res.body.data.smsId).toBeGreaterThan(0);
     expect(res.body.data.message).toContain('FINAL NOTICE');
     expect(res.body.data.message).toContain('ZREM1');
-    expect(res.body.data.message).toContain('termination of your tenancy and eviction proceedings');
+    // Soft-professional escalation: no lease/termination/eviction wording.
+    expect(res.body.data.message).toContain('agree the way forward');
+    expect(res.body.data.message).not.toMatch(/evict|terminat|lease/i);
 
     const { rows } = await pool.query(
       `SELECT template_kind, status, message FROM sms_notifications WHERE id = $1`,
