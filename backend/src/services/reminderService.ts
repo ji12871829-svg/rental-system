@@ -19,6 +19,7 @@ import {
   lateFeeNoticeMessage,
   monthlyBalanceDueMessage,
   overdueNoticeMessage,
+  paymentDeadlineLabel,
   rentDueSoonMessage,
   waterBillingNoticeMessage,
   welcomeMessage,
@@ -303,6 +304,9 @@ async function whatsappReminder(
   // expands to the same "chat with support" sentence whatsappOverdueMessage
   // appends, or to nothing when no support phone is configured.
   const custom = await getCustomTemplate(kind === 'BALANCE_DUE' ? 'WHATSAPP_BALANCE_DUE' : 'WHATSAPP_OVERDUE');
+  // Same pay-by date the SMS chase quotes: the 10th, or next month's 10th
+  // once the month's deadline has passed.
+  const deadline = paymentDeadlineLabel(new Date());
   const text = custom
     ? renderMergeFields(
         custom.body,
@@ -319,6 +323,7 @@ async function whatsappReminder(
               pay_line: whatsappPayLine(f.accountNumber, f.paymentMethod),
               payment_method: f.paymentMethod,
               currency: f.currency,
+              deadline,
             }
           : {
               name: f.tenantName,
@@ -326,6 +331,7 @@ async function whatsappReminder(
               amount_due: Math.max(f.rentBalance, 0),
               support_link: whatsappSupportLink((await getBusinessIdentity()).phone),
               currency: f.currency,
+              deadline,
             },
       )
     : kind === 'BALANCE_DUE'
@@ -340,6 +346,7 @@ async function whatsappReminder(
         accountNumber: f.accountNumber,
         paymentMethod: f.paymentMethod,
         currency: f.currency,
+        deadline,
       })
     : whatsappOverdueMessage({
         tenantName: f.tenantName,
@@ -347,6 +354,7 @@ async function whatsappReminder(
         amountDue: Math.max(f.rentBalance, 0),
         supportPhone: (await getBusinessIdentity()).phone,
         currency: f.currency,
+        deadline,
       });
   if (!f.phoneNumber) return null;
   const digits = f.phoneNumber.replace(/\D/g, '');
@@ -418,17 +426,21 @@ async function smsReminder(
   // DUE_SOON speaks about NEXT month (it is sent on the last day of this one).
   const nextMonth = f.month === 12 ? 1 : f.month + 1;
   const nextYear = f.month === 12 ? f.year + 1 : f.year;
+  // The pay-by date every chase quotes: "10 Oct 2026" on the 10th or earlier,
+  // otherwise the next month's 10th — a reminder never names a past deadline.
+  const deadline = paymentDeadlineLabel(new Date());
   const baseVars = {
     name: f.tenantName,
     unit: f.unitNumber,
     month: f.monthName,
     year: f.year,
     currency: f.currency,
+    deadline,
     business: f.identityName ?? '',
   };
   const message = custom
     ? renderMergeFields(custom.body, mergeVarsFor(kind, f, baseVars, nextMonth))
-    : fallbackSmsMessage(kind, f, nextMonth, nextYear);
+    : fallbackSmsMessage(kind, f, nextMonth, nextYear, deadline);
   const smsId = await queueSms({ tenantId, phoneNumber: f.phoneNumber, message, templateKind });
   await logAudit({
     userId,
@@ -492,7 +504,7 @@ function mergeVarsFor(kind: ReminderKind, f: ReminderFigures, baseVars: MergeVar
 
 // The hardcoded builders, used when nobody has customized that kind — same six
 // kinds as above, so an untouched install sends exactly the default wording.
-function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: number, nextYear: number): string {
+function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: number, nextYear: number, deadline: string): string {
   const identity = f.identityName ?? undefined;
   switch (kind) {
     case 'BALANCE_DUE':
@@ -501,7 +513,7 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
         rentDue: Math.max(f.rentBalance, 0),
         waterDue: Math.max(f.waterBalance, 0),
         totalDue: Math.max(f.combinedBalance, 0), accountNumber: f.accountNumber,
-        paymentMethod: f.paymentMethod, currency: f.currency, businessIdentity: identity,
+        paymentMethod: f.paymentMethod, currency: f.currency, deadline, businessIdentity: identity,
       });
     case 'DUE_SOON':
       return rentDueSoonMessage({
@@ -511,7 +523,7 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
     case 'WATER_BILLING':
       return waterBillingNoticeMessage({
         tenantName: f.tenantName, unitNumber: f.unitNumber, period: f.waterArrearsSpan,
-        amount: Math.max(f.waterBalance, 0), paymentMethod: f.paymentMethod, currency: f.currency,
+        amount: Math.max(f.waterBalance, 0), paymentMethod: f.paymentMethod, currency: f.currency, deadline,
         previousReading: f.latestWaterReading?.previous ?? null,
         currentReading: f.latestWaterReading?.current ?? null,
         businessIdentity: identity,
@@ -530,7 +542,7 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
     default:
       return overdueNoticeMessage({
         tenantName: f.tenantName, unitNumber: f.unitNumber, period: f.arrearsSpan, amountDue: Math.max(f.rentBalance, 0),
-        totalBalance: Math.max(f.combinedBalance, 0), currency: f.currency, businessIdentity: identity,
+        totalBalance: Math.max(f.combinedBalance, 0), currency: f.currency, deadline, businessIdentity: identity,
       });
   }
 }
