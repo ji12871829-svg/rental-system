@@ -327,6 +327,36 @@ describe('WHATSAPP deliver — Meta Cloud API behind the button press', () => {
     }
   });
 
+  it('re-sends an already-SENT row when the operator manually chooses to', async () => {
+    // The previous test moved the FAILED row to SENT (attempt 2) with
+    // wamid.HBgLRetry. The operator can now resend the same demand by hand:
+    // the row stays a single correspondence record but its wamid/sent_at are
+    // overwritten and attempt_count bumps (02 → 03).
+    const sent = await pool.query(
+      `SELECT id FROM whatsapp_notifications WHERE tenant_id = $1 AND status = 'SENT' AND attempt_count = 2 ORDER BY id DESC LIMIT 1`,
+      [tenantId],
+    );
+    expect(sent.rows).toHaveLength(1);
+    const rowId = sent.rows[0].id as number;
+
+    stubMeta(() => jsonResponse(200, {
+      messaging_product: 'whatsapp',
+      messages: [{ id: 'wamid.HBgLManualResend', message_status: 'accepted' }],
+    }));
+    try {
+      const res = await request(app)
+        .post(`/api/whatsapp/${rowId}/send`)
+        .set(auth(adminToken))
+        .send({});
+      expect(res.status).toBe(200);
+      expect(res.body.data.status).toBe('SENT');
+      expect(res.body.data.provider_message_id).toBe('wamid.HBgLManualResend');
+      expect(res.body.data.attempt_count).toBe(3);
+    } finally {
+      restoreFetch();
+    }
+  });
+
   it('lists the delivery history for the page', async () => {
     const res = await request(app)
       .get(`/api/whatsapp/history?tenantId=${tenantId}`)

@@ -156,6 +156,15 @@ export interface DashboardData {
     pendingCount: number;
     lastFailure: LastFailure | null;
   };
+  /** WhatsApp Cloud API delivery health — absent on payloads that predate it. */
+  whatsapp?: {
+    live: boolean;
+    sentThisMonth: number;
+    failedThisMonth: number;
+    pendingCount: number;
+    erroneousCount: number;
+    lastFailure?: LastFailure | null;
+  };
   charts: {
     expectedVsCollected: { month: number; expected: number; collected: number }[];
     occupiedVsVacant: { occupied: number; vacant: number };

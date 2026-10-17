@@ -118,11 +118,12 @@ export async function sendWhatsappNotification(id: number, opts: { phone?: strin
     throw notFound('WhatsApp message not found.');
   }
   // A FAILED/ERRONEOUS row is re-sendable — that is the whole point of the
-  // retry sweep and the manual "send again" action. Only a row that has
-  // already gone out is final, so only SENT is refused here.
-  if (row.status === 'SENT') {
-    throw badRequest('This WhatsApp message was already sent — only pending or failed messages can be sent.');
-  }
+  // retry sweep and the manual "send again" action. A SENT row is also
+  // manually re-sendable at the operator's discretion (the history page's
+  // "Send again" button): the new attempt overwrites provider_message_id and
+  // sent_at on the same correspondence row and bumps attempt_count, so one
+  // logical demand stays one history row instead of spawning duplicates.
+  // (Email deliberately keeps its stricter "already sent" refusal.)
 
   // An operator-supplied corrected recipient (a number Meta refused) is
   // persisted before the attempt, so the history row records exactly the
