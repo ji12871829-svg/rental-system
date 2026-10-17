@@ -111,7 +111,7 @@ describe('BulkReminderButton', () => {
     expect(screen.getByText(/No-Phone Noah/)).toBeInTheDocument();
     expect(screen.getByText('No phone number')).toBeInTheDocument();
     expect(screen.getByText(/Reminded Rita/)).toBeInTheDocument();
-    expect(screen.getByText('Already reminded this month')).toBeInTheDocument();
+    expect(screen.getByText('Already reminded 3 times this month')).toBeInTheDocument();
   });
 });
 

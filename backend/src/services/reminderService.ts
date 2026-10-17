@@ -562,13 +562,15 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
 // Custom Message Templates apply exactly as they do for a hand-queued
 // reminder. Queue-only: rows auto-dispatch when the SMS pipeline is on,
 // otherwise they wait as PENDING for manual send from the SMS page.
-// Idempotency: a tenant who already received a reminder SMS this reporting
-// month is skipped with ALREADY_REMINDed — the bulk buttons are a monthly
-// chase, so pressing rent then water in one round, an accidental re-click,
-// and the scheduler's earlier batch all stop at one text per tenant. The
-// tagged reminder family counts (bulk rows, scheduler batches, hand sends
-// from the Tenants page); receipts and landlord alerts are separate rows and
-// a per-tenant hand send stays available as the deliberate re-send path.
+// Idempotency: a tenant who has already received MAX_ARREARS_REMINDERS_PER_
+// MONTH (three) reminder SMS this reporting month is skipped with
+// ALREADY_REMINDed — the bulk buttons allow a patient chase (a first
+// reminder plus two repeats) and then stop. An accidental re-click and
+// the scheduler's earlier batch stop inside the same allowance. The tagged
+// reminder family counts (bulk rows, scheduler batches, hand sends from
+// the Tenants page); receipts and landlord alerts are separate rows and
+// a per-tenant hand send stays available as the deliberate re-send path
+// (it counts toward the cap but is itself never blocked).
 export type BulkAudience = 'ALL' | 'RENT' | 'WATER';
 
 type BulkSkipReason = 'NO_PHONE' | 'PAID' | 'OTHER_BILL' | 'ALREADY_REMINDed';
@@ -579,18 +581,27 @@ type BulkSkipReason = 'NO_PHONE' | 'PAID' | 'OTHER_BILL' | 'ALREADY_REMINDed';
 // landlord alerts carry tenant_id NULL, so neither can match a tenant here.
 const REMINDER_TAGS = ['MANUAL_BULK_ARREARS', 'MANUAL_REMINDER', 'AUTO_DUE_SOON', 'AUTO_OVERDUE'];
 
-/** Which of these tenants already received a reminder-family SMS since
- *  `since` (the month start). A FAILED row never reached the phone — a
- *  re-click after a failure is a retry, not a duplicate; a PENDING row
- *  counts, because queuing twice would double-send once the pipeline
- *  flushes. Shared by the bulk buttons and the scheduled overdue chase. */
+// How many reminder-family texts a tenant may receive in one reporting month
+// before the bulk buttons start skipping them: the first reminder plus two
+// patient repeats. A hand send from the Tenants page counts toward the cap
+// (it is a reminder too) but is itself never blocked, and a FAILED row never
+// reached the phone so it frees its slot for the next attempt.
+const MAX_ARREARS_REMINDERS_PER_MONTH = 3;
+
+/** Which of these tenants have already received MAX_ARREARS_REMINDERS_PER_MONTH
+ *  reminder-family SMS since `since` (the month start). A FAILED row never
+ *  reached the phone and does not consume a slot — a re-click after a failure
+ *  is a retry, not a duplicate; a PENDING row counts, because queuing twice
+ *  would double-send once the pipeline flushes. Shared by the bulk buttons
+ *  and the scheduled overdue chase. */
 export async function tenantsRemindedSince(tenantIds: number[], since: Date): Promise<Set<number>> {
   if (tenantIds.length === 0) return new Set();
   const rows = await query<{ tenant_id: number }>(
-    `SELECT DISTINCT tenant_id FROM sms_notifications
+    `SELECT tenant_id FROM sms_notifications
      WHERE tenant_id = ANY($1::int[]) AND template_kind = ANY($2::text[])
-       AND status <> 'FAILED' AND created_at >= $3`,
-    [tenantIds, REMINDER_TAGS, since],
+       AND status <> 'FAILED' AND created_at >= $3
+     GROUP BY tenant_id HAVING COUNT(*) >= $4`,
+    [tenantIds, REMINDER_TAGS, since, MAX_ARREARS_REMINDERS_PER_MONTH],
   );
   return new Set(rows.map((r) => r.tenant_id));
 }
@@ -613,7 +624,7 @@ export interface BulkArrearsResult {
   skippedNoPhone: number;
   /** Owes money, but only on the bill outside the chosen audience. */
   skippedOtherBill: number;
-  /** In the audience, but already got a reminder SMS this month. */
+  /** In the audience, but already chased MAX_ARREARS_REMINDERS_PER_MONTH times this month. */
   skippedAlreadyReminded: number;
   /** Every skipped tenant by name, so the operator can see exactly who and why. */
   skipped: BulkSkippedTenant[];
