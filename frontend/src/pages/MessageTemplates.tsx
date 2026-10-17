@@ -84,6 +84,9 @@ const SAMPLE_VARS: Record<string, string> = {
   current_rent: '12,000',
   previous_balance: '0',
   amount_due: '13,500',
+  previous_reading: '2',
+  current_reading: '4',
+  units_used: '2',
   support_link: ' Click here to chat with support if you have any questions: https://wa.me/254700000000.',
 };
 

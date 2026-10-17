@@ -130,18 +130,17 @@ describe('overdueNoticeMessage', () => {
 // composed from an "amount owed" narrative, but they share the same ledger
 // figures, the same identity-line helper and the same GSM-7 budget rules.
 describe('waterBillingNoticeMessage', () => {
-  it('states the unpaid charge, the month it belongs to, and how to pay it', () => {
+  it('states the unpaid charge, the unpaid water months, and how to pay it', () => {
     const msg = waterBillingNoticeMessage({
       tenantName: 'Jane Wanjiku',
       unitNumber: 'B4',
-      monthName: 'September',
-      year: 2026,
+      period: 'Sep, Oct 2026',
       amount: 1200,
       paymentMethod: 'M-Pesa PayBill 247252',
       currency: 'KSh',
     });
     expect(msg).toBe(
-      'Dear Jane Wanjiku, water for Unit B4 for September 2026 is unpaid: KSh 1200. Pay with your rent via M-Pesa PayBill 247252. If already paid, ignore this message. Thank you.',
+      'Dear Jane Wanjiku, water for Unit B4 (Sep, Oct 2026) is unpaid: KSh 1200. Pay with your rent via M-Pesa PayBill 247252. If already paid, ignore this message. Thank you.',
     );
   });
 
@@ -149,8 +148,7 @@ describe('waterBillingNoticeMessage', () => {
     const msg = waterBillingNoticeMessage({
       tenantName: 'Jane Wanjiku',
       unitNumber: 'B4',
-      monthName: 'September',
-      year: 2026,
+      period: 'September 2026',
       amount: 1200,
       paymentMethod: 'M-Pesa PayBill 247252',
       currency: 'KSh',
@@ -168,8 +166,7 @@ describe('waterBillingNoticeMessage', () => {
       const msg = waterBillingNoticeMessage({
         tenantName: 'Jane Wanjiku',
         unitNumber: 'B4',
-        monthName: 'September',
-        year: 2026,
+        period: 'September 2026',
         amount: 1200,
         paymentMethod: 'M-Pesa PayBill 247252',
         currency: 'KSh',
@@ -296,7 +293,7 @@ describe('formatArrearsSpan', () => {
   });
 
   it('caps longer arrears with a more-count tail', () => {
-    expect(formatArrearsSpan([1, 2, 3, 4, 5, 6], 10, 2026)).toBe('Jan, Feb, Mar +3 more 2026');
+    expect(formatArrearsSpan([1, 2, 3, 4, 5, 6], 10, 2026)).toBe('Jan, Feb, Mar 2026 (+3 more)');
   });
 });
 
@@ -308,8 +305,8 @@ describe('notice budget and charset', () => {
     const long = 'A Very Long Tenant Name That Operators Sometimes Type';
     const identity = 'Olbano Plaza, Reg No BN-2026-XYZ';
     for (const build of [
-      () => waterBillingNoticeMessage({ tenantName: long, unitNumber: 'B12', monthName: 'September', year: 2026, amount: 123456, paymentMethod: 'M-Pesa PayBill 247252', currency: 'KSh', businessIdentity: identity }),
-      () => waterBillingNoticeMessage({ tenantName: long, unitNumber: 'B12', monthName: 'September', year: 2026, amount: 123456, paymentMethod: 'M-Pesa PayBill 247252', currency: 'KSh', previousReading: 1234.5, currentReading: 2345.75, businessIdentity: identity }),
+      () => waterBillingNoticeMessage({ tenantName: long, unitNumber: 'B12', period: 'Sep, Oct 2026', amount: 123456, paymentMethod: 'M-Pesa PayBill 247252', currency: 'KSh', businessIdentity: identity }),
+      () => waterBillingNoticeMessage({ tenantName: long, unitNumber: 'B12', period: 'Sep, Oct 2026', amount: 123456, paymentMethod: 'M-Pesa PayBill 247252', currency: 'KSh', previousReading: 1234.5, currentReading: 2345.75, businessIdentity: identity }),
       () => lateFeeNoticeMessage({ tenantName: long, unitNumber: 'B12', amountDue: 123456, currency: 'KSh', businessIdentity: identity }),
       () => welcomeMessage({ tenantName: long, unitNumber: 'B12', rentAmount: 123456, paymentMethod: 'M-Pesa PayBill 247252', accountNumber: 'Unit B12', currency: 'KSh', businessIdentity: identity }),
     ]) {

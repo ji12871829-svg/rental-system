@@ -201,12 +201,13 @@ export function combinedReceiptMessage(opts: {
 
 // Unpaid months as a compact label — "Oct 2026", or "Aug, Sep, Oct 2026",
 // capped at three with a "+n more" tail so year-long arrears never blow the
-// SMS segment budget.
+// SMS segment budget. The year rides directly after the named months; the
+// tail is parenthesized so it never masquerades as part of the date.
 export function formatArrearsSpan(unpaidMonths: number[], throughMonth: number, year: number): string {
   const short = (m: number): string => MONTH_NAMES[m - 1].slice(0, 3);
   const list = unpaidMonths.length === 0 ? [throughMonth] : unpaidMonths.slice(0, 3);
   const more = unpaidMonths.length - list.length;
-  return `${list.map(short).join(', ')}${more > 0 ? ` +${more} more` : ''} ${year}`;
+  return `${list.map(short).join(', ')} ${year}${more > 0 ? ` (+${more} more)` : ''}`;
 }
 
 // --- Tenant reminder templates ----------------------------------------------
@@ -332,8 +333,9 @@ export function rentDueSoonMessage(opts: {
 export function waterBillingNoticeMessage(opts: {
   tenantName: string;
   unitNumber: string;
-  monthName: string;
-  year: number;
+  /** Unpaid water months as a label, e.g. "Sep, Oct 2026" — matches the rent
+   *  notices' span style, so a two-month water debt names both months. */
+  period: string;
   amount: number;
   paymentMethod: string;
   currency: string;
@@ -341,7 +343,7 @@ export function waterBillingNoticeMessage(opts: {
   currentReading?: number | null;
   businessIdentity?: string | string[];
 }): string {
-  const { tenantName, unitNumber, monthName, year, amount, paymentMethod, currency } = opts;
+  const { tenantName, unitNumber, period, amount, paymentMethod, currency } = opts;
   const prev = opts.previousReading ?? null;
   const curr = opts.currentReading ?? null;
   const proof =
@@ -349,7 +351,7 @@ export function waterBillingNoticeMessage(opts: {
       ? ` Meter: prev ${prev}, curr ${curr} (${Math.round((curr - prev) * 100) / 100} units).`
       : '';
   return withIdentity(
-    `Dear ${tenantName}, water for Unit ${unitNumber} for ${monthName} ${year} is unpaid: ${currency} ${amount}.${proof} Pay with your rent via ${paymentMethod}. If already paid, ignore this message. Thank you.`,
+    `Dear ${tenantName}, water for Unit ${unitNumber} (${period}) is unpaid: ${currency} ${amount}.${proof} Pay with your rent via ${paymentMethod}. If already paid, ignore this message. Thank you.`,
     opts.businessIdentity,
   );
 }

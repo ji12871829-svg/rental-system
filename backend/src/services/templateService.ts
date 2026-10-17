@@ -126,12 +126,12 @@ export const TEMPLATE_KINDS: TemplateKindMeta[] = [
     label: 'Water Billing Notice',
     channel: 'SMS' as const,
     description:
-      'Reminds the tenant their water charge is still unpaid. Sent only when an operator sends it — billing water never spends SMS credit on its own.',
-    fields: ['name', 'unit', 'month', 'year', 'amount', 'previous_reading', 'current_reading', 'units_used', 'payment_method', 'currency', 'business'],
+      'Reminds the tenant their water charge is still unpaid. {{period}} names the unpaid water months ("Sep, Oct 2026"). Sent only when an operator sends it — billing water never spends SMS credit on its own.',
+    fields: ['name', 'unit', 'period', 'amount', 'previous_reading', 'current_reading', 'units_used', 'payment_method', 'currency', 'business'],
     hasSubject: false,
     defaultSubject: null,
     defaultBody:
-      'Dear {{name}}, water for Unit {{unit}} for {{month}} {{year}} is unpaid: {{currency}} {{amount}}. Meter: prev {{previous_reading}}, curr {{current_reading}} ({{units_used}} units). Pay with your rent via {{payment_method}}. If already paid, ignore this message. Thank you.',
+      'Dear {{name}}, water for Unit {{unit}} ({{period}}) is unpaid: {{currency}} {{amount}}. Meter: prev {{previous_reading}}, curr {{current_reading}} ({{units_used}} units). Pay with your rent via {{payment_method}}. If already paid, ignore this message. Thank you.',
   },
   {
     kind: 'SMS_LATE_FEE',

@@ -12,6 +12,7 @@
 // now both channel modules stay channel-only.
 
 import { query, queryOne } from '../config/db';
+import { toNumber } from '../utils/money';
 import { MONTH_NAMES } from '../types';
 import {
   formatArrearsSpan,
@@ -57,6 +58,9 @@ interface ReminderFigures {
   combinedBalance: number;
   /** Unpaid rent months as a compact label ("Oct 2026" / "Aug, Sep, Oct 2026"). */
   arrearsSpan: string;
+  /** Unpaid water months as a compact label — falls back to the rent span
+   *  when no water is owed, so templates always have a period to quote. */
+  waterArrearsSpan: string;
   paymentMethod: string;
   accountNumber: string;
   identityName: string | null;
@@ -144,6 +148,37 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
     .map((m) => m.month);
   const arrearsSpan = formatArrearsSpan(unpaidMonths, month, year);
 
+  // Unpaid water months — the same span idea for the water notice. Water bills
+  // come from meter readings (unit-scoped) and payments carry a billing month,
+  // so the cumulative deficit after each month marks which months are still
+  // unsettled. A tenant owing September and October readings reads
+  // "(Sep, Oct 2026)" instead of naming the current month alone.
+  let waterArrearsSpan = arrearsSpan;
+  if (tenant.unit_id !== null && waterBalance > 0.009) {
+    const rows = await query<{ month: number; billed: string; paid: string }>(
+      `WITH b AS (
+         SELECT billing_month AS m, SUM(water_bill) AS bill FROM water_meter_readings
+         WHERE unit_id = $1 AND billing_year = $2 GROUP BY 1
+       ), p AS (
+         SELECT billing_month AS m, SUM(amount) AS paid FROM water_payments
+         WHERE tenant_id = $1 AND billing_year = $2 GROUP BY 1
+       )
+       SELECT ms.m AS month, COALESCE(b.bill, 0) AS billed, COALESCE(p.paid, 0) AS paid
+       FROM generate_series(1, $3::int) AS ms(m)
+       LEFT JOIN b ON b.m = ms.m
+       LEFT JOIN p ON p.m = ms.m
+       ORDER BY ms.m`,
+      [tenant.unit_id, year, month],
+    );
+    let deficit = 0;
+    const unpaidWaterMonths: number[] = [];
+    for (const r of rows) {
+      deficit += toNumber(r.billed) - toNumber(r.paid);
+      if (deficit > 0.009) unpaidWaterMonths.push(r.month);
+    }
+    waterArrearsSpan = formatArrearsSpan(unpaidWaterMonths, month, year);
+  }
+
   const identity = await getBusinessIdentity();
   const paybill = await getPaybillInstructions();
   const { paymentMethod, accountNumber } = resolvePaymentInstructions({
@@ -188,6 +223,7 @@ async function gatherReminderFigures(tenantId: number): Promise<ReminderFigures>
     rentBalance,
     combinedBalance,
     arrearsSpan,
+    waterArrearsSpan,
     paymentMethod,
     accountNumber,
     identityName: identity.name,
@@ -436,6 +472,7 @@ function mergeVarsFor(kind: ReminderKind, f: ReminderFigures, baseVars: MergeVar
       const curr = f.latestWaterReading?.current ?? null;
       return {
         ...baseVars,
+        period: f.waterArrearsSpan,
         amount: Math.max(f.waterBalance, 0),
         payment_method: f.paymentMethod,
         previous_reading: prev,
@@ -473,7 +510,7 @@ function fallbackSmsMessage(kind: ReminderKind, f: ReminderFigures, nextMonth: n
       });
     case 'WATER_BILLING':
       return waterBillingNoticeMessage({
-        tenantName: f.tenantName, unitNumber: f.unitNumber, monthName: f.monthName, year: f.year,
+        tenantName: f.tenantName, unitNumber: f.unitNumber, period: f.waterArrearsSpan,
         amount: Math.max(f.waterBalance, 0), paymentMethod: f.paymentMethod, currency: f.currency,
         previousReading: f.latestWaterReading?.previous ?? null,
         currentReading: f.latestWaterReading?.current ?? null,
